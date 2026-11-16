@@ -1,10 +1,10 @@
 {
   "kernel_root": "D:/codex/hybrid_power_kernel_acceptance_d1603be",
-  "database": "data/online_analysis.db",
+  "database": "D:/codex/sqldb/realtime/pas/online_analysis.db",
   "databases": {
-    "se": "data/online_analysis.se.db",
-    "lf": "data/online_analysis.lf.db",
-    "ca": "data/online_analysis.ca.db"
+    "se": "D:/codex/sqldb/realtime/pas/online_analysis.se.db",
+    "lf": "D:/codex/sqldb/realtime/pas/online_analysis.lf.db",
+    "ca": "D:/codex/sqldb/realtime/pas/online_analysis.ca.db"
   },
   "scheduler": {"tick_seconds": 1, "retry_seconds": 60},
   "tasks": {
