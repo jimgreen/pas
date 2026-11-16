@@ -1,26 +1,26 @@
 {
-  "kernel_root": "D:/codex/elec_power_flow/hybrid_power_system_analysis",
+  "kernel_root": "D:/codex/hybrid_power_kernel_acceptance_d1603be",
   "database": "data/online_analysis.db",
   "scheduler": {"tick_seconds": 1, "retry_seconds": 60},
   "tasks": {
     "se": {
       "enabled": true,
       "period_seconds": 60,
-      "model_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/model/ac/ieee14.e",
-      "measurement_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/meas/ac/ieee14.meas",
-      "parameter_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/se/se.para"
+      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/ac/ieee14.e",
+      "measurement_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/meas/ac/ieee14.meas",
+      "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/se/se.para"
     },
     "lf": {
       "enabled": true,
       "period_seconds": 60,
-      "model_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/model/hybrid/qinling.e",
-      "parameter_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/lf/lf.para"
+      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/hybrid/qinling.e",
+      "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/lf/lf.para"
     },
     "ca": {
       "enabled": true,
       "period_seconds": 300,
-      "model_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/model/hybrid/qinling.e",
-      "limit_file": "D:/codex/elec_power_flow/hybrid_power_system_analysis/data/ca/qinling.calmt",
+      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/hybrid/qinling.e",
+      "limit_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/ca/qinling.calmt",
       "scan_n1": false
     }
   }

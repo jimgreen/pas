@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
 TASK_NAMES = ("se", "lf", "ca")
+_KERNEL_MARKERS = ("secore/ac_se.py", "lfcore/hybrid_lf.py", "cacore/hybrid_ca.py")
 
 
 class ConfigError(ValueError):
@@ -46,6 +48,95 @@ def _path(value: Any, base: Path) -> Path | None:
     return result.resolve()
 
 
+def _kernel_layout(root: Path) -> bool:
+    """Return whether *root* contains the reference kernel packages."""
+    nested = root / "src" / "hybrid_power_system_analysis"
+    package = nested if nested.is_dir() else root
+    return all((package / marker).is_file() for marker in _KERNEL_MARKERS)
+
+
+def _kernel_score(root: Path) -> int:
+    if not _kernel_layout(root):
+        return -1
+    package = root / "src" / "hybrid_power_system_analysis"
+    if not package.is_dir():
+        package = root
+    score = len(_KERNEL_MARKERS)
+    for relative in (
+        "data/model/ac/ieee14.e",
+        "data/meas/ac/ieee14.meas",
+        "data/se/se.para",
+        "data/model/hybrid/qinling.e",
+        "data/lf/lf.para",
+        "data/ca/qinling.calmt",
+    ):
+        if (root / relative).is_file():
+            score += 1
+    return score
+
+
+def _discover_kernel_root(configured: Path) -> Path:
+    """Resolve a migrated kernel root while preserving explicit valid roots."""
+    if _kernel_layout(configured):
+        return configured
+    candidates: list[Path] = []
+    env_root = os.environ.get("PAS_KERNEL_ROOT")
+    if env_root:
+        candidates.append(Path(env_root).expanduser())
+    candidates.extend(
+        [
+            configured.parent,
+            Path("D:/codex"),
+            Path("C:/Users/wangbin/Documents/ChatGPT/核心计算"),
+        ]
+    )
+    expanded: list[Path] = []
+    for parent in candidates:
+        parent = parent.resolve()
+        expanded.append(parent)
+        try:
+            expanded.extend(item for item in parent.iterdir() if item.is_dir())
+        except OSError:
+            continue
+    valid = []
+    seen = set()
+    for candidate in expanded:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        score = _kernel_score(candidate)
+        if score >= 0:
+            valid.append((score, candidate))
+    if valid:
+        valid.sort(key=lambda item: (-item[0], str(item[1])))
+        return valid[0][1]
+    return configured
+
+
+def _relocated_path(value: Any, base: Path, old_root: Path, new_root: Path) -> Path | None:
+    """Resolve an input path and remap stale absolute paths below old_root."""
+    if value is None or str(value).strip() == "":
+        return None
+    original = Path(str(value)).expanduser()
+    candidate = _path(value, base)
+    if candidate is not None and candidate.is_file():
+        return candidate
+    relative = None
+    if original.is_absolute():
+        try:
+            relative = original.resolve().relative_to(old_root)
+        except ValueError:
+            relative = None
+    else:
+        relative = original
+    if relative is not None:
+        relocated = (new_root / relative).resolve()
+        if relocated.is_file():
+            return relocated
+    return candidate
+
+
 def _positive(value: Any, field: str, default: float) -> float:
     try:
         number = float(default if value is None else value)
@@ -67,7 +158,8 @@ def load_config(path: str | Path) -> AppConfig:
     if not isinstance(raw, dict):
         raise ConfigError("configuration root must be an object")
     base = source.parent
-    kernel_root = _path(raw.get("kernel_root"), base)
+    configured_kernel_root = _path(raw.get("kernel_root"), base)
+    kernel_root = _discover_kernel_root(configured_kernel_root) if configured_kernel_root is not None else None
     if kernel_root is None:
         raise ConfigError("kernel_root is required")
     database = _path(raw.get("database", "runs.db"), base)
@@ -89,10 +181,10 @@ def load_config(path: str | Path) -> AppConfig:
             name=name,
             enabled=enabled,
             period_seconds=_positive(values.get("period_seconds"), f"tasks.{name}.period_seconds", 60.0),
-            model_file=_path(values.get("model_file"), base),
-            measurement_file=_path(values.get("measurement_file"), base),
-            parameter_file=_path(values.get("parameter_file"), base),
-            limit_file=_path(values.get("limit_file"), base),
+            model_file=_relocated_path(values.get("model_file"), base, configured_kernel_root or kernel_root, kernel_root),
+            measurement_file=_relocated_path(values.get("measurement_file"), base, configured_kernel_root or kernel_root, kernel_root),
+            parameter_file=_relocated_path(values.get("parameter_file"), base, configured_kernel_root or kernel_root, kernel_root),
+            limit_file=_relocated_path(values.get("limit_file"), base, configured_kernel_root or kernel_root, kernel_root),
             scan_n1=bool(values.get("scan_n1", True)),
         )
         if enabled:

@@ -18,11 +18,11 @@ def _build_scheduler(config_path: str) -> tuple[Scheduler, Repository]:
     repository.initialize()
     runners = {}
     if config.tasks["se"].enabled:
-        runners["se"] = lambda: kernels.run_se(config.tasks["se"])
+        runners["se"] = lambda: kernels.run_se(config.tasks["se"], config.kernel_root)
     if config.tasks["lf"].enabled:
-        runners["lf"] = lambda: kernels.run_lf(config.tasks["lf"])
+        runners["lf"] = lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root)
     if config.tasks["ca"].enabled:
-        runners["ca"] = lambda: kernels.run_ca(config.tasks["ca"])
+        runners["ca"] = lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root)
     return Scheduler(config, repository, runners), repository
 
 

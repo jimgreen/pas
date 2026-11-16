@@ -15,9 +15,13 @@ def configure_kernel_path(kernel_root: str | Path) -> Path:
     root = Path(kernel_root).expanduser().resolve()
     source = root / "src"
     package_source = source / "hybrid_power_system_analysis"
-    if not source.is_dir() or not package_source.is_dir():
+    if package_source.is_dir():
+        import_paths = (source, package_source)
+    elif all((root / marker).is_file() for marker in ("secore/ac_se.py", "lfcore/hybrid_lf.py", "cacore/hybrid_ca.py")):
+        import_paths = (root, root.parent)
+    else:
         raise FileNotFoundError(f"kernel source directory does not exist: {package_source}")
-    for item in (source, package_source):
+    for item in import_paths:
         text = str(item)
         if text not in sys.path:
             sys.path.insert(0, text)
@@ -118,8 +122,8 @@ def normalize_ca(n0_risks: list[Any], n1_risks: list[Any], n1_scan_count: int | 
     return ({"risk_level": level, "n0_risk_count": len(n0), "n1_scan_count": _int(n1_scan_count, 0), "n1_risk_count": len(n1), "risks": combined, "summary": {"n0": n0, "n1": n1}}, {"n0": n0, "n1": n1})
 
 
-def run_se(config: Any) -> dict[str, Any]:
-    configure_kernel_path(config.kernel_root)
+def run_se(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+    configure_kernel_path(kernel_root or config.kernel_root)
     from secore.ac_se import ACStateEstimator
     estimator = ACStateEstimator(e_file=config.model_file, meas_file=config.measurement_file, parameter_file=config.parameter_file, auto_prepare=False)
     estimator.prepare()
@@ -127,8 +131,8 @@ def run_se(config: Any) -> dict[str, Any]:
     return normalize_se(se_result, estimator.estimate_result)
 
 
-def run_lf(config: Any) -> dict[str, Any]:
-    configure_kernel_path(config.kernel_root)
+def run_lf(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+    configure_kernel_path(kernel_root or config.kernel_root)
     from lfcore.hybrid_lf import HybridPowerFlowCalc, _read_lf_network_from_file
     network = _read_lf_network_from_file(config.model_file)
     calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="summary", verbose=False)
@@ -136,8 +140,8 @@ def run_lf(config: Any) -> dict[str, Any]:
     return normalize_lf(calc)
 
 
-def run_ca(config: Any) -> dict[str, Any]:
-    configure_kernel_path(config.kernel_root)
+def run_ca(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+    configure_kernel_path(kernel_root or config.kernel_root)
     from cacore.hybrid_ca import run_hybrid_ca
     with tempfile.TemporaryDirectory(prefix="pas_ca_") as temp:
         root = Path(temp)
