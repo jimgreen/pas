@@ -42,6 +42,48 @@ class Repository:
             self._conn.close()
             self._conn = None
 
+    def _rows(self, sql: str, parameters: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        rows = self._connection().execute(sql, parameters).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_schedules(self) -> list[dict[str, Any]]:
+        return self._rows("SELECT * FROM schedule ORDER BY task_type")
+
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        if task_type:
+            return self._rows("SELECT * FROM calculation_run WHERE task_type = ? ORDER BY run_id DESC LIMIT ? OFFSET ?", (task_type, limit, offset))
+        return self._rows("SELECT * FROM calculation_run ORDER BY run_id DESC LIMIT ? OFFSET ?", (limit, offset))
+
+    def get_run(self, run_id: int) -> dict[str, Any] | None:
+        rows = self._rows("SELECT * FROM calculation_run WHERE run_id = ?", (int(run_id),))
+        return rows[0] if rows else None
+
+    def get_result(self, task_type: str, run_id: int) -> dict[str, Any] | None:
+        run_id = int(run_id)
+        if task_type == "se":
+            main = self._rows("SELECT * FROM se_result WHERE run_id = ?", (run_id,))
+            details = self._rows("SELECT * FROM se_measurement_result WHERE run_id = ? ORDER BY result_id LIMIT 1000", (run_id,))
+            table = "se"
+        elif task_type == "lf":
+            main = self._rows("SELECT * FROM lf_result WHERE run_id = ?", (run_id,))
+            details = self._rows("SELECT * FROM lf_device_result WHERE run_id = ? ORDER BY result_id LIMIT 1000", (run_id,))
+            table = "lf"
+        elif task_type == "ca":
+            main = self._rows("SELECT * FROM ca_result WHERE run_id = ?", (run_id,))
+            details = self._rows("SELECT * FROM ca_risk WHERE run_id = ? ORDER BY risk_id LIMIT 2000", (run_id,))
+            table = "ca"
+        else:
+            raise ValueError(f"unsupported task type: {task_type}")
+        if not main:
+            return None
+        return {"task_type": table, "summary": main[0], "details": details}
+
+    def overview(self, limit: int = 12) -> dict[str, Any]:
+        counts = self._rows("SELECT COUNT(*) AS total_runs, SUM(status = 'succeeded') AS succeeded_runs, SUM(status = 'failed') AS failed_runs, SUM(status = 'running') AS running_runs FROM calculation_run")[0]
+        return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
+
     def upsert_schedule(self, task_type: str, enabled: bool, period_seconds: float, config: dict[str, Any], next_due_at: str | None = None) -> int:
         now = utc_now()
         conn = self._connection()

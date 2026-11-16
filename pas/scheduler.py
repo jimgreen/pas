@@ -79,6 +79,13 @@ class Scheduler:
                 results[task_name] = self._run_task(task_name)
         return results
 
+    def run_task(self, task_name: str) -> bool:
+        if task_name not in TASK_NAMES:
+            raise ValueError(f"unsupported task: {task_name}")
+        if not self._enabled(task_name):
+            return False
+        return self._run_task(task_name)
+
     def run_daemon(self, stop_event: threading.Event | None = None) -> None:
         stop_event = stop_event or threading.Event()
         now = time.monotonic()
