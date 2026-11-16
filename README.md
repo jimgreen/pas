@@ -27,7 +27,7 @@ SQLite schema 在服务启动时幂等创建。常用查询示例：
 
 `database` 是 PAS 控制数据库，保存 `pas_config` 参数表和 `pas_log` 日志表；`databases.se`、`databases.lf`、`databases.ca` 分别是 SE、LF、CA 的结果数据库。未显式配置 `databases` 时，服务会从 `database` 自动派生三个带任务后缀的路径。Web 的“系统设置”页面会展示四个数据库路径、调度参数和 PAS 日志；运行总览与运行历史会跨三个结果库聚合。
 
-当前示例配置将四个 SQLite 文件统一放在 `D:/codex/sqldb/realtime/pas`，可按部署环境修改为其他绝对路径。
+当前示例配置将 `pas.db`、`se.db`、`lf.db`、`ca.db` 四个 SQLite 文件统一放在 `D:/codex/sqldb/realtime/pas`，可按部署环境修改为其他绝对路径。
 
 Web 页面按功能分层：总览展示三类任务状态和服务状态；运行历史支持任务/状态筛选与分页；SE、LF、CA 页面分别提供功能概览、运行记录、结构化结果明细和执行控制标签；系统设置提供数据库、调度控制和 PAS 日志标签。页面通过 `/api/status`、`/api/runs`、`/api/runs/{task}/{run_id}`、`/api/config` 和 `/api/logs` 与后台实时联动。
 
