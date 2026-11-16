@@ -7,17 +7,20 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
     root = Path(kernel_root).expanduser().resolve()
     source = root / "src"
-    if not source.is_dir():
-        raise FileNotFoundError(f"kernel source directory does not exist: {source}")
-    text = str(source)
-    if text not in sys.path:
-        sys.path.insert(0, text)
+    package_source = source / "hybrid_power_system_analysis"
+    if not source.is_dir() or not package_source.is_dir():
+        raise FileNotFoundError(f"kernel source directory does not exist: {package_source}")
+    for item in (source, package_source):
+        text = str(item)
+        if text not in sys.path:
+            sys.path.insert(0, text)
     return root
 
 

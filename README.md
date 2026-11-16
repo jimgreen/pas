@@ -7,6 +7,8 @@
 需要 Python 3.10 或更高版本，以及参考内核所需的 NumPy、SciPy 等依赖。`kernel_root` 指向
 `D:/codex/elec_power_flow/hybrid_power_system_analysis`，服务会从它的 `src` 目录加载内核模块。
 
+冒烟运行前请确认参考内核工作区仍包含 `src/hybrid_power_system_analysis/secore`、`lfcore`、`cacore` 和对应的 `data` 输入文件；服务不会自动恢复或修改内核工作区。
+
 先复制并修改 `config.example.json`，按实际输入文件设置任务周期。启用任务的模型、量测、参数或限值文件必须存在。
 
 ## 命令
