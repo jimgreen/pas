@@ -106,3 +106,13 @@ class Repository:
             value = row.get("risk_value")
             real = value if isinstance(value, (int, float)) else None
             conn.execute("INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, str(row.get("contingency", "N-0")), str(row.get("risk_source", "")), str(row.get("risk_dist", "")), str(row.get("risk_type", "")), real, None if real is not None else str(value or ""), str(row.get("risk_info", "")), utc_now()))
+
+    def store_result(self, task_type: str, run_id: int, result: dict[str, Any]) -> None:
+        if task_type == "se":
+            self.store_se_result(run_id, result)
+        elif task_type == "lf":
+            self.store_lf_result(run_id, result)
+        elif task_type == "ca":
+            self.store_ca_result(run_id, result)
+        else:
+            raise ValueError(f"unsupported task type: {task_type}")
