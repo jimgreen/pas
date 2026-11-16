@@ -34,6 +34,7 @@ class AppConfig:
     source: Path
     kernel_root: Path
     database: Path
+    databases: dict[str, Path]
     tick_seconds: float
     retry_seconds: float
     tasks: dict[str, TaskConfig]
@@ -165,6 +166,21 @@ def load_config(path: str | Path) -> AppConfig:
     database = _path(raw.get("database", "runs.db"), base)
     assert database is not None
     database.parent.mkdir(parents=True, exist_ok=True)
+    raw_databases = raw.get("databases") or {}
+    if not isinstance(raw_databases, dict):
+        raise ConfigError("databases must be an object")
+    databases: dict[str, Path] = {}
+    for name in TASK_NAMES:
+        configured = _path(raw_databases.get(name), base)
+        if configured is None:
+            suffix = database.suffix or ".db"
+            configured = database.with_name(f"{database.stem}.{name}{suffix}")
+        databases[name] = configured
+        configured.parent.mkdir(parents=True, exist_ok=True)
+    if len(set(databases.values())) != len(TASK_NAMES):
+        raise ConfigError("databases.se, databases.lf, and databases.ca must be distinct")
+    if database in databases.values():
+        raise ConfigError("database (pas control database) must differ from result databases")
     scheduler = raw.get("scheduler") or {}
     tick_seconds = _positive(scheduler.get("tick_seconds"), "scheduler.tick_seconds", 1.0)
     retry_seconds = _positive(scheduler.get("retry_seconds"), "scheduler.retry_seconds", 60.0)
@@ -197,4 +213,4 @@ def load_config(path: str | Path) -> AppConfig:
                 if not candidate.is_file():
                     raise ConfigError(f"tasks.{name}.{field} does not exist: {candidate}")
         tasks[name] = task
-    return AppConfig(source, kernel_root, database, tick_seconds, retry_seconds, tasks)
+    return AppConfig(source, kernel_root, database, databases, tick_seconds, retry_seconds, tasks)

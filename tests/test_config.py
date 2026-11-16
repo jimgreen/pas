@@ -30,6 +30,9 @@ def test_load_config_resolves_paths_and_task_defaults(tmp_path: Path):
 
     assert isinstance(config, AppConfig)
     assert config.database == (tmp_path / "runs.db").resolve()
+    assert config.databases["se"] == (tmp_path / "runs.se.db").resolve()
+    assert config.databases["lf"] == (tmp_path / "runs.lf.db").resolve()
+    assert config.databases["ca"] == (tmp_path / "runs.ca.db").resolve()
     assert config.tasks["se"].period_seconds == 5
     assert config.tasks["ca"].enabled is False
 
@@ -90,3 +93,19 @@ def test_load_config_relocates_stale_kernel_root_and_input_paths(tmp_path: Path)
 
     assert config.kernel_root == migrated_root.resolve()
     assert config.tasks["se"].model_file == (migrated_root / "data/model/ac/ieee14.e").resolve()
+
+
+def test_explicit_result_databases_are_distinct(tmp_path: Path):
+    source = tmp_path / "config.json"
+    paths = {name: tmp_path / f"{name}.sqlite" for name in ("se", "lf", "ca")}
+    source.write_text(json.dumps({
+        "kernel_root": str(tmp_path),
+        "database": str(tmp_path / "control.sqlite"),
+        "databases": {name: str(path) for name, path in paths.items()},
+        "tasks": {},
+    }), encoding="utf-8")
+
+    config = load_config(source)
+
+    assert config.databases == {name: path.resolve() for name, path in paths.items()}
+    assert len(set(config.databases.values())) == 3

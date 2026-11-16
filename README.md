@@ -1,6 +1,6 @@
 # PAS 在线分析服务
 
-本项目按配置周期调用指定计算内核，执行在线状态估计（SE）、在线潮流分析（LF）和在线静态安全评估（CA），并将运行记录、统计结果和明细写入 SQLite。
+本项目按配置周期调用指定计算内核，执行在线状态估计（SE）、在线潮流分析（LF）和在线静态安全评估（CA），并将运行记录、统计结果和明细写入 SQLite。PAS 控制参数和后台日志也独立持久化，Web 界面提供按功能拆分的多页面展示与操作。
 
 ## 运行环境
 
@@ -25,7 +25,10 @@ python -m pas.cli daemon --config config.example.json
 
 SQLite schema 在服务启动时幂等创建。常用查询示例：
 
+`database` 是 PAS 控制数据库，保存 `pas_config` 参数表和 `pas_log` 日志表；`databases.se`、`databases.lf`、`databases.ca` 分别是 SE、LF、CA 的结果数据库。未显式配置 `databases` 时，服务会从 `database` 自动派生三个带任务后缀的路径。Web 的“系统设置”页面会展示四个数据库路径、调度参数和 PAS 日志；运行总览与运行历史会跨三个结果库聚合。
+
 ```sql
+-- 在对应的 SE/LF/CA 结果库中执行
 select task_type, status, started_at, elapsed_seconds
 from calculation_run
 order by run_id desc;

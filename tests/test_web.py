@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
-from pas.db import Repository
+from pas.db import Repository, RepositoryHub
 from pas.web import PasWebApp
 
 
@@ -73,3 +73,26 @@ def test_static_route_rejects_path_traversal(tmp_path):
 
     assert app.static_path("/") == (tmp_path / "index.html").resolve()
     assert app.static_path("/../runs.db") is None
+
+
+def test_config_and_logs_api_expose_pas_and_result_databases(tmp_path):
+    result_repositories = {name: Repository(tmp_path / f"{name}.db") for name in ("se", "lf", "ca")}
+    control = Repository(tmp_path / "control.db")
+    hub = RepositoryHub(result_repositories, control)
+    hub.initialize()
+    control.record_log("INFO", "test", "service ready")
+    config = SimpleNamespace(
+        database=tmp_path / "control.db",
+        databases={name: tmp_path / f"{name}.db" for name in ("se", "lf", "ca")},
+        kernel_root=tmp_path / "kernel",
+        tasks={name: SimpleNamespace(name=name, enabled=False, period_seconds=60) for name in ("se", "lf", "ca")},
+    )
+    app = PasWebApp(config, hub, FakeScheduler(), tmp_path)
+
+    config_response = app.api_get("/api/config")
+    logs_response = app.api_get("/api/logs?limit=1")
+
+    assert config_response["data"]["control_database"] == str(tmp_path / "control.db")
+    assert config_response["data"]["result_databases"]["se"] == str(tmp_path / "se.db")
+    assert logs_response["data"][0]["message"] == "service ready"
+    hub.close()

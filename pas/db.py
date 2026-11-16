@@ -37,6 +37,32 @@ class Repository:
         conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
         conn.commit()
 
+    def set_config(self, key: str, value: Any) -> None:
+        self._connection().execute(
+            "INSERT INTO pas_config(config_key, config_value, updated_at) VALUES (?, ?, ?) ON CONFLICT(config_key) DO UPDATE SET config_value=excluded.config_value, updated_at=excluded.updated_at",
+            (str(key), json.dumps(value, ensure_ascii=False, default=str), utc_now()),
+        )
+        self._connection().commit()
+
+    def list_config(self) -> list[dict[str, Any]]:
+        rows = self._rows("SELECT * FROM pas_config ORDER BY config_key")
+        for row in rows:
+            try:
+                row["value"] = json.loads(row.pop("config_value"))
+            except (TypeError, json.JSONDecodeError):
+                row["value"] = row.pop("config_value", "")
+        return rows
+
+    def record_log(self, level: str, component: str, message: str, context: dict[str, Any] | None = None) -> None:
+        self._connection().execute(
+            "INSERT INTO pas_log(created_at, level, component, message, context_json) VALUES (?, ?, ?, ?, ?)",
+            (utc_now(), str(level).upper(), str(component), str(message), json.dumps(context or {}, ensure_ascii=False, default=str)),
+        )
+        self._connection().commit()
+
+    def list_logs(self, limit: int = 100) -> list[dict[str, Any]]:
+        return self._rows("SELECT * FROM pas_log ORDER BY log_id DESC LIMIT ?", (max(1, min(int(limit), 500)),))
+
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
@@ -158,3 +184,58 @@ class Repository:
             self.store_ca_result(run_id, result)
         else:
             raise ValueError(f"unsupported task type: {task_type}")
+
+
+class RepositoryHub:
+    """Control PAS database plus one independent result database per task."""
+
+    def __init__(self, repositories: dict[str, Repository], control: Repository | None = None):
+        self.repositories = dict(repositories)
+        self.control = control
+
+    def initialize(self) -> None:
+        if self.control is not None:
+            self.control.initialize()
+        for repository in self.repositories.values():
+            repository.initialize()
+
+    def for_task(self, task_type: str) -> Repository:
+        return self.repositories[task_type]
+
+    def list_schedules(self) -> list[dict[str, Any]]:
+        rows = []
+        for repository in self.repositories.values():
+            rows.extend(repository.list_schedules())
+        return sorted(rows, key=lambda row: row["task_type"])
+
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
+        if task_type:
+            return self.for_task(task_type).list_runs(limit, task_type, offset)
+        rows = []
+        for repository in self.repositories.values():
+            rows.extend(repository.list_runs(500))
+        rows.sort(key=lambda row: (str(row.get("started_at", "")), int(row.get("run_id", 0))), reverse=True)
+        return rows[offset:offset + max(1, min(int(limit), 500))]
+
+    def get_result(self, task_type: str, run_id: int) -> dict[str, Any] | None:
+        return self.for_task(task_type).get_result(task_type, run_id)
+
+    def overview(self, limit: int = 12) -> dict[str, Any]:
+        counts = {"total_runs": 0, "succeeded_runs": 0, "failed_runs": 0, "running_runs": 0}
+        for repository in self.repositories.values():
+            item = repository.overview(0)["counts"]
+            for key in counts:
+                counts[key] += int(item.get(key, 0))
+        return {"counts": counts, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
+
+    def list_config(self) -> list[dict[str, Any]]:
+        return self.control.list_config() if self.control is not None else []
+
+    def list_logs(self, limit: int = 100) -> list[dict[str, Any]]:
+        return self.control.list_logs(limit) if self.control is not None else []
+
+    def close(self) -> None:
+        if self.control is not None:
+            self.control.close()
+        for repository in self.repositories.values():
+            repository.close()

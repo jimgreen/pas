@@ -7,15 +7,22 @@ import logging
 import threading
 
 from .config import load_config
-from .db import Repository
+from .db import Repository, RepositoryHub
 from . import kernels
 from .scheduler import Scheduler
 
 
-def _build_scheduler(config_path: str) -> tuple[Scheduler, Repository]:
+def _build_scheduler(config_path: str) -> tuple[Scheduler, RepositoryHub]:
     config = load_config(config_path)
-    repository = Repository(config.database)
+    result_repositories = {name: Repository(path) for name, path in config.databases.items()}
+    repository = RepositoryHub(result_repositories, Repository(config.database))
     repository.initialize()
+    if repository.control is not None:
+        repository.control.set_config("kernel_root", str(config.kernel_root))
+        repository.control.set_config("database", str(config.database))
+        repository.control.set_config("result_databases", {name: str(path) for name, path in config.databases.items()})
+        repository.control.set_config("scheduler", {"tick_seconds": config.tick_seconds, "retry_seconds": config.retry_seconds})
+        repository.control.set_config("tasks", {name: {key: str(value) for key, value in vars(task).items() if key != "name"} for name, task in config.tasks.items()})
     runners = {}
     if config.tasks["se"].enabled:
         runners["se"] = lambda: kernels.run_se(config.tasks["se"], config.kernel_root)
@@ -23,7 +30,7 @@ def _build_scheduler(config_path: str) -> tuple[Scheduler, Repository]:
         runners["lf"] = lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root)
     if config.tasks["ca"].enabled:
         runners["ca"] = lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root)
-    return Scheduler(config, repository, runners), repository
+    return Scheduler(config, repository, runners, result_repositories), repository
 
 
 def main(argv: list[str] | None = None) -> int:

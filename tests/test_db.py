@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from pas.db import Repository
+from pas.db import Repository, RepositoryHub
 
 
 def test_schema_is_idempotent_and_stores_run_result(tmp_path: Path):
@@ -36,3 +36,19 @@ def test_failed_result_transaction_does_not_leave_partial_rows(tmp_path: Path):
     with sqlite3.connect(tmp_path / "runs.db") as conn:
         assert conn.execute("select count(*) from ca_result").fetchone()[0] == 0
         assert conn.execute("select count(*) from calculation_run").fetchone()[0] == 1
+
+
+def test_repository_hub_aggregates_runs_from_separate_databases(tmp_path: Path):
+    repositories = {name: Repository(tmp_path / f"{name}.db") for name in ("se", "lf", "ca")}
+    hub = RepositoryHub(repositories, Repository(tmp_path / "control.db"))
+    hub.initialize()
+    for task, repo in repositories.items():
+        schedule_id = repo.upsert_schedule(task, True, 10, {})
+        run_id = repo.start_run(schedule_id, task, f"2026-11-17T00:00:0{len(task)}+00:00", "kernel", "fp")
+        repo.finish_run(run_id, "succeeded", f"2026-11-17T00:00:1{len(task)}+00:00", 1.0, 0)
+
+    overview = hub.overview()
+
+    assert overview["counts"]["total_runs"] == 3
+    assert {row["task_type"] for row in hub.list_runs(10)} == {"se", "lf", "ca"}
+    hub.close()

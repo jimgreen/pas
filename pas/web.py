@@ -51,8 +51,22 @@ class PasWebApp:
                     return {"ok": False, "error": "result_not_found"}
                 return {"ok": True, "data": result}
         if parsed.path == "/api/config":
-            tasks = {name: {"name": name, "enabled": task.enabled, "period_seconds": task.period_seconds, "model_file": str(task.model_file) if task.model_file else None, "measurement_file": str(task.measurement_file) if task.measurement_file else None, "parameter_file": str(task.parameter_file) if task.parameter_file else None, "limit_file": str(task.limit_file) if task.limit_file else None, "scan_n1": task.scan_n1} for name, task in self.config.tasks.items()}
-            return {"ok": True, "data": {"kernel_root": str(self.config.kernel_root), "database": str(self.config.database), "tasks": tasks}}
+            tasks = {name: {"name": name, "enabled": bool(getattr(task, "enabled", False)), "period_seconds": float(getattr(task, "period_seconds", 0)), "model_file": str(getattr(task, "model_file", None)) if getattr(task, "model_file", None) else None, "measurement_file": str(getattr(task, "measurement_file", None)) if getattr(task, "measurement_file", None) else None, "parameter_file": str(getattr(task, "parameter_file", None)) if getattr(task, "parameter_file", None) else None, "limit_file": str(getattr(task, "limit_file", None)) if getattr(task, "limit_file", None) else None, "scan_n1": bool(getattr(task, "scan_n1", True))} for name, task in self.config.tasks.items()}
+            result_databases = {name: str(path) for name, path in getattr(self.config, "databases", {}).items()}
+            if not result_databases:
+                result_databases = {name: str(repository.path) for name, repository in getattr(self.repository, "repositories", {}).items()}
+            control = getattr(self.repository, "control", None)
+            control_database = getattr(self.config, "database", None) or getattr(control, "path", None)
+            config_rows = self.repository.list_config() if callable(getattr(self.repository, "list_config", None)) else []
+            return {"ok": True, "data": {"kernel_root": str(self.config.kernel_root), "database": str(control_database or ""), "control_database": str(control_database or ""), "result_databases": result_databases, "pas_config": config_rows, "tasks": tasks}}
+        if parsed.path == "/api/logs":
+            query = parse_qs(parsed.query)
+            try:
+                limit = int(query.get("limit", [100])[0])
+            except (TypeError, ValueError):
+                limit = 100
+            logs = self.repository.list_logs(limit) if callable(getattr(self.repository, "list_logs", None)) else []
+            return {"ok": True, "data": logs}
         return {"ok": False, "error": "not_found"}
 
     def api_post(self, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
