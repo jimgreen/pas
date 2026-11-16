@@ -17,6 +17,22 @@ from .db import Repository
 logger = logging.getLogger(__name__)
 
 
+def _int_query(query: dict[str, list[str]], key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(query.get(key, [default])[0])
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _int_path(value: str) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 class PasWebApp:
     def __init__(self, config: Any, repository: Repository, scheduler: Any, static_root: str | Path):
         self.config = config
@@ -38,15 +54,45 @@ class PasWebApp:
 
     def api_get(self, path: str) -> dict[str, Any]:
         parsed = urlparse(path)
+        if parsed.path == "/api/status":
+            scheduler_status = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
+            scheduler_status.update({"daemon_running": bool(self._daemon_thread and self._daemon_thread.is_alive()), "web_running": True})
+            return {"ok": True, "data": scheduler_status}
         if parsed.path == "/api/overview":
             return {"ok": True, "data": self.repository.overview()}
         if parsed.path == "/api/runs":
             query = parse_qs(parsed.query)
-            return {"ok": True, "data": self.repository.list_runs(int(query.get("limit", [50])[0]), query.get("task", [None])[0], int(query.get("offset", [0])[0]))}
+            limit = _int_query(query, "limit", 50, 1, 500)
+            offset = _int_query(query, "offset", 0, 0, 1_000_000)
+            task = query.get("task", [None])[0] or None
+            status = query.get("status", [None])[0] or None
+            if task and task not in {"se", "lf", "ca"}:
+                return {"ok": False, "error": "invalid_task"}
+            if status and status not in {"running", "succeeded", "failed"}:
+                return {"ok": False, "error": "invalid_status"}
+            rows = self.repository.list_runs(limit, task, offset, status)
+            return {"ok": True, "data": rows, "meta": {"limit": limit, "offset": offset, "total": self.repository.count_runs(task, status), "task": task, "status": status}}
+        if parsed.path.startswith("/api/runs/"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "runs" and parts[2] in {"se", "lf", "ca"}:
+                run_id = _int_path(parts[3])
+                if run_id is None:
+                    return {"ok": False, "error": "invalid_run_id"}
+                if getattr(self.repository, "repositories", None) is not None:
+                    run = self.repository.get_run(parts[2], run_id)
+                else:
+                    run = self.repository.get_run(run_id)
+                result = self.repository.get_result(parts[2], run_id)
+                if run is None:
+                    return {"ok": False, "error": "run_not_found"}
+                return {"ok": True, "data": {"run": run, "result": result}}
         if parsed.path.startswith("/api/results/"):
             parts = parsed.path.strip("/").split("/")
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "results" and parts[2] in {"se", "lf", "ca"}:
-                result = self.repository.get_result(parts[2], int(parts[3]))
+                run_id = _int_path(parts[3])
+                if run_id is None:
+                    return {"ok": False, "error": "invalid_run_id"}
+                result = self.repository.get_result(parts[2], run_id)
                 if result is None:
                     return {"ok": False, "error": "result_not_found"}
                 return {"ok": True, "data": result}
@@ -77,7 +123,7 @@ class PasWebApp:
                 ok = bool(self.scheduler.run_task(task))
                 return {"ok": ok, "data": {"task": task, "success": ok}}
             result = self.scheduler.run_once()
-            return {"ok": all(result.values()), "data": {"results": result}}
+            return {"ok": bool(result) and all(result.values()), "data": {"results": result}}
         if path == "/api/actions/daemon/start":
             if self._daemon_thread and self._daemon_thread.is_alive():
                 return {"ok": True, "data": {"running": True}}
@@ -89,6 +135,8 @@ class PasWebApp:
             if self._daemon_stop:
                 self._daemon_stop.set()
             return {"ok": True, "data": {"running": False}}
+        if path == "/api/actions/daemon/status":
+            return {"ok": True, "data": {"running": bool(self._daemon_thread and self._daemon_thread.is_alive())}}
         return {"ok": False, "error": "not_found"}
 
     def handler_class(self):

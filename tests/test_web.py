@@ -96,3 +96,53 @@ def test_config_and_logs_api_expose_pas_and_result_databases(tmp_path):
     assert config_response["data"]["result_databases"]["se"] == str(tmp_path / "se.db")
     assert logs_response["data"][0]["message"] == "service ready"
     hub.close()
+
+
+def test_runs_api_supports_status_filters_and_run_details(tmp_path):
+    app, _ = make_app(tmp_path)
+
+    response = app.api_get("/api/runs?task=se&status=succeeded&limit=1")
+
+    assert response["ok"] is True
+    assert response["meta"] == {"limit": 1, "offset": 0, "total": 1, "task": "se", "status": "succeeded"}
+    detail = app.api_get("/api/runs/se/1")
+    assert detail["ok"] is True
+    assert detail["data"]["run"]["task_type"] == "se"
+
+
+def test_status_api_reports_web_and_daemon_state(tmp_path):
+    app, _ = make_app(tmp_path)
+
+    response = app.api_get("/api/status")
+
+    assert response["ok"] is True
+    assert response["data"]["web_running"] is True
+    assert response["data"]["daemon_running"] is False
+
+
+def test_invalid_result_id_returns_json_error(tmp_path):
+    app, _ = make_app(tmp_path)
+
+    response = app.api_get("/api/results/se/not-a-number")
+
+    assert response == {"ok": False, "error": "invalid_run_id"}
+
+
+def test_run_all_with_no_enabled_tasks_is_not_reported_as_success(tmp_path):
+    repo = Repository(tmp_path / "runs.db")
+    repo.initialize()
+    class EmptyScheduler(FakeScheduler):
+        def run_once(self):
+            return {}
+
+    scheduler = EmptyScheduler()
+    config = SimpleNamespace(
+        database=tmp_path / "runs.db",
+        kernel_root=tmp_path / "kernel",
+        tasks={name: SimpleNamespace(name=name, enabled=False, period_seconds=60) for name in ("se", "lf", "ca")},
+    )
+    app = PasWebApp(config, repo, scheduler, tmp_path)
+
+    response = app.api_post("/api/actions/run-once", {})
+
+    assert response["ok"] is False

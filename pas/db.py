@@ -75,12 +75,33 @@ class Repository:
     def list_schedules(self) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM schedule ORDER BY task_type")
 
-    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
+    def count_runs(self, task_type: str | None = None, status: str | None = None) -> int:
+        clauses = []
+        parameters: list[Any] = []
+        if task_type:
+            clauses.append("task_type = ?")
+            parameters.append(task_type)
+        if status:
+            clauses.append("status = ?")
+            parameters.append(status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        row = self._connection().execute(f"SELECT COUNT(*) FROM calculation_run{where}", tuple(parameters)).fetchone()
+        return int(row[0] or 0)
+
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
+        clauses = []
+        parameters: list[Any] = []
         if task_type:
-            return self._rows("SELECT * FROM calculation_run WHERE task_type = ? ORDER BY run_id DESC LIMIT ? OFFSET ?", (task_type, limit, offset))
-        return self._rows("SELECT * FROM calculation_run ORDER BY run_id DESC LIMIT ? OFFSET ?", (limit, offset))
+            clauses.append("task_type = ?")
+            parameters.append(task_type)
+        if status:
+            clauses.append("status = ?")
+            parameters.append(status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        parameters.extend((limit, offset))
+        return self._rows(f"SELECT * FROM calculation_run{where} ORDER BY run_id DESC LIMIT ? OFFSET ?", tuple(parameters))
 
     def get_run(self, run_id: int) -> dict[str, Any] | None:
         rows = self._rows("SELECT * FROM calculation_run WHERE run_id = ?", (int(run_id),))
@@ -208,14 +229,22 @@ class RepositoryHub:
             rows.extend(repository.list_schedules())
         return sorted(rows, key=lambda row: row["task_type"])
 
-    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
+    def count_runs(self, task_type: str | None = None, status: str | None = None) -> int:
         if task_type:
-            return self.for_task(task_type).list_runs(limit, task_type, offset)
+            return self.for_task(task_type).count_runs(task_type, status)
+        return sum(repository.count_runs(status=status) for repository in self.repositories.values())
+
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
+        if task_type:
+            return self.for_task(task_type).list_runs(limit, task_type, offset, status)
         rows = []
         for repository in self.repositories.values():
-            rows.extend(repository.list_runs(500))
+            rows.extend(repository.list_runs(500, status=status))
         rows.sort(key=lambda row: (str(row.get("started_at", "")), int(row.get("run_id", 0))), reverse=True)
         return rows[offset:offset + max(1, min(int(limit), 500))]
+
+    def get_run(self, task_type: str, run_id: int) -> dict[str, Any] | None:
+        return self.for_task(task_type).get_run(run_id)
 
     def get_result(self, task_type: str, run_id: int) -> dict[str, Any] | None:
         return self.for_task(task_type).get_result(task_type, run_id)

@@ -102,6 +102,15 @@ class Scheduler:
             return False
         return self._run_task(task_name)
 
+    def status(self) -> dict[str, Any]:
+        with self._active_lock:
+            active = sorted(self._active)
+        return {
+            "active_tasks": active,
+            "enabled_tasks": [name for name in TASK_NAMES if self._enabled(name)],
+            "next_due_monotonic": {name: value for name, value in self._next_due.items()},
+        }
+
     def run_daemon(self, stop_event: threading.Event | None = None) -> None:
         stop_event = stop_event or threading.Event()
         now = time.monotonic()
