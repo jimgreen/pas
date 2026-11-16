@@ -11,7 +11,8 @@ def test_schema_is_idempotent_and_stores_run_result(tmp_path: Path):
     schedule_id = repo.upsert_schedule("lf", True, 10, {"model_file": "m.e"})
     run_id = repo.start_run(schedule_id, "lf", "2026-11-17T00:00:00+00:00", "kernel", "fingerprint")
     repo.finish_run(run_id, "succeeded", "2026-11-17T00:00:01+00:00", 1.0, 0)
-    repo.store_lf_result(run_id, {"converged": True, "iterations": 2, "norm_f": 1e-9, "summary": {"nodes": 3}})
+    with repo.result_transaction():
+        repo.store_lf_result(run_id, {"converged": True, "iterations": 2, "norm_f": 1e-9, "summary": {"nodes": 3}})
 
     with sqlite3.connect(tmp_path / "runs.db") as conn:
         assert conn.execute("select count(*) from schema_version").fetchone()[0] == 1
