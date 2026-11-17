@@ -107,7 +107,92 @@ class SimpleStatistics:
 
 def normalize_lf(calc: Any) -> dict[str, Any]:
     result = getattr(calc, "lf_result", None)
-    return {"converged": bool(getattr(calc, "converged", False)), "iterations": _int(getattr(calc, "iterations", 0)), "norm_f": _number(getattr(calc, "normF", 0.0)), "failure_reason": str(getattr(calc, "failure_reason", "") or ""), "ac_converged": getattr(getattr(result, "ac_calc", None), "converged", None), "ac_iterations": getattr(getattr(result, "ac_calc", None), "iterations", None), "ac_norm_f": getattr(getattr(result, "ac_calc", None), "normF", None), "dc_converged": getattr(getattr(result, "dc_calc", None), "converged", None), "dc_iterations": getattr(getattr(result, "dc_calc", None), "iterations", None), "dc_norm_f": getattr(getattr(result, "dc_calc", None), "normF", None), "summary": _json_value(getattr(result, "arrays", {}) if result is not None else {}), "devices": []}
+    devices = _extract_lf_devices(calc, result)
+    return {"converged": bool(getattr(calc, "converged", False)), "iterations": _int(getattr(calc, "iterations", 0)), "norm_f": _number(getattr(calc, "normF", 0.0)), "failure_reason": str(getattr(calc, "failure_reason", "") or ""), "ac_converged": getattr(getattr(result, "ac_calc", None), "converged", None), "ac_iterations": getattr(getattr(result, "ac_calc", None), "iterations", None), "ac_norm_f": getattr(getattr(result, "ac_calc", None), "normF", None), "dc_converged": getattr(getattr(result, "dc_calc", None), "converged", None), "dc_iterations": getattr(getattr(result, "dc_calc", None), "iterations", None), "dc_norm_f": getattr(getattr(result, "dc_calc", None), "normF", None), "summary": _json_value(getattr(result, "arrays", {}) if result is not None else {}), "devices": devices}
+
+
+def _extract_lf_devices(calc: Any, result: Any) -> list[dict[str, Any]]:
+    """Extract full-mode AC/DC result objects into UI/database rows.
+
+    The reference hybrid kernel exposes ACLFResult/DCLFResult dictionaries;
+    lightweight network objects are used only to add terminal node ids.
+    """
+    if result is None:
+        return []
+    collection_map = {
+        "branches": "branch", "transformers": "transformer",
+        "three_winding_transformers": "three_winding_transformer",
+        "zero_branches": "zero_branch", "breakers": "break",
+        "generators": "generator", "loads": "load",
+        "dcdc_converters": "dcdc_converter", "dcac_converters": "dcac_converter",
+        "acac_converters": "acac_converter",
+    }
+    rows: list[dict[str, Any]] = []
+    present_domains: set[str] = set()
+
+    def find_network_device(part: Any, attr: str, key: str) -> Any:
+        collection = getattr(part, attr, ()) if part is not None else ()
+        try:
+            for candidate in collection or ():
+                if str(getattr(candidate, "name", getattr(candidate, "idx", ""))) == str(key):
+                    return candidate
+        except TypeError:
+            return None
+        return None
+
+    for domain, result_obj in (("ac", getattr(result, "ac", None)), ("dc", getattr(result, "dc", None)), ("dcac", getattr(result, "dcac", None)), ("acac", getattr(result, "acac", None))):
+        if result_obj is None:
+            continue
+        present_domains.add(domain)
+        part = getattr(getattr(result, "network", None), domain if domain in {"ac", "dc"} else "ac", None)
+        for attr, device_type in collection_map.items():
+            items = getattr(result_obj, attr, None) or {}
+            if not isinstance(items, dict):
+                continue
+            for key, item in items.items():
+                raw = dict(vars(item)) if hasattr(item, "__dict__") else {}
+                raw = {str(k): _json_value(v) for k, v in raw.items()}
+                network_device = find_network_device(part, attr, str(key))
+                if network_device is not None:
+                    for name in ("idx", "i_node", "j_node", "node", "i_node_obj", "j_node_obj"):
+                        if name not in raw and hasattr(network_device, name):
+                            value = getattr(network_device, name)
+                            raw[name] = _json_value(getattr(value, "idx", value))
+                raw.update({"domain": domain, "device_type": device_type, "device_key": str(key)})
+                raw.update({
+                    "node_from": raw.get("i_node", raw.get("node")), "node_to": raw.get("j_node"),
+                    "voltage_from": raw.get("i_v", raw.get("voltage")), "voltage_to": raw.get("j_v"),
+                    "p_from": raw.get("i_p", raw.get("p")), "q_from": raw.get("i_q", raw.get("q")),
+                    "p_to": raw.get("j_p"), "q_to": raw.get("j_q"),
+                    "current_from": raw.get("i_c", raw.get("current")), "current_to": raw.get("j_c"),
+                })
+                rows.append(raw)
+    # Converter-only full results may omit ACLFResult/DCLFResult while the
+    # solved network device lists still contain the AC/DC terminal values.
+    network = getattr(result, "network", None) or getattr(calc, "network", None)
+    for domain_name in ("ac", "dc"):
+        if domain_name in present_domains:
+            continue
+        part = getattr(network, domain_name, None)
+        if part is None:
+            continue
+        for attr, device_type in (("branches", "branch"), ("transformers", "transformer"), ("generators", "generator"), ("loads", "load"), ("breakers", "break"), ("switches", "switch"), ("zero_branches", "zero_branch")):
+            for item in getattr(part, attr, ()) or ():
+                row = {"domain": domain_name, "device_type": device_type, "device_key": str(getattr(item, "name", getattr(item, "idx", "")))}
+                for key in ("idx", "i_node", "j_node", "i_p", "j_p", "i_q", "j_q", "i_c", "j_c"):
+                    row[key] = _json_value(getattr(item, key, None))
+                for side in ("i", "j"):
+                    node_obj = getattr(item, f"{side}_node_obj", None)
+                    row[f"{side}_v"] = _json_value(getattr(node_obj, "voltage", None)) if node_obj is not None else None
+                row.update({
+                    "node_from": row.get("i_node"), "node_to": row.get("j_node"),
+                    "voltage_from": row.get("i_v"), "voltage_to": row.get("j_v"),
+                    "p_from": row.get("i_p", getattr(item, "p", None)), "q_from": row.get("i_q", getattr(item, "q", None)),
+                    "p_to": row.get("j_p"), "q_to": row.get("j_q"),
+                    "current_from": row.get("i_c", getattr(item, "current", None)), "current_to": row.get("j_c"),
+                })
+                rows.append(row)
+    return rows
 
 
 def _risk_row(risk: Any, contingency: str) -> dict[str, Any]:
@@ -135,7 +220,7 @@ def run_lf(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]
     configure_kernel_path(kernel_root or config.kernel_root)
     from lfcore.hybrid_lf import HybridPowerFlowCalc, _read_lf_network_from_file
     network = _read_lf_network_from_file(config.model_file)
-    calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="summary", verbose=False)
+    calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="full", verbose=False)
     calc.run()
     return normalize_lf(calc)
 

@@ -74,10 +74,19 @@ class Scheduler:
         self._record_log("INFO", "开始执行分析任务", task=task_name, run_id=run_id)
         try:
             result = self.runners[task_name]()
+            finished_at = utc_now()
+            elapsed_seconds = time.perf_counter() - started_clock
+            persisted_result = dict(result)
+            persisted_result["elapsed_seconds"] = elapsed_seconds
+            # Keep the normalized result and the legacy dbdef projection in
+            # one transaction so the UI never observes a half-written run.
             with repository.result_transaction():
                 repository.store_result(task_name, run_id, result)
-            repository.finish_run(run_id, "succeeded", utc_now(), time.perf_counter() - started_clock, 0)
-            self._record_log("INFO", "分析任务执行成功", task=task_name, run_id=run_id, elapsed_seconds=round(time.perf_counter() - started_clock, 3))
+                store_dbdef = getattr(repository, "store_dbdef_result", None)
+                if callable(store_dbdef):
+                    store_dbdef(task_name, run_id, persisted_result, started_at, finished_at)
+            repository.finish_run(run_id, "succeeded", finished_at, elapsed_seconds, 0)
+            self._record_log("INFO", "分析任务执行成功", task=task_name, run_id=run_id, elapsed_seconds=round(elapsed_seconds, 3))
             return True
         except Exception as exc:
             logger.exception("analysis failed task=%s run_id=%s", task_name, run_id)

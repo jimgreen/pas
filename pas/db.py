@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .dbdef import build_dbdef_rows, load_catalog, table_names, upsert_dbdef_row
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -125,7 +127,40 @@ class Repository:
             raise ValueError(f"unsupported task type: {task_type}")
         if not main:
             return None
-        return {"task_type": table, "summary": main[0], "details": details}
+        dbdef = self.get_dbdef_result(task_type, run_id)
+        return {"task_type": table, "summary": main[0], "details": details, "dbdef": dbdef}
+
+    def get_dbdef_result(self, task_type: str, run_id: int) -> dict[str, Any]:
+        """Return the dbdef rows written for one calculation run.
+
+        The legacy tables use ``time`` as their key rather than ``run_id``;
+        ``pas_dbdef_run`` supplies the explicit run-to-record-time link.
+        """
+        links = self._rows("SELECT table_name, record_time, row_count FROM pas_dbdef_run WHERE run_id = ? AND task_type = ? ORDER BY table_name", (int(run_id), task_type))
+        if not links:
+            return {"record_time": None, "tables": {}}
+        record_time = int(links[0]["record_time"])
+        tables: dict[str, Any] = {}
+        for link in links:
+            table_name = str(link["table_name"])
+            catalog = load_catalog()[table_name]
+            if "time" in catalog["column_map"]:
+                predicate = "[time] = ?"
+                parameters: tuple[Any, ...] = (record_time,)
+            elif "id" in catalog["column_map"]:
+                # SE detail ids are namespaced by run_id because their dbdef
+                # definitions have no time column.
+                predicate = "[id] >= ? AND [id] < ?"
+                parameters = (int(run_id) * 1_000_000, (int(run_id) + 1) * 1_000_000)
+            else:
+                continue
+            count_row = self._connection().execute(f"SELECT COUNT(*) FROM [{table_name}] WHERE {predicate}", parameters).fetchone()
+            count = int(count_row[0] or 0)
+            if not count:
+                continue
+            rows = self._rows(f"SELECT * FROM [{table_name}] WHERE {predicate} LIMIT 100", parameters)
+            tables[table_name] = {"count": count, "rows": rows}
+        return {"record_time": record_time, "tables": tables}
 
     def overview(self, limit: int = 12) -> dict[str, Any]:
         counts = self._rows("SELECT COUNT(*) AS total_runs, SUM(status = 'succeeded') AS succeeded_runs, SUM(status = 'failed') AS failed_runs, SUM(status = 'running') AS running_runs FROM calculation_run")[0]
@@ -205,6 +240,30 @@ class Repository:
             self.store_ca_result(run_id, result)
         else:
             raise ValueError(f"unsupported task type: {task_type}")
+
+    def upsert_dbdef_row(self, table_name: str, row: dict[str, Any]) -> None:
+        """Upsert a row after validating it against the generated catalog."""
+        upsert_dbdef_row(self._connection(), table_name, row)
+
+    def record_dbdef_run(self, run_id: int, task_type: str, record_time: int, counts: dict[str, int]) -> None:
+        conn = self._connection()
+        for table_name, row_count in counts.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO pas_dbdef_run(run_id, task_type, table_name, record_time, row_count, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (int(run_id), task_type, table_name, int(record_time), int(row_count), utc_now()),
+            )
+
+    def store_dbdef_result(self, task_type: str, run_id: int, result: dict[str, Any], started_at: Any = None, finished_at: Any = None) -> dict[str, int]:
+        """Write normalized kernel output to its legacy PAS dbdef tables."""
+        rows_by_table = build_dbdef_rows(task_type, result, int(run_id), started_at, finished_at)
+        for table_name, rows in rows_by_table.items():
+            for row in rows:
+                self.upsert_dbdef_row(table_name, row)
+        record_time = next((int(row.get("time")) for rows in rows_by_table.values() for row in rows if row.get("time") is not None), 0)
+        counts = {table_name: len(rows) for table_name, rows in rows_by_table.items()}
+        if counts:
+            self.record_dbdef_run(run_id, task_type, record_time, counts)
+        return counts
 
 
 class RepositoryHub:

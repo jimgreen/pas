@@ -31,6 +31,8 @@ SQLite schema 在服务启动时幂等创建。常用查询示例：
 
 Web 页面按功能分层：总览展示三类任务状态和服务状态；运行历史支持任务/状态筛选与分页；SE、LF、CA 页面分别提供功能概览、运行记录、结构化结果明细和执行控制标签；系统设置提供数据库、调度控制和 PAS 日志标签。页面通过 `/api/status`、`/api/runs`、`/api/runs/{task}/{run_id}`、`/api/config` 和 `/api/logs` 与后台实时联动。
 
+用户提供的 42 个 PAS `dbdef` 定义已生成到 `pas/dbdef_catalog.json` 和 `pas/dbdef_schema.sql`，并在四个数据库初始化时幂等建表。SE、LF、CA 的一次成功计算会在各自结果库中同时写入通用结果表和对应的 `pas_se_*`、`pas_lf_*`、`pas_ra_*` 原始表；`pas_dbdef_run` 保存运行编号与 dbdef 记录时间的关联，Web 结果详情会展示本次实际写入的表和行数。LF 使用内核 `result_mode="full"` 回写 AC/DC 设备端值、节点和功率/电流明细。
+
 ```sql
 -- 在对应的 SE/LF/CA 结果库中执行
 select task_type, status, started_at, elapsed_seconds
