@@ -52,3 +52,13 @@ def test_repository_hub_aggregates_runs_from_separate_databases(tmp_path: Path):
     assert overview["counts"]["total_runs"] == 3
     assert {row["task_type"] for row in hub.list_runs(10)} == {"se", "lf", "ca"}
     hub.close()
+
+
+def test_manual_execution_source_is_persisted_and_filterable(tmp_path: Path):
+    repo = Repository(tmp_path / "runs.db")
+    repo.initialize()
+    schedule_id = repo.upsert_schedule("se", False, 60, {})
+    run_id = repo.start_run(schedule_id, "se", "2026-11-17T00:00:00+00:00", "kernel", "fp", "manual")
+    assert repo.list_runs(execution_source="manual")[0]["run_id"] == run_id
+    assert repo.count_runs(execution_source="schedule") == 0
+    assert repo.get_run(run_id)["execution_source"] == "manual"

@@ -8,11 +8,14 @@ class FakeRepository:
     def __init__(self):
         self.statuses = []
         self.results = []
+        self.sources = []
+        self.due = []
 
     def upsert_schedule(self, *args):
         return {"se": 1, "lf": 2, "ca": 3}[args[0]]
 
     def start_run(self, *args):
+        self.sources.append(args[-1] if len(args) > 5 else "schedule")
         return len(self.statuses) + len(self.results) + 1
 
     def finish_run(self, run_id, status, *args, **kwargs):
@@ -29,6 +32,12 @@ class FakeRepository:
 
     def store_result(self, task, run_id, result):
         self.results.append((task, result))
+
+    def update_schedule_due(self, task, due):
+        self.due.append((task, due))
+
+    def list_schedules(self):
+        return []
 
 
 def _config():
@@ -62,3 +71,27 @@ def test_stop_event_ends_daemon_loop():
     event.set()
     scheduler = Scheduler(_config(), repository=FakeRepository(), runners={})
     scheduler.run_daemon(stop_event=event)
+
+
+def test_manual_trigger_runs_disabled_task_and_marks_source():
+    config = _config()
+    config.tasks["lf"].enabled = False
+    repository = FakeRepository()
+    calls = []
+    scheduler = Scheduler(config, repository=repository, runners={name: (lambda name=name: calls.append(name) or {"ok": True}) for name in ("se", "lf", "ca")})
+
+    assert scheduler.trigger_task("lf") is True
+    assert calls == ["lf"]
+    assert repository.sources == ["manual"]
+
+
+def test_daemon_persists_next_due_for_enabled_tasks():
+    event = threading.Event()
+    repository = FakeRepository()
+    config = _config()
+    config.tasks["se"].period_seconds = 60
+    scheduler = Scheduler(config, repository=repository, runners={"se": lambda: {"ok": True}})
+    event.set()
+    scheduler.run_daemon(stop_event=event)
+
+    assert {task for task, _ in repository.due} == {"se", "lf", "ca"}

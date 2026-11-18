@@ -60,18 +60,26 @@ class PasWebApp:
             return {"ok": True, "data": scheduler_status}
         if parsed.path == "/api/overview":
             return {"ok": True, "data": self.repository.overview()}
+        if parsed.path == "/api/schedules":
+            return {"ok": True, "data": self.repository.list_schedules()}
         if parsed.path == "/api/runs":
             query = parse_qs(parsed.query)
             limit = _int_query(query, "limit", 50, 1, 500)
             offset = _int_query(query, "offset", 0, 0, 1_000_000)
             task = query.get("task", [None])[0] or None
             status = query.get("status", [None])[0] or None
+            execution_source = query.get("source", [None])[0] or None
             if task and task not in {"se", "lf", "ca"}:
                 return {"ok": False, "error": "invalid_task"}
             if status and status not in {"running", "succeeded", "failed"}:
                 return {"ok": False, "error": "invalid_status"}
-            rows = self.repository.list_runs(limit, task, offset, status)
-            return {"ok": True, "data": rows, "meta": {"limit": limit, "offset": offset, "total": self.repository.count_runs(task, status), "task": task, "status": status}}
+            if execution_source and execution_source not in {"schedule", "manual"}:
+                return {"ok": False, "error": "invalid_execution_source"}
+            rows = self.repository.list_runs(limit, task, offset, status, execution_source)
+            meta = {"limit": limit, "offset": offset, "total": self.repository.count_runs(task, status, execution_source), "task": task, "status": status}
+            if execution_source:
+                meta["source"] = execution_source
+            return {"ok": True, "data": rows, "meta": meta}
         if parsed.path.startswith("/api/runs/"):
             parts = parsed.path.strip("/").split("/")
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "runs" and parts[2] in {"se", "lf", "ca"}:
@@ -140,13 +148,15 @@ class PasWebApp:
 
     def api_post(self, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = payload or {}
-        if path == "/api/actions/run-once":
+        if path in {"/api/actions/run-once", "/api/actions/trigger"}:
             task = payload.get("task")
             if task in {"se", "lf", "ca"}:
-                ok = bool(self.scheduler.run_task(task))
-                return {"ok": ok, "data": {"task": task, "success": ok}}
-            result = self.scheduler.run_once()
-            return {"ok": bool(result) and all(result.values()), "data": {"results": result}}
+                trigger = getattr(self.scheduler, "trigger_task", None)
+                ok = bool(trigger(task)) if callable(trigger) else bool(self.scheduler.run_task(task))
+                return {"ok": ok, "data": {"task": task, "success": ok, "execution_source": "manual"}}
+            trigger_all = getattr(self.scheduler, "trigger_all", None)
+            result = trigger_all() if callable(trigger_all) else self.scheduler.run_once()
+            return {"ok": bool(result) and all(result.values()), "data": {"results": result, "execution_source": "manual"}}
         if path == "/api/actions/daemon/start":
             if self._daemon_thread and self._daemon_thread.is_alive():
                 return {"ok": True, "data": {"running": True}}

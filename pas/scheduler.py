@@ -6,7 +6,7 @@ import hashlib
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -58,7 +58,9 @@ class Scheduler:
     def _enabled(self, task_name: str) -> bool:
         return bool(getattr(self.config.tasks.get(task_name), "enabled", False))
 
-    def _run_task(self, task_name: str) -> bool:
+    def _run_task(self, task_name: str, execution_source: str = "schedule") -> bool:
+        if execution_source not in {"schedule", "manual"}:
+            raise ValueError(f"unsupported execution source: {execution_source}")
         task = self.config.tasks[task_name]
         repository = self.repositories.get(task_name, self.repository)
         with self._active_lock:
@@ -70,8 +72,13 @@ class Scheduler:
         started_at = utc_now()
         started_clock = time.perf_counter()
         schedule_id = repository.upsert_schedule(task_name, task.enabled, task.period_seconds, {key: str(value) for key, value in vars(task).items() if key not in {"name", "enabled", "period_seconds"} and value is not None})
-        run_id = repository.start_run(schedule_id, task_name, started_at, str(self.config.kernel_root), _fingerprint(task))
-        self._record_log("INFO", "开始执行分析任务", task=task_name, run_id=run_id)
+        try:
+            run_id = repository.start_run(schedule_id, task_name, started_at, str(self.config.kernel_root), _fingerprint(task), execution_source)
+        except TypeError:
+            # Keep small third-party/test repositories compatible with the
+            # pre-source start_run signature.
+            run_id = repository.start_run(schedule_id, task_name, started_at, str(self.config.kernel_root), _fingerprint(task))
+        self._record_log("INFO", "开始执行分析任务", task=task_name, run_id=run_id, execution_source=execution_source)
         try:
             result = self.runners[task_name]()
             finished_at = utc_now()
@@ -86,12 +93,12 @@ class Scheduler:
                 if callable(store_dbdef):
                     store_dbdef(task_name, run_id, persisted_result, started_at, finished_at)
             repository.finish_run(run_id, "succeeded", finished_at, elapsed_seconds, 0)
-            self._record_log("INFO", "分析任务执行成功", task=task_name, run_id=run_id, elapsed_seconds=round(elapsed_seconds, 3))
+            self._record_log("INFO", "分析任务执行成功", task=task_name, run_id=run_id, execution_source=execution_source, elapsed_seconds=round(elapsed_seconds, 3))
             return True
         except Exception as exc:
             logger.exception("analysis failed task=%s run_id=%s", task_name, run_id)
             repository.finish_run(run_id, "failed", utc_now(), time.perf_counter() - started_clock, 1, type(exc).__name__, str(exc))
-            self._record_log("ERROR", "分析任务执行失败", task=task_name, run_id=run_id, error_type=type(exc).__name__, error_message=str(exc))
+            self._record_log("ERROR", "分析任务执行失败", task=task_name, run_id=run_id, execution_source=execution_source, error_type=type(exc).__name__, error_message=str(exc))
             return False
         finally:
             with self._active_lock:
@@ -101,15 +108,32 @@ class Scheduler:
         results = {}
         for task_name in TASK_NAMES:
             if self._enabled(task_name):
-                results[task_name] = self._run_task(task_name)
+                results[task_name] = self._run_task(task_name, "schedule")
         return results
 
-    def run_task(self, task_name: str) -> bool:
+    def trigger_task(self, task_name: str, allow_disabled: bool = True) -> bool:
+        """Run one task from an operator request.
+
+        Manual execution is independent from the periodic enabled flag.  A
+        disabled task can therefore be tested or run on demand, while the
+        daemon still honors the configured enabled flag.
+        """
         if task_name not in TASK_NAMES:
             raise ValueError(f"unsupported task: {task_name}")
-        if not self._enabled(task_name):
+        if not allow_disabled and not self._enabled(task_name):
             return False
-        return self._run_task(task_name)
+        if task_name not in self.runners:
+            self._record_log("ERROR", "人工触发失败：任务未配置执行器", task=task_name, execution_source="manual")
+            return False
+        return self._run_task(task_name, "manual")
+
+    def run_task(self, task_name: str) -> bool:
+        """Backward-compatible alias for a manual task trigger."""
+        return self.trigger_task(task_name)
+
+    def trigger_all(self) -> dict[str, bool]:
+        """Run all configured task runners manually, in SE/LF/CA order."""
+        return {task_name: self.trigger_task(task_name) for task_name in TASK_NAMES if task_name in self.runners}
 
     def status(self) -> dict[str, Any]:
         with self._active_lock:
@@ -118,18 +142,29 @@ class Scheduler:
             "active_tasks": active,
             "enabled_tasks": [name for name in TASK_NAMES if self._enabled(name)],
             "next_due_monotonic": {name: value for name, value in self._next_due.items()},
+            "schedules": self.repository.list_schedules() if callable(getattr(self.repository, "list_schedules", None)) else [],
         }
+
+    def _set_next_due(self, task_name: str, due_monotonic: float, due_at: str) -> None:
+        self._next_due[task_name] = due_monotonic
+        repository = self.repositories.get(task_name, self.repository)
+        updater = getattr(repository, "update_schedule_due", None)
+        if callable(updater):
+            updater(task_name, due_at)
 
     def run_daemon(self, stop_event: threading.Event | None = None) -> None:
         stop_event = stop_event or threading.Event()
         now = time.monotonic()
         for task_name in TASK_NAMES:
             if self._enabled(task_name):
-                self._next_due[task_name] = now
+                self._set_next_due(task_name, now, utc_now())
         while not stop_event.is_set():
             now = time.monotonic()
             for task_name in TASK_NAMES:
                 if self._enabled(task_name) and now >= self._next_due.get(task_name, now):
-                    self._run_task(task_name)
-                    self._next_due[task_name] = time.monotonic() + float(self.config.tasks[task_name].period_seconds)
+                    self._run_task(task_name, "schedule")
+                    period = float(self.config.tasks[task_name].period_seconds)
+                    due = time.monotonic() + period
+                    due_at = (datetime.now(timezone.utc) + timedelta(seconds=period)).isoformat(timespec="seconds")
+                    self._set_next_due(task_name, due, due_at)
             stop_event.wait(float(self.config.tick_seconds))

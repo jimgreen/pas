@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS calculation_run (
     return_code INTEGER,
     input_fingerprint TEXT,
     kernel_root TEXT,
+    execution_source TEXT NOT NULL DEFAULT 'schedule' CHECK (execution_source IN ('schedule', 'manual')),
     error_type TEXT,
     error_message TEXT
 );

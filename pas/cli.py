@@ -23,13 +23,14 @@ def _build_scheduler(config_path: str) -> tuple[Scheduler, RepositoryHub]:
         repository.control.set_config("result_databases", {name: str(path) for name, path in config.databases.items()})
         repository.control.set_config("scheduler", {"tick_seconds": config.tick_seconds, "retry_seconds": config.retry_seconds})
         repository.control.set_config("tasks", {name: {key: str(value) for key, value in vars(task).items() if key != "name"} for name, task in config.tasks.items()})
-    runners = {}
-    if config.tasks["se"].enabled:
-        runners["se"] = lambda: kernels.run_se(config.tasks["se"], config.kernel_root)
-    if config.tasks["lf"].enabled:
-        runners["lf"] = lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root)
-    if config.tasks["ca"].enabled:
-        runners["ca"] = lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root)
+    # Build all runners, including disabled schedules.  The enabled flag
+    # controls periodic execution; operators may still trigger a disabled
+    # analysis manually from the Web/API.
+    runners = {
+        "se": lambda: kernels.run_se(config.tasks["se"], config.kernel_root),
+        "lf": lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root),
+        "ca": lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root),
+    }
     return Scheduler(config, repository, runners, result_repositories), repository
 
 
@@ -48,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     scheduler, repository = _build_scheduler(args.config)
     try:
         if args.command == "run-once":
-            results = scheduler.run_once()
+            results = scheduler.trigger_all()
             for task_name, success in results.items():
                 print(f"{task_name}: {'succeeded' if success else 'failed'}")
             return 0 if all(results.values()) else 1

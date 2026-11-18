@@ -36,6 +36,12 @@ class Repository:
     def initialize(self) -> None:
         conn = self._connection()
         conn.executescript((Path(__file__).with_name("schema.sql")).read_text(encoding="utf-8"))
+        # Existing deployments predate execution_source.  Apply this additive
+        # migration after the idempotent schema script so the four live SQLite
+        # files gain the field without being recreated.
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(calculation_run)")}
+        if "execution_source" not in columns:
+            conn.execute("ALTER TABLE calculation_run ADD COLUMN execution_source TEXT NOT NULL DEFAULT 'schedule'")
         conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
         conn.commit()
 
@@ -77,7 +83,7 @@ class Repository:
     def list_schedules(self) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM schedule ORDER BY task_type")
 
-    def count_runs(self, task_type: str | None = None, status: str | None = None) -> int:
+    def count_runs(self, task_type: str | None = None, status: str | None = None, execution_source: str | None = None) -> int:
         clauses = []
         parameters: list[Any] = []
         if task_type:
@@ -86,11 +92,14 @@ class Repository:
         if status:
             clauses.append("status = ?")
             parameters.append(status)
+        if execution_source:
+            clauses.append("execution_source = ?")
+            parameters.append(execution_source)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         row = self._connection().execute(f"SELECT COUNT(*) FROM calculation_run{where}", tuple(parameters)).fetchone()
         return int(row[0] or 0)
 
-    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None, execution_source: str | None = None) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
         clauses = []
@@ -101,6 +110,9 @@ class Repository:
         if status:
             clauses.append("status = ?")
             parameters.append(status)
+        if execution_source:
+            clauses.append("execution_source = ?")
+            parameters.append(execution_source)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         parameters.extend((limit, offset))
         return self._rows(f"SELECT * FROM calculation_run{where} ORDER BY run_id DESC LIMIT ? OFFSET ?", tuple(parameters))
@@ -249,11 +261,20 @@ class Repository:
         conn.commit()
         return int(conn.execute("SELECT schedule_id FROM schedule WHERE task_type = ?", (task_type,)).fetchone()[0])
 
-    def start_run(self, schedule_id: int, task_type: str, started_at: str, kernel_root: str, input_fingerprint: str) -> int:
+    def update_schedule_due(self, task_type: str, next_due_at: str | None) -> None:
+        self._connection().execute(
+            "UPDATE schedule SET next_due_at = ?, updated_at = ? WHERE task_type = ?",
+            (next_due_at, utc_now(), task_type),
+        )
+        self._connection().commit()
+
+    def start_run(self, schedule_id: int, task_type: str, started_at: str, kernel_root: str, input_fingerprint: str, execution_source: str = "schedule") -> int:
+        if execution_source not in {"schedule", "manual"}:
+            raise ValueError(f"unsupported execution source: {execution_source}")
         conn = self._connection()
         cur = conn.execute(
-            "INSERT INTO calculation_run(schedule_id, task_type, status, started_at, kernel_root, input_fingerprint) VALUES (?, ?, 'running', ?, ?, ?)",
-            (schedule_id, task_type, started_at, kernel_root, input_fingerprint),
+            "INSERT INTO calculation_run(schedule_id, task_type, status, started_at, kernel_root, input_fingerprint, execution_source) VALUES (?, ?, 'running', ?, ?, ?, ?)",
+            (schedule_id, task_type, started_at, kernel_root, input_fingerprint, execution_source),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -358,17 +379,20 @@ class RepositoryHub:
             rows.extend(repository.list_schedules())
         return sorted(rows, key=lambda row: row["task_type"])
 
-    def count_runs(self, task_type: str | None = None, status: str | None = None) -> int:
-        if task_type:
-            return self.for_task(task_type).count_runs(task_type, status)
-        return sum(repository.count_runs(status=status) for repository in self.repositories.values())
+    def update_schedule_due(self, task_type: str, next_due_at: str | None) -> None:
+        self.for_task(task_type).update_schedule_due(task_type, next_due_at)
 
-    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
+    def count_runs(self, task_type: str | None = None, status: str | None = None, execution_source: str | None = None) -> int:
         if task_type:
-            return self.for_task(task_type).list_runs(limit, task_type, offset, status)
+            return self.for_task(task_type).count_runs(task_type, status, execution_source)
+        return sum(repository.count_runs(status=status, execution_source=execution_source) for repository in self.repositories.values())
+
+    def list_runs(self, limit: int = 50, task_type: str | None = None, offset: int = 0, status: str | None = None, execution_source: str | None = None) -> list[dict[str, Any]]:
+        if task_type:
+            return self.for_task(task_type).list_runs(limit, task_type, offset, status, execution_source)
         rows = []
         for repository in self.repositories.values():
-            rows.extend(repository.list_runs(500, status=status))
+            rows.extend(repository.list_runs(500, status=status, execution_source=execution_source))
         rows.sort(key=lambda row: (str(row.get("started_at", "")), int(row.get("run_id", 0))), reverse=True)
         return rows[offset:offset + max(1, min(int(limit), 500))]
 

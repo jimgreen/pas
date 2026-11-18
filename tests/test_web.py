@@ -110,6 +110,14 @@ def test_runs_api_supports_status_filters_and_run_details(tmp_path):
     assert detail["data"]["run"]["task_type"] == "se"
 
 
+def test_runs_api_supports_execution_source_filter(tmp_path):
+    app, _ = make_app(tmp_path)
+    source = app.api_get("/api/runs?source=manual&limit=1")
+    assert source["ok"] is True
+    assert source["meta"]["source"] == "manual"
+    assert source["meta"]["total"] == 0
+
+
 def test_status_api_reports_web_and_daemon_state(tmp_path):
     app, _ = make_app(tmp_path)
 
