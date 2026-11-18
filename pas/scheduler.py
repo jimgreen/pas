@@ -121,6 +121,9 @@ class Scheduler:
                 if callable(metric):
                     metric(run_id, "kernel_seconds", kernel_seconds, unit="s")
                     metric(run_id, "persistence_seconds", time.perf_counter() - write_start, unit="s")
+                    for key in ("model_read_seconds", "solve_seconds", "normalization_seconds", "model_cache_hit"):
+                        if key in result.get("performance", {}):
+                            metric(run_id, key, result["performance"][key], unit="" if key == "model_cache_hit" else "s")
                 repo.finish_run(run_id, "succeeded", utc_now(), time.perf_counter() - started, 0, commit=False)
             with self._lock:
                 job.update(status="succeeded", kernel_seconds=kernel_seconds)
@@ -184,13 +187,14 @@ class Scheduler:
         return {"accepted": any(item["accepted"] for item in items.values()), "tasks": items}
 
     def retry_failed_async(self, name: str | None = None) -> dict[str, Any]:
-        """Retry the latest failed run for one task or for every task."""
+        """Retry only tasks whose latest run failed, using current inputs."""
         names = (name,) if name else TASK_NAMES
         if any(item not in TASK_NAMES for item in names):
             raise ValueError("invalid task")
         results = {}
         for item in names:
-            failed = self.repositories[item].list_runs(1, item, status="failed")
+            latest = self.repositories[item].list_runs(1, item)
+            failed = latest and latest[0]["status"] == "failed"
             results[item] = self.trigger_task_async(item) if failed else {"accepted": False, "task": item, "reason": "no_failed_run"}
         return {"accepted": any(item["accepted"] for item in results.values()), "tasks": results}
 

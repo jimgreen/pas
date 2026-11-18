@@ -6,13 +6,18 @@ import json
 import sqlite3
 import threading
 import heapq
+import copy
+import csv
+import io
+from collections import OrderedDict
 from itertools import islice
 from functools import wraps
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .analytics import DETAILS, detail_query, hour_window, merge_trends
 from .dbdef import build_dbdef_rows, load_catalog, normalize_dbdef_row, table_names, upsert_dbdef_row
 
 
@@ -39,6 +44,8 @@ class Repository:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        self._cache = OrderedDict()
+        self._cache_revision = None
 
     def _connection(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -50,6 +57,25 @@ class Repository:
             self._conn.execute("PRAGMA busy_timeout = 30000")
             self._conn.execute("PRAGMA mmap_size = 268435456")
         return self._conn
+
+    def _cached(self, key, compute):
+        # Called under the repository lock. Detect writes by this or other connections.
+        conn = self._connection()
+        if conn.in_transaction:
+            return compute()
+        revision = (conn.total_changes, conn.execute("PRAGMA data_version").fetchone()[0])
+        if revision != self._cache_revision:
+            self._cache.clear()
+            self._cache_revision = revision
+        if key not in self._cache:
+            value = compute()
+            if len(json.dumps(value, default=str)) <= 65536:
+                self._cache[key] = copy.deepcopy(value)
+                if len(self._cache) > 64:
+                    self._cache.popitem(last=False)
+            return value
+        self._cache.move_to_end(key)
+        return copy.deepcopy(self._cache[key])
 
     @synchronized
     def initialize(self) -> None:
@@ -110,6 +136,8 @@ class Repository:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+            self._cache.clear()
+            self._cache_revision = None
 
     @synchronized
     def _rows(self, sql: str, parameters: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
@@ -165,14 +193,7 @@ class Repository:
     def get_result(self, task_type: str, run_id: int, compact: bool = False) -> dict[str, Any] | None:
         run_id = int(run_id)
         if compact:
-            detail_table, _ = self._detail_table(task_type)
-            main = self._rows(f"SELECT * FROM {task_type}_result WHERE run_id = ?", (run_id,))
-            if not main:
-                return None
-            summary = {key: value for key, value in main[0].items() if key not in {"summary_json", "state_json"}}
-            total = self._connection().execute(f"SELECT COUNT(*) FROM {detail_table} WHERE run_id = ?", (run_id,)).fetchone()[0]
-            return {"task_type": task_type, "summary": summary, "detail_count": total,
-                    "metrics": self._rows("SELECT name, value_real, unit FROM calculation_metric WHERE run_id = ?", (run_id,))}
+            return self._cached(("summary", task_type, run_id), lambda: self._compact_result(task_type, run_id))
         if task_type == "se":
             main = self._rows("SELECT * FROM se_result WHERE run_id = ?", (run_id,))
             details = self._rows("SELECT * FROM se_measurement_result WHERE run_id = ? ORDER BY result_id LIMIT 1000", (run_id,))
@@ -192,25 +213,78 @@ class Repository:
         dbdef = self.get_dbdef_result(task_type, run_id)
         return {"task_type": table, "summary": main[0], "details": details, "dbdef": dbdef}
 
+    def _compact_result(self, task_type, run_id):
+        detail_table, _ = self._detail_table(task_type)
+        columns = [row[1] for row in self._connection().execute(f"PRAGMA table_info({task_type}_result)") if row[1] not in {"summary_json", "state_json"}]
+        main = self._rows(f"SELECT {','.join(columns)} FROM {task_type}_result WHERE run_id = ?", (run_id,))
+        if not main:
+            return None
+        total = self._connection().execute(f"SELECT COUNT(*) FROM {detail_table} WHERE run_id = ?", (run_id,)).fetchone()[0]
+        return {"task_type": task_type, "summary": main[0], "detail_count": total,
+                "metrics": self._rows("SELECT name, value_real, unit FROM calculation_metric WHERE run_id = ?", (run_id,))}
+
     @staticmethod
-    def _detail_table(task_type: str) -> tuple[str, str]:
-        tables = {"se": ("se_measurement_result", "result_id"), "lf": ("lf_device_result", "result_id"), "ca": ("ca_risk", "risk_id")}
-        if task_type not in tables:
+    def _detail_table(task_type):
+        if task_type not in DETAILS:
             raise ValueError("invalid task")
-        return tables[task_type]
+        return DETAILS[task_type][:2]
 
     @synchronized
-    def browse_details(self, task_type: str, run_id: int, limit: int = 50, offset: int = 0, search: str = "") -> dict[str, Any]:
-        table, key = self._detail_table(task_type)
-        columns = [row[1] for row in self._connection().execute(f"PRAGMA table_info({table})") if row[1] not in {"result_json", "run_id", key}]
-        predicate, params = "run_id = ?", [int(run_id)]
-        if search:
-            predicate += " AND (" + " OR ".join(f"CAST([{col}] AS TEXT) LIKE ?" for col in columns) + ")"
-            params.extend([f"%{search}%"] * len(columns))
-        total = self._connection().execute(f"SELECT COUNT(*) FROM {table} WHERE {predicate}", params).fetchone()[0]
+    def browse_details(self, task_type, run_id, limit=50, offset=0, search="", sort="", direction="asc", view="all"):
+        table, columns, predicate, params, order = detail_query(task_type, run_id, search, sort, direction, view)
         limit, offset = max(1, min(int(limit), 500)), max(0, int(offset))
-        rows = self._rows(f"SELECT {','.join(columns)} FROM {table} WHERE {predicate} ORDER BY {key} LIMIT ? OFFSET ?", tuple(params + [limit, offset]))
-        return {"rows": rows, "columns": [{"name": col} for col in columns], "meta": {"total": total, "limit": limit, "offset": offset}}
+        def query():
+            total = self._connection().execute(f"SELECT COUNT(*) FROM {table} WHERE {predicate}", params).fetchone()[0]
+            rows = self._rows(f"SELECT {','.join(columns)} FROM {table} WHERE {predicate} ORDER BY {order} LIMIT ? OFFSET ?", tuple(params + [limit, offset]))
+            return {"rows": rows, "columns": [{"name": col} for col in columns], "meta": {"total": total, "limit": limit, "offset": offset, "sort": sort, "direction": direction, "view": view}}
+        return self._cached(("details", task_type, run_id, limit, offset, search, sort, direction, view), query)
+
+    def export_details(self, task_type, run_id, search="", sort="", direction="asc", view="all"):
+        """Stream all filtered rows from an independent WAL read snapshot."""
+        table, columns, predicate, params, order = detail_query(task_type, run_id, search, sort, direction, view)
+        conn = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+        try:
+            conn.execute("BEGIN")
+            if conn.execute(f"SELECT 1 FROM {task_type}_result WHERE run_id = ?", (run_id,)).fetchone() is None:
+                raise ValueError("result_not_found")
+            if conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {predicate}", params).fetchone()[0] > 100000:
+                raise ValueError("export exceeds 100000 rows; narrow the filter")
+            output = io.StringIO(newline="")
+            writer = csv.writer(output)
+            writer.writerow(columns)
+            yield ("\ufeff" + output.getvalue()).encode("utf-8")
+            cursor = conn.execute(f"SELECT {','.join(columns)} FROM {table} WHERE {predicate} ORDER BY {order}", params)
+            def safe(value):
+                if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+                    return "'" + value
+                return value
+            while rows := cursor.fetchmany(500):
+                output.seek(0); output.truncate(0)
+                writer.writerows(tuple(safe(value) for value in row) for row in rows)
+                yield output.getvalue().encode("utf-8")
+        finally:
+            conn.rollback()
+            conn.close()
+
+
+    @synchronized
+    def diagnostics(self, task_type, run_id):
+        self._detail_table(task_type)
+        def query():
+            run = self.get_run(run_id)
+            if run is None or run["task_type"] != task_type:
+                return None
+            if task_type == "se":
+                rows = self._rows("SELECT measurement_type AS category, COUNT(*) AS count, SUM(valid = 0) AS invalid, MAX(ABS(residual)) AS max_abs_residual FROM se_measurement_result WHERE run_id = ? GROUP BY measurement_type ORDER BY count DESC", (run_id,))
+                metrics = self._rows("SELECT COUNT(*) AS total, COALESCE(SUM(valid = 1), 0) AS valid, COALESCE(SUM(valid = 0), 0) AS invalid, COUNT(residual) AS residual_count, MAX(ABS(residual)) AS max_abs_residual FROM se_measurement_result WHERE run_id = ?", (run_id,))[0]
+            elif task_type == "lf":
+                rows = self._rows("SELECT domain AS category, device_type, COUNT(*) AS count, MIN(voltage_from) AS min_voltage, MAX(voltage_from) AS max_voltage FROM lf_device_result WHERE run_id = ? GROUP BY domain, device_type ORDER BY count DESC", (run_id,))
+                metrics = self._rows("SELECT COUNT(*) AS total, COALESCE(SUM(p_from IS NULL), 0) AS missing_power, MIN(voltage_from) AS min_voltage, MAX(voltage_from) AS max_voltage FROM lf_device_result WHERE run_id = ?", (run_id,))[0]
+            else:
+                rows = self._rows("SELECT risk_type AS category, contingency, COUNT(*) AS count FROM ca_risk WHERE run_id = ? GROUP BY risk_type, contingency ORDER BY count DESC", (run_id,))
+                metrics = self._rows("SELECT COUNT(*) AS total, COALESCE(SUM(contingency = 'N-0'), 0) AS n0, COALESCE(SUM(contingency = 'N-1'), 0) AS n1, COUNT(DISTINCT risk_type) AS risk_types FROM ca_risk WHERE run_id = ?", (run_id,))[0]
+            return {"metrics": metrics, "groups": rows}
+        return self._cached(("diagnostics", task_type, run_id), query)
 
     @synchronized
     def get_dbdef_result(self, task_type: str, run_id: int) -> dict[str, Any]:
@@ -325,32 +399,17 @@ class Repository:
         return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
 
     @synchronized
-    def trend(self, limit: int = 48) -> list[dict[str, Any]]:
-        """Return compact hourly run statistics for the overview chart."""
-        limit = max(1, min(int(limit), 168))
-        rows = self._rows(
-            "SELECT task_type, status, started_at, elapsed_seconds "
-            "FROM calculation_run ORDER BY started_at DESC, run_id DESC LIMIT ?",
-            (limit * 12,),
-        )
-        buckets: dict[str, dict[str, dict[str, Any]]] = {}
-        for row in rows:
-            timestamp = str(row.get("started_at") or "")
-            bucket = timestamp[:13] if len(timestamp) >= 13 else timestamp or "unknown"
-            item = buckets.setdefault(bucket, {}).setdefault(row["task_type"], {"runs": 0, "succeeded": 0, "failed": 0, "elapsed": []})
-            item["runs"] += 1
-            item["succeeded"] += int(row["status"] == "succeeded")
-            item["failed"] += int(row["status"] == "failed")
-            if row.get("elapsed_seconds") is not None:
-                item["elapsed"].append(float(row["elapsed_seconds"]))
-        result = []
-        for bucket in sorted(buckets)[-limit:]:
-            tasks = {}
-            for name, item in buckets[bucket].items():
-                elapsed = item.pop("elapsed")
-                tasks[name] = {**item, "avg_elapsed_seconds": sum(elapsed) / len(elapsed) if elapsed else None}
-            result.append({"bucket": bucket, "tasks": tasks})
-        return result
+    def trend(self, limit=48, end_at=None):
+        start, end = hour_window(limit, end_at)
+        def query():
+            rows = self._rows("""SELECT strftime('%Y-%m-%dT%H', started_at) AS bucket, task_type,
+                COUNT(*) AS runs, SUM(status = 'succeeded') AS succeeded,
+                SUM(status = 'failed') AS failed, SUM(status = 'running') AS running,
+                COUNT(elapsed_seconds) AS elapsed_count, COALESCE(SUM(elapsed_seconds), 0) AS elapsed_sum
+                FROM calculation_run WHERE julianday(started_at) >= julianday(?) AND julianday(started_at) < julianday(?)
+                GROUP BY bucket, task_type ORDER BY bucket""", (start.isoformat(), end.isoformat()))
+            return merge_trends([[{"bucket": row["bucket"], "tasks": {row["task_type"]: {key: value for key, value in row.items() if key not in {"bucket", "task_type"}}}} for row in rows]], start, end)
+        return self._cached(("trend", start.isoformat(), end.isoformat()), query)
 
     @synchronized
     def upsert_schedule(self, task_type: str, enabled: bool, period_seconds: float, config: dict[str, Any], next_due_at: str | None = None) -> int:
@@ -532,8 +591,14 @@ class RepositoryHub:
     def get_result(self, task_type: str, run_id: int, compact: bool = False) -> dict[str, Any] | None:
         return self.for_task(task_type).get_result(task_type, run_id, compact)
 
-    def browse_details(self, task_type: str, run_id: int, limit: int = 50, offset: int = 0, search: str = "") -> dict[str, Any]:
-        return self.for_task(task_type).browse_details(task_type, run_id, limit, offset, search)
+    def browse_details(self, task_type, run_id, limit=50, offset=0, search="", sort="", direction="asc", view="all"):
+        return self.for_task(task_type).browse_details(task_type, run_id, limit, offset, search, sort, direction, view)
+
+    def diagnostics(self, task_type, run_id):
+        return self.for_task(task_type).diagnostics(task_type, run_id)
+
+    def export_details(self, task_type, run_id, search="", sort="", direction="asc", view="all"):
+        return self.for_task(task_type).export_details(task_type, run_id, search, sort, direction, view)
 
     def list_dbdef_tables(self, task_type: str, run_id: int) -> list[dict[str, Any]]:
         return self.for_task(task_type).list_dbdef_tables(task_type, run_id)
@@ -549,30 +614,11 @@ class RepositoryHub:
                 counts[key] += int(item.get(key, 0))
         return {"counts": counts, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
 
-    def trend(self, limit: int = 48) -> list[dict[str, Any]]:
-        rows = []
-        for repository in self.repositories.values():
-            rows.extend(repository.trend(limit))
-        buckets: dict[str, dict[str, dict[str, Any]]] = {}
-        for row in rows:
-            target = buckets.setdefault(row["bucket"], {})
-            for name, values in row["tasks"].items():
-                item = target.setdefault(name, {"runs": 0, "succeeded": 0, "failed": 0, "elapsed_sum": 0.0, "elapsed_count": 0})
-                item["runs"] += values["runs"]
-                item["succeeded"] += values["succeeded"]
-                item["failed"] += values["failed"]
-                if values["avg_elapsed_seconds"] is not None:
-                    item["elapsed_sum"] += values["avg_elapsed_seconds"] * values["runs"]
-                    item["elapsed_count"] += values["runs"]
-        result = []
-        for bucket in sorted(buckets)[-max(1, min(int(limit), 168)):]:
-            tasks = {}
-            for name, values in buckets[bucket].items():
-                count = values.pop("elapsed_count")
-                total = values.pop("elapsed_sum")
-                tasks[name] = {**values, "avg_elapsed_seconds": total / count if count else None}
-            result.append({"bucket": bucket, "tasks": tasks})
-        return result
+    def trend(self, limit=48, end_at=None):
+        start, end = hour_window(limit, end_at)
+        # Same UTC boundary for every result database.
+        bound = (end - timedelta(seconds=1)).isoformat()
+        return merge_trends([repo.trend(limit, bound) for repo in self.repositories.values()], start, end)
 
     def list_config(self) -> list[dict[str, Any]]:
         return self.control.list_config() if self.control is not None else []

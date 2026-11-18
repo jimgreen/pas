@@ -4,14 +4,18 @@ const state = {
   route: location.hash.slice(1) || '/overview', token: 0, page: 0,
   filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule',
   tabs: {se:'summary',lf:'summary',ca:'summary'}, selected:{},
-  browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:''}])),
-  controlTab:'config', status:{}, watching:new Map(), exportData:null, logPage:0, scheduleTask:'se'
+  browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:'',sort:'',direction:'asc',view:'all'}])),
+  controlTab:'config', summaryMode:'result', diagPage:0, diagCol:0, trend:{hours:24,metric:'runs',mode:'chart',page:0}, status:{}, watching:new Map(), exportData:null, logPage:0, scheduleTask:'se'
 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const statusLabel = s => ({queued:'等待执行',running:'运行中',succeeded:'成功',failed:'失败'}[s] || s || '—');
 const sourceLabel = s => s === 'manual' ? '人工触发' : '周期自动';
-const number = v => v == null ? '—' : Number(v).toPrecision(5);
-const pageSize = () => Math.max(2, Math.min(8, Math.floor((innerHeight - (innerWidth < 700 ? 490 : 380)) / 36)));
+const number = v => v == null ? '—' : String(Number(Number(v).toPrecision(5)));
+const pageSize = () => {
+  const mode=state.tabs[task()],mobile=innerWidth<700;
+  const reserved=mode==='diagnostics'?(mobile?630:540):mode==='details'?(mobile?570:500):(mobile?570:460);
+  return Math.max(1,Math.min(8,Math.floor((innerHeight-reserved)/36)));
+};
 const colSize = () => innerWidth < 700 ? 3 : 6;
 const task = () => state.route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
 const busy = t => [...(state.status.active_tasks || []), ...(state.status.pending_tasks || [])].includes(t);
@@ -46,30 +50,41 @@ function jobsPanel(name) {
 function serviceControls() {
   return `<div class="btn-row"><button type="button" class="primary" data-action="all">执行全部</button><button type="button" class="mini" data-action="retry-failed">重试失败任务</button><button type="button" class="mini" data-action="daemon-start">启动周期</button><button type="button" class="mini" data-action="daemon-stop">停止周期</button></div><p class="muted">停止周期后，已接受的计算仍会完成并保存结果。</p>`;
 }
+const TREND_METRICS={runs:'执行次数',succeeded:'成功次数',failed:'失败次数',avg_elapsed_seconds:'平均耗时（秒）'};
 function trendChart(points) {
-  const width=760,height=170,left=38,right=18,top=18,bottom=28;
-  if(!points?.length)return `<div class="empty">暂无趋势数据</div>`;
-  const names=['se','lf','ca'], colors={se:'#1769e0',lf:'#14966b',ca:'#ce8b24'};
-  const values=names.map(name=>points.map(item=>Number(item.tasks?.[name]?.runs||0)));
-  const max=Math.max(1,...values.flat());
-  const x=i=>left+(points.length===1?0:(width-left-right)*i/(points.length-1));
-  const y=value=>top+(height-top-bottom)*(1-value/max);
-  const lines=names.map((name,index)=>{
-    const coords=values[index].map((value,i)=>`${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
-    const last=values[index][values[index].length-1]||0;
-    return `<polyline points="${coords}" fill="none" stroke="${colors[name]}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/><text x="${Math.min(width-right-22,x(values[index].length-1)+6)}" y="${y(last)-5}" fill="${colors[name]}" font-size="11">${name.toUpperCase()} ${last}</text>`;
+  const width=Math.max(290,document.querySelector('#app').clientWidth-60), height=220,left=42,right=14,top=20,bottom=34;
+  const colors={se:'#1769e0',lf:'#14966b',ca:'#bb710a'},field=state.trend.metric;
+  const series=TASKS.map(name=>points.map(p=>p.tasks?.[name]?.[field]??(field==='avg_elapsed_seconds'?null:0)));
+  const max=Math.max(1,...series.flat().filter(v=>v!==null));
+  const x=i=>left+(width-left-right)*i/Math.max(1,points.length-1);
+  const y=v=>top+(height-top-bottom)*(1-v/max);
+  const grid=[0,max/2,max].map(v=>`<line x1="${left}" x2="${width-right}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e9f2"/><text x="${left-6}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#6d7890">${v===0?0:Number(v.toPrecision(3))}</text>`).join('');
+  const lines=TASKS.map((name,n)=>{
+    let path='';let gap=true;
+    series[n].forEach((value,i)=>{if(value===null){gap=true;return;}path+=`${gap?'M':'L'}${x(i)},${y(value)} `;gap=false;});
+    const marks=series[n].map((v,i)=>v===null?'':`<circle cx="${x(i)}" cy="${y(v)}" r="${n===2?2:3}" fill="${colors[name]}"><title>${esc(points[i].bucket)} UTC · ${name.toUpperCase()} ${Number(v.toPrecision(5))}</title></circle>`).join('');
+    return `<path d="${path}" stroke="${colors[name]}" stroke-width="2" ${n===1?'stroke-dasharray="5 3"':''} fill="none"/>${marks}`;
   }).join('');
-  const grid=[0,Math.ceil(max/2),max].map(value=>`<line x1="${left}" x2="${width-right}" y1="${y(value)}" y2="${y(value)}" stroke="#e3e9f2"/><text x="${left-8}" y="${y(value)+4}" text-anchor="end" fill="#6d7890" font-size="10">${value}</text>`).join('');
-  return `<svg class="trend-chart" role="img" aria-label="最近任务执行趋势" viewBox="0 0 ${width} ${height}"><title>最近任务执行趋势</title><desc>按小时统计 SE、LF、CA 的执行次数。</desc>${grid}<line x1="${left}" x2="${width-right}" y1="${height-bottom}" y2="${height-bottom}" stroke="#b8c4d6"/>${lines}<text x="${left}" y="${height-6}" fill="#6d7890" font-size="10">${esc(points[0].bucket)}</text><text x="${width-right}" y="${height-6}" text-anchor="end" fill="#6d7890" font-size="10">${esc(points[points.length-1].bucket)}</text></svg>`;
+  return `<div class="trend-legend">${TASKS.map(n=>`<span><i style="background:${colors[n]}"></i>${n.toUpperCase()}</span>`).join('')}<span>${TREND_METRICS[field]}</span></div><svg class="trend-chart" style="height:220px" role="img" aria-label="按 UTC 小时统计的${TREND_METRICS[field]}" viewBox="0 0 ${width} ${height}"><title>完整小时窗口统计，当前小时尚未结束</title>${grid}${lines}<text x="${left}" y="${height-8}" font-size="12" fill="#6d7890">${esc(points[0]?.bucket.slice(5).replace('T',' '))}</text><text x="${width-right}" y="${height-8}" font-size="12" text-anchor="end" fill="#6d7890">${esc(points.at(-1)?.bucket.slice(5).replace('T',' '))} UTC</text></svg>`;
+}
+async function trends() {
+  const token=state.token,cfg={...state.trend},points=(await api(`/api/metrics/trend?limit=${cfg.hours}`)).data;
+  if(token!==state.token)return '';
+  const rows=points.flatMap(p=>TASKS.map(name=>({hour:p.bucket+'Z',task:name.toUpperCase(),runs:p.tasks[name]?.runs||0,succeeded:p.tasks[name]?.succeeded||0,failed:p.tasks[name]?.failed||0,average:p.tasks[name]?.avg_elapsed_seconds??null})));
+  const columns=['hour','task','runs','succeeded','failed','average'].map(name=>({name}));
+  state.exportData={rows,columns,filename:`pas-trend-${cfg.hours}h.csv`};
+  const tableRows=rows.slice(cfg.page*pageSize(),(cfg.page+1)*pageSize());
+  return `<section class="card full-panel"><div class="section-head"><h2>运行趋势</h2><button class="mini" data-action="export">导出窗口统计</button></div><div class="filter-row"><select data-trend="hours" aria-label="趋势窗口">${[6,24,48,168].map(n=>`<option value="${n}" ${cfg.hours==n?'selected':''}>最近 ${n} 小时</option>`).join('')}</select><select data-trend="mode" aria-label="趋势展示"><option value="chart" ${cfg.mode==='chart'?'selected':''}>趋势图</option><option value="table" ${cfg.mode==='table'?'selected':''}>统计明细</option></select><select data-trend="metric" aria-label="趋势指标">${Object.entries(TREND_METRICS).map(([v,l])=>`<option value="${v}" ${cfg.metric===v?'selected':''}>${l}</option>`).join('')}</select></div>${cfg.mode==='chart'?trendChart(points):`<div class="table-wrap"><table><thead><tr><th>UTC 小时</th><th>任务</th><th>成功 / 失败 / 总数</th><th>均耗时（秒）</th></tr></thead><tbody>${tableRows.map(r=>`<tr><td data-value="${r.hour}">${r.hour.slice(5)}</td><td>${r.task}</td><td>${r.succeeded} / ${r.failed} / ${r.runs}</td><td>${r.average==null?'—':number(r.average)}</td></tr>`).join('')}</tbody></table></div>${pager(cfg.page,rows.length,'trend')}`}<p class="muted">当前小时尚未结束；空白耗时表示该小时没有已完成记录。所有次数来自完整时间窗口。</p></section>`;
 }
 async function overview() {
-  const [overview,config,trend] = await Promise.all([api('/api/overview'),api('/api/config'),api('/api/metrics/trend?limit=24')]);
+  if(state.overviewTab==='trend')return tabs([['tasks','任务监控'],['trend','运行趋势'],['jobs','执行管理'],['history','最近运行']],state.overviewTab)+`<div class="analysis-body">${await trends()}</div>`;
+  const [overview,config] = await Promise.all([api('/api/overview'),api('/api/config')]);
   const d=overview.data;
   let content;
   if (state.overviewTab==='history') content=`<section class="card full-panel"><h2>最近运行</h2>${runTable(d.recent_runs.slice(0,pageSize()))}<a class="mini" href="#/runs">筛选全部历史 →</a></section>`;
   else if(state.overviewTab==='jobs')content=`<section class="card"><h2>执行管理</h2>${serviceControls()}<div data-jobs>${jobsPanel()}</div></section>`;
-  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="#/analysis/${t}">查看</a></div></section>`}).join('')}</div><section class="card trend-card"><div class="section-head"><h2>最近执行趋势</h2><span class="muted">按小时统计执行次数</span></div>${trendChart(trend.data)}</section><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button type="button" class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
-  return tabs([['tasks','任务监控'],['jobs','执行管理'],['history','最近运行']],state.overviewTab)+`<div class="analysis-body">${content}</div>`;
+  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="#/analysis/${t}">查看</a></div></section>`}).join('')}</div><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button type="button" class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
+  return tabs([['tasks','任务监控'],['trend','运行趋势'],['jobs','执行管理'],['history','最近运行']],state.overviewTab)+`<div class="analysis-body">${content}</div>`;
 }
 async function history(name) {
   const params = new URLSearchParams({limit:pageSize(),offset:state.page*pageSize()});
@@ -84,12 +99,12 @@ function dataTable(data,cfg,name) {
   cfg.col=Math.min(cfg.col,Math.max(0,Math.ceil(columns.length/count)-1));
   const cols=columns.slice(cfg.col*count,(cfg.col+1)*count);
   state.exportData={rows:data.rows,columns,filename:`${name}.csv`};
-  return `<div class="field-pager"><button class="mini" data-col="-1" ${cfg.col===0?'disabled':''}>前组字段</button><span>字段 ${cfg.col*count+1}–${Math.min((cfg.col+1)*count,columns.length)} / ${columns.length}</span><button class="mini" data-col="1" ${(cfg.col+1)*count>=columns.length?'disabled':''}>后组字段</button><button class="mini" data-action="export">导出本页</button></div>${data.rows.length?`<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th title="${esc(c.name)}">${esc(fieldLabels[c.name]||c.name)}</th>`).join('')}</tr></thead><tbody>${data.rows.map(row=>`<tr>${cols.map(c=>`<td tabindex="0" data-value="${esc(row[c.name]??'—')}" title="点击查看完整值">${esc(row[c.name]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:empty('没有匹配记录')}${pager(cfg.page,data.meta.total,'browse')}`;
+  return `<div class="field-pager"><button class="mini" data-col="-1" ${cfg.col===0?'disabled':''}>前组字段</button><span>字段 ${cfg.col*count+1}–${Math.min((cfg.col+1)*count,columns.length)} / ${columns.length}</span><button class="mini" data-col="1" ${(cfg.col+1)*count>=columns.length?'disabled':''}>后组字段</button><button class="mini" data-action="export">本页导出</button>${cfg.mode==='details'?'<button class="mini" data-action="export-filtered">筛选导出</button>':''}</div>${data.rows.length?`<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th title="${esc(c.name)}">${cfg.mode==='details'?`<button class="sort-head" data-sort="${c.name}">${esc(fieldLabels[c.name]||c.name)}${cfg.sort===c.name?(cfg.direction==='asc'?' ↑':' ↓'):''}</button>`:esc(fieldLabels[c.name]||c.name)}</th>`).join('')}</tr></thead><tbody>${data.rows.map(row=>`<tr>${cols.map(c=>`<td tabindex="0" data-value="${esc(row[c.name]??'—')}" title="点击查看完整值">${esc(row[c.name]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:empty('没有匹配记录')}${pager(cfg.page,data.meta.total,'browse')}`;
 }
 async function browser(name,id,mode) {
   const token=state.token, cfg=state.browse[name];
-  if(cfg.mode!==mode){Object.assign(cfg,{page:0,col:0,q:'',mode});}
-  const params=new URLSearchParams({limit:pageSize(),offset:cfg.page*pageSize(),q:cfg.q});
+  if(cfg.mode!==mode){Object.assign(cfg,{page:0,col:0,q:'',mode,sort:'',direction:'asc',view:'all'});}
+  const params=new URLSearchParams({limit:pageSize(),offset:cfg.page*pageSize(),q:cfg.q,sort:cfg.sort,direction:cfg.direction,view:cfg.view});
   let tableSelect='',url=`/api/results/${name}/${id}/details?${params}`;
   if(mode==='dbdef') {
     const tables=(await api(`/api/dbdef/${name}/${id}`)).data.tables;
@@ -100,7 +115,8 @@ async function browser(name,id,mode) {
   }
   const data=(await api(url)).data;
   if(token!==state.token)return '';
-  return `<section class="card full-panel"><div class="section-head"><h2>${mode==='dbdef'?'dbdef 原始表':'计算明细'} · #${id}</h2></div><form data-search class="filter-row">${tableSelect}<input aria-label="搜索明细" name="q" value="${esc(cfg.q)}" placeholder="搜索全部字段"><button class="mini">筛选</button><button type="button" class="mini" data-action="reset-search">重置</button></form>${dataTable(data,cfg,`${name}-${id}-${mode==='dbdef'?cfg.table:'details'}`)}</section>`;
+  const options={se:[['all','全部量测'],['invalid','无效量测'],['valid','有效量测']],lf:[['all','全部域'],['ac','AC'],['dc','DC'],['dcac','DC/AC'],['acac','AC/AC']],ca:[['all','全部场景'],['n0','N-0'],['n1','N-1']]}[name];
+  return `<section class="card full-panel"><div class="section-head"><h2>${mode==='dbdef'?'dbdef 原始表':'计算明细'} · #${id}</h2></div><form data-search class="filter-row">${tableSelect}<input aria-label="搜索明细" name="q" value="${esc(cfg.q)}" placeholder="搜索全部字段"><button class="mini">筛选</button><button type="button" class="mini" data-action="reset-search">重置</button></form>${mode==='details'?`<div class="filter-row"><select aria-label="分类筛选" data-detail-view>${options.map(([v,l])=>`<option value="${v}" ${cfg.view===v?'selected':''}>${l}</option>`).join('')}</select><select aria-label="排序字段" data-detail-sort><option value="">默认顺序</option>${name==='se'?`<option value="abs_residual" ${cfg.sort==='abs_residual'?'selected':''}>残差绝对值</option>`:''}${data.columns.map(c=>`<option value="${c.name}" ${cfg.sort===c.name?'selected':''}>${fieldLabels[c.name]||c.name}</option>`).join('')}</select><button class="mini" data-action="direction">${cfg.direction==='asc'?'升序 ↑':'降序 ↓'}</button></div>`:''}${dataTable(data,cfg,`${name}-${id}-${mode==='dbdef'?cfg.table:'details'}`)}</section>`;
 }
 function summaryFields(name,s) {
   const fields=name==='se'?[['收敛',s.converged?'是':'否'],['可观测',s.observable?'是':'否'],['迭代次数',s.iterations],['目标函数',number(s.objective)],['残差',number(s.residual_inf)],['不良量测',s.bad_data_count]]:name==='lf'?[['收敛',s.converged?'是':'否'],['迭代次数',s.iterations],['范数',number(s.norm_f)],['AC 收敛',s.ac_converged==null?'—':s.ac_converged?'是':'否'],['DC 收敛',s.dc_converged==null?'—':s.dc_converged?'是':'否'],['原因',s.failure_reason||'—']]:[['风险等级',s.risk_level],['N-0 风险',s.n0_risk_count],['N-1 扫描',s.n1_scan_count],['N-1 风险',s.n1_risk_count]];
@@ -112,6 +128,26 @@ function controlView(cfg,name) {
 function scheduleEditor(cfg,name) {
   const t=cfg.tasks[name];
   return `<form data-schedule="${name}" class="schedule-form"><h2>${LABELS[name]} 调度参数</h2><label>周期（秒，1 至 604800）<input name="period" type="number" min="1" max="604800" step="any" required value="${t.period_seconds}"></label><label class="check"><input type="checkbox" name="enabled" ${t.enabled?'checked':''}> 启用周期自动执行</label><div class="btn-row"><button class="primary">保存并生效</button>${button(name)}</div><p class="muted">保存在 PAS 数据库；重启后恢复。修改周期后，从保存时刻重新计时。</p></form>`;
+}
+const METRIC_LABELS={kernel_seconds:'内核调用与整理',persistence_seconds:'写库（提交前）',model_read_seconds:'模型读取 / 复制',solve_seconds:'求解',normalization_seconds:'结果整理',model_cache_hit:'模型模板命中'};
+function summaryView(name,id,d) {
+  const r=d.run,s=d.result?.summary,mode=state.summaryMode;
+  let content;
+  if(mode==='timing')content=(d.result?.metrics||[]).map(m=>metric(METRIC_LABELS[m.name]||m.name,m.name==='model_cache_hit'?(m.value_real?'是':'否'):number(m.value_real)+' 秒')).join('')||empty('这条历史记录没有分项耗时');
+  else if(mode==='info')content=[['触发方式',sourceLabel(r.execution_source)],['开始时间',r.started_at],['结束时间',r.finished_at],['输入指纹',r.input_fingerprint],['内核目录',r.kernel_root]].map(([l,v])=>`<div class="path-row"><strong>${l}</strong><span tabindex="0" data-value="${esc(v)}">${esc(v??'—')}</span></div>`).join('');
+  else content=r.status==='failed'?`<p class="error-text" data-value="${esc(r.error_message)}">${esc(r.error_type)}：${esc(r.error_message)}</p>`:s?summaryFields(name,s)+metric('明细记录',d.result.detail_count)+metric('执行耗时',number(r.elapsed_seconds)+' 秒'):empty('正在计算，完成后可刷新查看');
+  return `<div class="control-tabs">${[['result','计算结果'],['timing','性能分项'],['info','运行信息']].map(([v,l])=>`<button class="mini ${mode===v?'selected':''}" data-summary="${v}">${l}</button>`).join('')}</div><section class="card"><div class="section-head"><h2>运行 #${id}</h2>${badge(r.status)}</div>${content}<div class="btn-row"><button class="mini" data-tab="details">浏览明细</button><button class="mini" data-action="latest">读取最新结果</button>${button(name)}</div></section>`;
+}
+const DIAG_LABELS={total:'记录数',valid:'有效量测',invalid:'无效量测',max_abs_residual:'最大绝对残差',residual_count:'含残差记录',missing_power:'缺首端 P 记录',min_voltage:'首端电压最小值',max_voltage:'首端电压最大值',n0:'N-0 风险',n1:'N-1 风险',risk_types:'风险类型数',category:'分类',count:'数量',device_type:'设备类型',contingency:'故障场景'};
+async function diagnosticView(name,id) {
+  const d=(await api(`/api/results/${name}/${id}/diagnostics`)).data;
+  const allKeys=Object.keys(d.groups[0]||{category:0,count:0}),count=colSize()-1;
+  const pages=Math.max(1,Math.ceil((allKeys.length-1)/count));
+  state.diagCol=Math.min(state.diagCol,pages-1);
+  const keys=[allKeys[0],...allKeys.slice(1+state.diagCol*count,1+(state.diagCol+1)*count)];
+  const rows=d.groups.slice(state.diagPage*pageSize(),(state.diagPage+1)*pageSize());
+  const fields=pages>1?`<div class="field-pager"><button class="mini" data-diag-col="-1" ${state.diagCol===0?'disabled':''}>前组字段</button><span>字段组 ${state.diagCol+1} / ${pages}</span><button class="mini" data-diag-col="1" ${state.diagCol===pages-1?'disabled':''}>后组字段</button></div>`:'';
+  return `<section class="card full-panel"><div class="section-head"><h2>诊断统计 · #${id}</h2><button class="mini" data-tab="details">查看明细</button></div><div class="diagnostic-metrics">${Object.entries(d.metrics).map(([k,v])=>`<span>${DIAG_LABELS[k]||k} <strong>${v==null?'—':number(v)}</strong></span>`).join('')}</div>${fields}<div class="table-wrap"><table><thead><tr>${keys.map(k=>`<th title="${DIAG_LABELS[k]||k}">${DIAG_LABELS[k]||k}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${keys.map(k=>`<td tabindex="0" data-value="${esc(r[k]??'—')}" title="点击查看完整值">${esc(typeof r[k]==='number'?number(r[k]):r[k]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${pager(state.diagPage,d.groups.length,'diagnostics')}<small class="muted">按已回写记录统计；空值表示该字段无可用数据。跨设备数值范围不作为越限判定。</small></section>`;
 }
 async function analysis(name) {
   const active=state.tabs[name];let content;
@@ -127,13 +163,15 @@ async function analysis(name) {
     else {
       state.selected[name]=id;
       if(active==='details'||active==='dbdef')content=await browser(name,id,active);
+      else if(active==='diagnostics')content=await diagnosticView(name,id);
       else {
         const d=(await api(`/api/runs/${name}/${id}?compact=1`)).data,r=d.run,s=d.result?.summary;
-        content=`<section class="card"><div class="section-head"><h2>运行 #${id} · ${sourceLabel(r.execution_source)}</h2>${badge(r.status)}</div>${r.status==='failed'?`<p class="error-text" data-value="${esc(r.error_message)}">${esc(r.error_type)}：${esc(r.error_message)}</p>`:s?summaryFields(name,s):empty('正在计算，完成后可刷新查看')}${metric('耗时',r.elapsed_seconds==null?'—':number(r.elapsed_seconds)+' 秒')}${(d.result?.metrics||[]).map(m=>metric(m.name==='kernel_seconds'?'内核调用及结果整理':'结果写入（提交前）',number(m.value_real)+' 秒')).join('')}${metric('明细记录',d.result?.detail_count ?? 0)}<div class="btn-row"><button class="mini" data-tab="details">浏览全部明细</button><button class="mini" data-tab="dbdef">dbdef 表</button><button class="mini" data-action="latest">读取最新结果</button>${button(name)}</div></section>`;
+        content=summaryView(name,id,d);
+
       }
     }
   }
-  return tabs([['summary','结果摘要'],['history','运行记录'],['details','计算明细'],['dbdef','dbdef 表'],['operation','执行控制']],active)+`<div class="analysis-body">${content}</div>`;
+  return tabs([['summary','结果摘要'],['diagnostics','诊断统计'],['history','运行记录'],['details','计算明细'],['dbdef','dbdef 表'],['operation','执行控制']],active)+`<div class="analysis-body">${content}</div>`;
 }
 async function settings() {
   const cfg=(await api('/api/config')).data;let content;
@@ -155,7 +193,7 @@ async function render() {
   } catch(e) {if(token===state.token)document.querySelector('#app').innerHTML=`<section class="card"><h2>加载失败</h2><p>${esc(e.message)}</p><button class="mini" data-action="refresh">重试</button></section>`;}
 }
 async function refreshStatus() {
-  if(state.polling)return;state.polling=true;
+  if(state.polling||document.hidden)return;state.polling=true;
   try {
     const d=(await api('/api/status')).data;state.status=d;
     document.querySelector('#service-state').textContent=d.daemon_running?'周期调度运行中':'Web 在线 · 周期停止';
@@ -181,7 +219,7 @@ async function submit(name) {
 }
 function exportPage() {
   const d=state.exportData;if(!d)return;
-  const cell=v=>{let s=String(v??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
+  const cell=v=>{let s=String(v??'');if(typeof v==='string'&&/^\s*[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
   const csv=[d.columns.map(c=>cell(c.name)),...d.rows.map(r=>d.columns.map(c=>cell(r[c.name])))].map(r=>r.join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=d.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -210,6 +248,9 @@ document.addEventListener('submit',async e=>{
   } catch(err){notify(err.message,true);}
 });
 document.addEventListener('change',e=>{
+  if(e.target.matches('[data-trend]')){state.trend[e.target.dataset.trend]=e.target.value;state.trend.page=0;render();}
+  if(e.target.matches('[data-detail-view],[data-detail-sort]')){state.browse[task()][e.target.hasAttribute('data-detail-view')?'view':'sort']=e.target.value;state.browse[task()].page=0;render();}
+
   if(e.target.matches('[data-filter]')){state.filter[e.target.dataset.filter]=e.target.value;state.page=0;render();}
   if(e.target.matches('[data-table]')){Object.assign(state.browse[task()],{table:e.target.value,page:0,col:0});render();}
   if(e.target.matches('[data-schedule-task]')){state.scheduleTask=e.target.value;render();}
@@ -221,14 +262,19 @@ document.addEventListener('click',async e=>{
     if(el.dataset.task){el.disabled=true;return await submit(el.dataset.task);}
     if(el.hasAttribute('data-value'))return showValue(el.dataset.value);
     if(el.dataset.valuePage)return showValue(state.value.value,state.value.page+Number(el.dataset.valuePage));
+    if(el.dataset.summary){state.summaryMode=el.dataset.summary;return render();}
+    if(el.dataset.diagCol){state.diagCol+=Number(el.dataset.diagCol);return render();}
+    if(el.dataset.sort){const c=state.browse[task()];c.direction=c.sort===el.dataset.sort&&c.direction==='asc'?'desc':'asc';c.sort=el.dataset.sort;c.page=0;return render();}
     if(el.dataset.control){state.controlTab=el.dataset.control;return render();}
-    if(el.dataset.tab){if(task())state.tabs[task()]=el.dataset.tab;else if(state.route==='/settings')state.settingsTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;return render();}
-    if(el.dataset.page){const delta=Number(el.dataset.page);if(el.dataset.scope==='browse')state.browse[task()].page+=delta;else if(el.dataset.scope==='logs')state.logPage+=delta;else state.page+=delta;return render();}
+    if(el.dataset.tab){if(task())state.tabs[task()]=el.dataset.tab;else if(state.route==='/settings')state.settingsTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
+    if(el.dataset.page){const delta=Number(el.dataset.page);if(el.dataset.scope==='trend')state.trend.page+=delta;else if(el.dataset.scope==='diagnostics')state.diagPage+=delta;else if(el.dataset.scope==='browse')state.browse[task()].page+=delta;else if(el.dataset.scope==='logs')state.logPage+=delta;else state.page+=delta;return render();}
     if(el.dataset.col){state.browse[task()].col+=Number(el.dataset.col);return render();}
     const action=el.dataset.action;
     if(action==='all'||action==='run-all'){el.disabled=true;try{return await submit();}finally{el.disabled=false;}}
-    if(action==='retry-failed'){el.disabled=true;try{const d=(await api('/api/actions/retry-failed',{})).data;const jobs=Object.values(d.tasks||{});for(const j of jobs)if(j.accepted)state.watching.set(j.job_id,j.task);notify(jobs.length?jobs.map(j=>`${j.task.toUpperCase()}：${j.accepted?'已接受重试':j.reason}`).join('；'):'没有失败任务');await refreshStatus();}finally{el.disabled=false;}return render();}
+    if(action==='retry-failed'){el.disabled=true;try{const d=(await api('/api/actions/retry-failed',task()?{task:task()}:{})).data;const jobs=Object.values(d.tasks||{});for(const j of jobs)if(j.accepted)state.watching.set(j.job_id,j.task);notify(jobs.length?jobs.map(j=>`${j.task.toUpperCase()}：${j.accepted?'已接受重试':({no_failed_run:'最近任务未失败',already_running:'任务执行中'}[j.reason]||j.reason)}`).join('；'):'没有失败任务');await refreshStatus();}finally{el.disabled=false;}return render();}
     if(action?.startsWith('daemon-')){const r=await api(`/api/actions/daemon/${action.slice(7)}`,{});notify(r.data.stopping?'正在停止调度':action==='daemon-start'?'周期调度已启动':'周期调度已停止；当前任务将继续完成');return refreshStatus();}
+    if(action==='direction'){const c=state.browse[task()];c.direction=c.direction==='asc'?'desc':'asc';c.page=0;return render();}
+    if(action==='export-filtered'){const name=task(),id=state.selected[name],c=state.browse[name];const q=new URLSearchParams({q:c.q,sort:c.sort,direction:c.direction,view:c.view});const response=await fetch(`/api/export/${name}/${id}?${q}`);if(!response.ok)throw new Error((await response.json()).error);const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=`${name}-${id}-filtered.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('筛选结果已导出，包含全部匹配行');return;}
     if(action==='export')return exportPage();
     if(action==='close-dialog')return document.querySelector('#value-dialog').close();
     if(action==='clear'){state.filter={task:'',status:'',source:''};state.page=0;}
@@ -237,7 +283,9 @@ document.addEventListener('click',async e=>{
     if(['refresh','clear','reset-search','latest'].includes(action))return render();
   }catch(err){notify(err.message,true);await refreshStatus();}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-value]'))showValue(e.target.dataset.value);});
+document.addEventListener('keydown',e=>{const target=e.target.closest?.('[data-value]');if(e.key==='Enter'&&target){e.preventDefault();showValue(target.dataset.value);}});
 window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'/overview';state.page=0;const name=task();if(name&&state.route.includes('?run=')){state.tabs[name]='summary';Object.assign(state.browse[name],{page:0,col:0,q:''});}render();});
-let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{state.page=0;state.logPage=0;for(const b of Object.values(state.browse))b.page=0;render();},180);});
-refreshStatus().then(render);window.setInterval(refreshStatus,2000);
+let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{state.page=0;state.logPage=0;state.diagPage=0;state.trend.page=0;for(const b of Object.values(state.browse))b.page=0;render();},180);});
+refreshStatus().then(render);
+async function poll(){await refreshStatus();setTimeout(poll,state.watching.size||(state.status.active_tasks||[]).length?2000:6000);}
+setTimeout(poll,6000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshStatus();});

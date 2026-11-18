@@ -117,13 +117,22 @@ class PasWebApp:
                 if run_id is None:
                     return {"ok": False, "error": "invalid_run_id"}
                 query = parse_qs(parsed.query)
-                data = self.repository.browse_details(parts[2], run_id, _int_query(query, "limit", 50, 1, 500), _int_query(query, "offset", 0, 0, 1_000_000), query.get("q", [""])[0])
+                try:
+                    data = self.repository.browse_details(parts[2], run_id, _int_query(query, "limit", 50, 1, 500), _int_query(query, "offset", 0, 0, 1_000_000), query.get("q", [""])[0], query.get("sort", [""])[0], query.get("direction", ["asc"])[0], query.get("view", ["all"])[0])
+                except ValueError as exc:
+                    return {"ok": False, "error": str(exc)}
                 return {"ok": True, "data": data}
+            if len(parts) == 5 and parts[2] in {"se", "lf", "ca"} and parts[4] == "diagnostics":
+                run_id = _int_path(parts[3])
+                if run_id is None:
+                    return {"ok": False, "error": "invalid_run_id"}
+                data = self.repository.diagnostics(parts[2], run_id)
+                return {"ok": True, "data": data} if data else {"ok": False, "error": "run_not_found"}
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "results" and parts[2] in {"se", "lf", "ca"}:
                 run_id = _int_path(parts[3])
                 if run_id is None:
                     return {"ok": False, "error": "invalid_run_id"}
-                result = self.repository.get_result(parts[2], run_id)
+                result = self.repository.get_result(parts[2], run_id, compact=parse_qs(parsed.query).get("compact", ["0"])[0] == "1")
                 if result is None:
                     return {"ok": False, "error": "result_not_found"}
                 return {"ok": True, "data": result}
@@ -196,7 +205,7 @@ class PasWebApp:
                 data = self.scheduler.retry_failed_async(task)
             except ValueError as exc:
                 return {"ok": False, "error": str(exc)}
-            return {"ok": bool(data["accepted"]), "data": data, "error": None if data["accepted"] else "no_failed_run"}
+            return {"ok": True, "data": data}
         if path in {"/api/actions/run-once", "/api/actions/trigger"}:
             task = payload.get("task")
             if task is not None and task not in ("se", "lf", "ca"):
@@ -232,15 +241,48 @@ class PasWebApp:
         app = self
 
         class Handler(BaseHTTPRequestHandler):
+            def _export(self):
+                parsed = urlparse(self.path)
+                parts = parsed.path.strip("/").split("/")
+                stream = None
+                try:
+                    if len(parts) != 4 or parts[2] not in {"se", "lf", "ca"} or _int_path(parts[3]) is None:
+                        raise ValueError("invalid export request")
+                    query = parse_qs(parsed.query)
+                    stream = app.repository.export_details(parts[2], int(parts[3]), query.get("q", [""])[0], query.get("sort", [""])[0], query.get("direction", ["asc"])[0], query.get("view", ["all"])[0])
+                    first = next(stream)  # Validate before sending any response headers.
+                except ValueError as exc:
+                    if stream:
+                        stream.close()
+                    self._send_json({"ok": False, "error": str(exc)}, 400)
+                    return
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", f'attachment; filename="{parts[2]}-{parts[3]}-filtered.csv"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(first)
+                    for chunk in stream:
+                        self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                finally:
+                    stream.close()
+
             def _send_json(self, payload: dict[str, Any], status: int = 200):
                 body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
 
             def do_GET(self):  # noqa: N802
+                if self.path.startswith("/api/export/"):
+                    self._export()
+                    return
                 if self.path.startswith("/api/"):
                     payload = app.api_get(self.path)
                     self._send_json(payload, 200 if payload.get("ok", False) else 404)

@@ -1629,3 +1629,4 @@ CREATE INDEX IF NOT EXISTS idx_se_measurement_run ON se_measurement_result(run_i
 CREATE INDEX IF NOT EXISTS idx_lf_device_run ON lf_device_result(run_id, result_id);
 CREATE INDEX IF NOT EXISTS idx_ca_risk_run ON ca_risk(run_id, risk_id);
 CREATE INDEX IF NOT EXISTS idx_calculation_run_time ON calculation_run(started_at DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_calculation_run_julian ON calculation_run(julianday(started_at));

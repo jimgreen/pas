@@ -75,6 +75,52 @@ def test_static_route_rejects_path_traversal(tmp_path):
     assert app.static_path("/../runs.db") is None
 
 
+def test_http_filtered_export_stream_and_validation(tmp_path):
+    import csv
+    import io
+    import threading
+    from http.server import ThreadingHTTPServer
+    from urllib.error import HTTPError
+    from urllib.request import urlopen
+
+    import pytest
+
+    app, _ = make_app(tmp_path)
+    with app.repository.result_transaction():
+        app.repository.store_se_result(1, {"measurements": [
+            {"name": f"m{i}", "value": -i, "residual": -i, "valid": i % 2 == 0}
+            for i in range(1200)
+        ]})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), app.handler_class())
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urlopen(base + "/api/export/se/1?view=invalid&sort=abs_residual&direction=desc", timeout=5) as response:
+            assert response.status == 200
+            assert response.headers["Cache-Control"] == "no-store"
+            assert "attachment" in response.headers["Content-Disposition"]
+            rows = list(csv.DictReader(io.StringIO(response.read().decode("utf-8-sig"))))
+        assert len(rows) == 600  # More than one streaming chunk or UI page.
+        assert rows[0]["measurement_name"] == "m1199"
+        assert rows[-1]["measurement_name"] == "m1"
+        assert rows[0]["value"] == "-1199.0"
+        for path in ("/api/export/se/1?sort=bogus", "/api/export/se/999", "/api/export/se/invalid"):
+            with pytest.raises(HTTPError) as caught:
+                urlopen(base + path, timeout=5)
+            assert caught.value.code == 400
+            assert json.loads(caught.value.read())["ok"] is False
+        with urlopen(base + "/api/results/se/1?compact=1", timeout=5) as response:
+            compact = json.loads(response.read())["data"]
+        assert compact["detail_count"] == 1200
+        assert "details" not in compact and "state_json" not in compact["summary"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        app.repository.close()
+
+
 def test_config_and_logs_api_expose_pas_and_result_databases(tmp_path):
     result_repositories = {name: Repository(tmp_path / f"{name}.db") for name in ("se", "lf", "ca")}
     control = Repository(tmp_path / "control.db")

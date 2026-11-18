@@ -6,9 +6,12 @@ import hashlib
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+from .model_cache import lf_models
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
@@ -218,13 +221,24 @@ def run_se(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]
     return normalize_se(se_result, estimator.estimate_result)
 
 
-def run_lf(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+def run_lf(config: Any, kernel_root: str | Path | None = None, *, use_model_cache: bool = True) -> dict[str, Any]:
     configure_kernel_path(kernel_root or config.kernel_root)
     from lfcore.hybrid_lf import HybridPowerFlowCalc, _read_lf_network_from_file
-    network = _read_lf_network_from_file(config.model_file)
+    started = time.perf_counter()
+    if use_model_cache:
+        network, cache_hit = lf_models.load(config.model_file, _read_lf_network_from_file)
+    else:
+        network, cache_hit = _read_lf_network_from_file(config.model_file), False
+    read_seconds = time.perf_counter() - started
+    started = time.perf_counter()
     calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="full", verbose=False)
     calc.run()
-    return normalize_lf(calc)
+    solve_seconds = time.perf_counter() - started
+    started = time.perf_counter()
+    result = normalize_lf(calc)
+    result["performance"] = {"model_read_seconds": read_seconds, "solve_seconds": solve_seconds,
+                             "normalization_seconds": time.perf_counter() - started, "model_cache_hit": int(cache_hit)}
+    return result
 
 
 def run_ca(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
