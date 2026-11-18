@@ -108,7 +108,14 @@ class SimpleStatistics:
 def normalize_lf(calc: Any) -> dict[str, Any]:
     result = getattr(calc, "lf_result", None)
     devices = _extract_lf_devices(calc, result)
-    return {"converged": bool(getattr(calc, "converged", False)), "iterations": _int(getattr(calc, "iterations", 0)), "norm_f": _number(getattr(calc, "normF", 0.0)), "failure_reason": str(getattr(calc, "failure_reason", "") or ""), "ac_converged": getattr(getattr(result, "ac_calc", None), "converged", None), "ac_iterations": getattr(getattr(result, "ac_calc", None), "iterations", None), "ac_norm_f": getattr(getattr(result, "ac_calc", None), "normF", None), "dc_converged": getattr(getattr(result, "dc_calc", None), "converged", None), "dc_iterations": getattr(getattr(result, "dc_calc", None), "iterations", None), "dc_norm_f": getattr(getattr(result, "dc_calc", None), "normF", None), "summary": _json_value(getattr(result, "arrays", {}) if result is not None else {}), "devices": devices}
+    counts = {}
+    for row in devices:
+        key = f"{row['domain']}.{row['device_type']}"
+        counts[key] = counts.get(key, 0) + 1
+    arrays = getattr(result, "arrays", {}) or {}
+    summary = {key: _json_value(value) for key, value in arrays.items() if value is None or isinstance(value, (str, bool, int, float))}
+    summary["device_counts"] = counts
+    return {"converged": bool(getattr(calc, "converged", False)), "iterations": _int(getattr(calc, "iterations", 0)), "norm_f": _number(getattr(calc, "normF", 0.0)), "failure_reason": str(getattr(calc, "failure_reason", "") or ""), "ac_converged": getattr(getattr(result, "ac_calc", None), "converged", None), "ac_iterations": getattr(getattr(result, "ac_calc", None), "iterations", None), "ac_norm_f": getattr(getattr(result, "ac_calc", None), "normF", None), "dc_converged": getattr(getattr(result, "dc_calc", None), "converged", None), "dc_iterations": getattr(getattr(result, "dc_calc", None), "iterations", None), "dc_norm_f": getattr(getattr(result, "dc_calc", None), "normF", None), "summary": summary, "devices": devices}
 
 
 def _extract_lf_devices(calc: Any, result: Any) -> list[dict[str, Any]]:
@@ -130,16 +137,6 @@ def _extract_lf_devices(calc: Any, result: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     present_domains: set[str] = set()
 
-    def find_network_device(part: Any, attr: str, key: str) -> Any:
-        collection = getattr(part, attr, ()) if part is not None else ()
-        try:
-            for candidate in collection or ():
-                if str(getattr(candidate, "name", getattr(candidate, "idx", ""))) == str(key):
-                    return candidate
-        except TypeError:
-            return None
-        return None
-
     for domain, result_obj in (("ac", getattr(result, "ac", None)), ("dc", getattr(result, "dc", None)), ("dcac", getattr(result, "dcac", None)), ("acac", getattr(result, "acac", None))):
         if result_obj is None:
             continue
@@ -149,10 +146,15 @@ def _extract_lf_devices(calc: Any, result: Any) -> list[dict[str, Any]]:
             items = getattr(result_obj, attr, None) or {}
             if not isinstance(items, dict):
                 continue
+            # Build one lookup per collection instead of scanning for every result.
+            network_items = getattr(part, attr, ()) if part is not None else ()
+            network_index = {}
+            for candidate in network_items or ():
+                network_index.setdefault(str(getattr(candidate, "name", getattr(candidate, "idx", ""))), candidate)
             for key, item in items.items():
                 raw = dict(vars(item)) if hasattr(item, "__dict__") else {}
                 raw = {str(k): _json_value(v) for k, v in raw.items()}
-                network_device = find_network_device(part, attr, str(key))
+                network_device = network_index.get(str(key))
                 if network_device is not None:
                     for name in ("idx", "i_node", "j_node", "node", "i_node_obj", "j_node_obj"):
                         if name not in raw and hasattr(network_device, name):
@@ -187,9 +189,9 @@ def _extract_lf_devices(calc: Any, result: Any) -> list[dict[str, Any]]:
                 row.update({
                     "node_from": row.get("i_node"), "node_to": row.get("j_node"),
                     "voltage_from": row.get("i_v"), "voltage_to": row.get("j_v"),
-                    "p_from": row.get("i_p", getattr(item, "p", None)), "q_from": row.get("i_q", getattr(item, "q", None)),
+                    "p_from": row["i_p"] if row["i_p"] is not None else _json_value(getattr(item, "p", None)), "q_from": row["i_q"] if row["i_q"] is not None else _json_value(getattr(item, "q", None)),
                     "p_to": row.get("j_p"), "q_to": row.get("j_q"),
-                    "current_from": row.get("i_c", getattr(item, "current", None)), "current_to": row.get("j_c"),
+                    "current_from": row["i_c"] if row["i_c"] is not None else _json_value(getattr(item, "current", None)), "current_to": row.get("j_c"),
                 })
                 rows.append(row)
     return rows

@@ -31,7 +31,9 @@ def _build_scheduler(config_path: str) -> tuple[Scheduler, RepositoryHub]:
         "lf": lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root),
         "ca": lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root),
     }
-    return Scheduler(config, repository, runners, result_repositories), repository
+    scheduler = Scheduler(config, repository, runners, result_repositories)
+    scheduler.restore_schedules()
+    return scheduler, repository
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "init-db":
-        _, repository = _build_scheduler(args.config)
+        scheduler, repository = _build_scheduler(args.config)
+        scheduler.shutdown()
         repository.close()
         return 0
     scheduler, repository = _build_scheduler(args.config)
@@ -60,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
             stop_event.set()
         return 0
     finally:
+        scheduler.shutdown()
         repository.close()
 
 

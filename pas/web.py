@@ -41,6 +41,15 @@ class PasWebApp:
         self.static_root = Path(static_root).resolve()
         self._daemon_thread: threading.Thread | None = None
         self._daemon_stop: threading.Event | None = None
+        self._daemon_lock = threading.RLock()
+
+    def close(self) -> None:
+        with self._daemon_lock:
+            if self._daemon_stop:
+                self._daemon_stop.set()
+            if self._daemon_thread:
+                self._daemon_thread.join()
+            self.scheduler.shutdown()
 
     def static_path(self, request_path: str) -> Path | None:
         raw_path = urlparse(request_path).path
@@ -62,6 +71,9 @@ class PasWebApp:
             return {"ok": True, "data": self.repository.overview()}
         if parsed.path == "/api/schedules":
             return {"ok": True, "data": self.repository.list_schedules()}
+        if parsed.path.startswith("/api/jobs/"):
+            job = self.scheduler.get_job(parsed.path.rsplit("/", 1)[-1])
+            return {"ok": True, "data": job} if job else {"ok": False, "error": "job_not_found"}
         if parsed.path == "/api/runs":
             query = parse_qs(parsed.query)
             limit = _int_query(query, "limit", 50, 1, 500)
@@ -90,12 +102,20 @@ class PasWebApp:
                     run = self.repository.get_run(parts[2], run_id)
                 else:
                     run = self.repository.get_run(run_id)
-                result = self.repository.get_result(parts[2], run_id)
+                compact = parse_qs(parsed.query).get("compact", ["0"])[0] == "1"
+                result = self.repository.get_result(parts[2], run_id, compact=compact)
                 if run is None:
                     return {"ok": False, "error": "run_not_found"}
                 return {"ok": True, "data": {"run": run, "result": result}}
         if parsed.path.startswith("/api/results/"):
             parts = parsed.path.strip("/").split("/")
+            if len(parts) == 5 and parts[2] in {"se", "lf", "ca"} and parts[4] == "details":
+                run_id = _int_path(parts[3])
+                if run_id is None:
+                    return {"ok": False, "error": "invalid_run_id"}
+                query = parse_qs(parsed.query)
+                data = self.repository.browse_details(parts[2], run_id, _int_query(query, "limit", 50, 1, 500), _int_query(query, "offset", 0, 0, 1_000_000), query.get("q", [""])[0])
+                return {"ok": True, "data": data}
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "results" and parts[2] in {"se", "lf", "ca"}:
                 run_id = _int_path(parts[3])
                 if run_id is None:
@@ -142,15 +162,34 @@ class PasWebApp:
                 limit = int(query.get("limit", [100])[0])
             except (TypeError, ValueError):
                 limit = 100
-            logs = self.repository.list_logs(limit) if callable(getattr(self.repository, "list_logs", None)) else []
-            return {"ok": True, "data": logs}
+            offset = _int_query(query, "offset", 0, 0, 1_000_000)
+            logs = self.repository.list_logs(limit, offset) if callable(getattr(self.repository, "list_logs", None)) else []
+            return {"ok": True, "data": logs, "meta": {"total": self.repository.count_logs(), "offset": offset}}
         return {"ok": False, "error": "not_found"}
 
     def api_post(self, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        payload = payload or {}
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, dict):
+            return {"ok": False, "error": "payload_must_be_object"}
+        if path.startswith("/api/schedules/"):
+            name = path.rsplit("/", 1)[-1]
+            try:
+                data = self.scheduler.update_schedule(name, payload.get("enabled"), payload.get("period_seconds"))
+            except (ValueError, TypeError) as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "data": data}
+        if path == "/api/actions/submit":
+            task = payload.get("task")
+            if task is not None and task not in ("se", "lf", "ca"):
+                return {"ok": False, "error": "invalid_task"}
+            data = self.scheduler.trigger_task_async(task) if task else self.scheduler.trigger_all_async()
+            return {"ok": bool(data["accepted"]), "data": data, "error": None if data["accepted"] else data.get("reason", "already_running")}
         if path in {"/api/actions/run-once", "/api/actions/trigger"}:
             task = payload.get("task")
-            if task in {"se", "lf", "ca"}:
+            if task is not None and task not in ("se", "lf", "ca"):
+                return {"ok": False, "error": "invalid_task"}
+            if task in ("se", "lf", "ca"):
                 trigger = getattr(self.scheduler, "trigger_task", None)
                 ok = bool(trigger(task)) if callable(trigger) else bool(self.scheduler.run_task(task))
                 return {"ok": ok, "data": {"task": task, "success": ok, "execution_source": "manual"}}
@@ -158,16 +197,21 @@ class PasWebApp:
             result = trigger_all() if callable(trigger_all) else self.scheduler.run_once()
             return {"ok": bool(result) and all(result.values()), "data": {"results": result, "execution_source": "manual"}}
         if path == "/api/actions/daemon/start":
-            if self._daemon_thread and self._daemon_thread.is_alive():
+            with self._daemon_lock:
+                if self._daemon_thread and self._daemon_thread.is_alive():
+                    return {"ok": True, "data": {"running": True}}
+                self._daemon_stop = threading.Event()
+                self._daemon_thread = threading.Thread(target=self.scheduler.run_daemon, args=(self._daemon_stop,), daemon=True)
+                self._daemon_thread.start()
                 return {"ok": True, "data": {"running": True}}
-            self._daemon_stop = threading.Event()
-            self._daemon_thread = threading.Thread(target=self.scheduler.run_daemon, args=(self._daemon_stop,), daemon=True)
-            self._daemon_thread.start()
-            return {"ok": True, "data": {"running": True}}
         if path == "/api/actions/daemon/stop":
-            if self._daemon_stop:
-                self._daemon_stop.set()
-            return {"ok": True, "data": {"running": False}}
+            with self._daemon_lock:
+                if self._daemon_stop:
+                    self._daemon_stop.set()
+                if self._daemon_thread:
+                    self._daemon_thread.join(timeout=2)
+                running = bool(self._daemon_thread and self._daemon_thread.is_alive())
+                return {"ok": True, "data": {"running": running, "stopping": running}}
         if path == "/api/actions/daemon/status":
             return {"ok": True, "data": {"running": bool(self._daemon_thread and self._daemon_thread.is_alive())}}
         return {"ok": False, "error": "not_found"}
@@ -210,7 +254,8 @@ class PasWebApp:
                     response = app.api_post(self.path, payload)
                 except (ValueError, json.JSONDecodeError) as exc:
                     response = {"ok": False, "error": str(exc)}
-                self._send_json(response, 200 if response.get("ok", False) else 400)
+                status = (202 if self.path == "/api/actions/submit" else 200) if response.get("ok", False) else 400
+                self._send_json(response, status)
 
             def log_message(self, fmt, *args):
                 logger.info("web %s", fmt % args)
@@ -221,5 +266,6 @@ class PasWebApp:
 def serve(config: Any, repository: Repository, scheduler: Any, static_root: str | Path, host: str = "127.0.0.1", port: int = 8080) -> ThreadingHTTPServer:
     app = PasWebApp(config, repository, scheduler, static_root)
     server = ThreadingHTTPServer((host, int(port)), app.handler_class())
+    server.app = app
     logger.info("PAS web listening on http://%s:%s", host, port)
     return server

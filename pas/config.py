@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -143,7 +144,7 @@ def _positive(value: Any, field: str, default: float) -> float:
         number = float(default if value is None else value)
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"{field} must be a positive number") from exc
-    if number <= 0:
+    if not math.isfinite(number) or number <= 0:
         raise ConfigError(f"{field} must be a positive number")
     return number
 
@@ -214,3 +215,12 @@ def load_config(path: str | Path) -> AppConfig:
                     raise ConfigError(f"tasks.{name}.{field} does not exist: {candidate}")
         tasks[name] = task
     return AppConfig(source, kernel_root, database, databases, tick_seconds, retry_seconds, tasks)
+
+
+def validate_task_inputs(task: TaskConfig) -> None:
+    required = {"se": ("model_file", "measurement_file", "parameter_file"),
+                "lf": ("model_file", "parameter_file"), "ca": ("model_file", "limit_file")}
+    for field in required[task.name]:
+        value = getattr(task, field, None)
+        if value is None or not Path(value).is_file():
+            raise ConfigError(f"tasks.{task.name}.{field} does not exist: {value}")

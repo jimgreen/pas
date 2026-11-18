@@ -44,7 +44,8 @@ def table_names(task_type: str | None = None) -> tuple[str, ...]:
     elif task_type == "lf":
         prefixes = ("pas_lf_",)
     elif task_type == "ca":
-        prefixes = ("pas_ra_",)
+        # CA writes both risk assessment and legacy LF security result tables.
+        prefixes = ("pas_ra_", "pas_lf_secure_")
     else:
         raise ValueError(f"unsupported task type: {task_type}")
     return tuple(name for name in names if name.startswith(prefixes))

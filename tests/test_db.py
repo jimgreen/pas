@@ -62,3 +62,18 @@ def test_manual_execution_source_is_persisted_and_filterable(tmp_path: Path):
     assert repo.list_runs(execution_source="manual")[0]["run_id"] == run_id
     assert repo.count_runs(execution_source="schedule") == 0
     assert repo.get_run(run_id)["execution_source"] == "manual"
+
+
+def test_hub_history_pages_beyond_first_500_per_task(tmp_path):
+    repos={name:Repository(tmp_path/f"{name}.db") for name in ("se","lf","ca")}
+    hub=RepositoryHub(repos)
+    hub.initialize()
+    for name,repo in repos.items():
+        sid=repo.upsert_schedule(name,True,60,{})
+        with repo.result_transaction():
+            repo._connection().executemany("INSERT INTO calculation_run(schedule_id,task_type,status,started_at) VALUES (?,?,'running',?)",[(sid,name,f"2026-11-18T{i//60:02d}:{i%60:02d}:00+00:00") for i in range(520)])
+    page=hub.list_runs(10,offset=1520)
+    assert len(page)==10
+    assert page[0]["run_id"]==14
+    assert hub.count_runs()==1560
+    hub.close()

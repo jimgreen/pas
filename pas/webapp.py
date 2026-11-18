@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 
 from .cli import _build_scheduler
 from .web import serve
@@ -17,12 +18,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     scheduler, repository = _build_scheduler(args.config)
-    server = serve(scheduler.config, repository, scheduler, "web", args.host, args.port)
+    server = serve(scheduler.config, repository, scheduler, Path(__file__).resolve().parent.parent / "web", args.host, args.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         return 0
     finally:
+        server.app.close()
         server.server_close()
         repository.close()
     return 0

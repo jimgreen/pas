@@ -76,3 +76,17 @@ def test_transaction_rolls_back_dbdef_projection(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM pas_ra_info").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM pas_dbdef_run").fetchone()[0] == 0
     repo.close()
+
+
+def test_ca_exposes_security_and_risk_tables(tmp_path):
+    repo=Repository(tmp_path/"ca.db");repo.initialize()
+    rid=_run(repo,"ca")
+    result={"risk_level":"中","risks":[{"risk_type":"voltage","risk_value":1.2}]}
+    with repo.result_transaction():
+        repo.store_ca_result(rid,result)
+        repo.store_dbdef_result("ca",rid,result,"2026-11-18T00:00:00+00:00")
+    tables=repo.get_result("ca",rid)["dbdef"]["tables"]
+    assert tables["pas_lf_secure_result"]["rows"][0]["value"]==1.2
+    assert tables["pas_ra_risk_list"]["count"]==1
+    assert "pas_lf_secure_result" in {row["table_name"] for row in repo.list_dbdef_tables("ca",rid)}
+    repo.close()
