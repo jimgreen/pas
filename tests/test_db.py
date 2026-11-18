@@ -77,3 +77,16 @@ def test_hub_history_pages_beyond_first_500_per_task(tmp_path):
     assert page[0]["run_id"]==14
     assert hub.count_runs()==1560
     hub.close()
+
+
+def test_trend_groups_runs_by_hour(tmp_path):
+    repo = Repository(tmp_path / "runs.db")
+    repo.initialize()
+    sid = repo.upsert_schedule("se", True, 60, {})
+    for index, status in enumerate(("succeeded", "failed", "succeeded")):
+        rid = repo.start_run(sid, "se", f"2026-11-18T03:0{index}:00+00:00", "kernel", "fp")
+        repo.finish_run(rid, status, f"2026-11-18T03:0{index}:01+00:00", index + 1, 0 if status == "succeeded" else 1)
+    trend = repo.trend()
+    assert trend[-1]["bucket"] == "2026-11-18T03"
+    assert trend[-1]["tasks"]["se"] == {"runs": 3, "succeeded": 2, "failed": 1, "avg_elapsed_seconds": 2.0}
+    repo.close()

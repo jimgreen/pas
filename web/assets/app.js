@@ -28,7 +28,7 @@ function notify(text, error=false) {
 async function api(url, body) {
   const res = await fetch(url, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await res.json();
-  if (!res.ok || !data.ok) throw new Error(({already_running:'任务正在执行，请等待完成',invalid_task:'无效任务',service_stopping:'服务正在停止'}[data.error]) || data.error || '请求失败');
+  if (!res.ok || !data.ok) throw new Error(({already_running:'任务正在执行，请等待完成',invalid_task:'无效任务',service_stopping:'服务正在停止',no_failed_run:'没有可重试的失败任务'}[data.error]) || data.error || '请求失败');
   return data;
 }
 function pager(page,total,scope) {
@@ -44,15 +44,31 @@ function jobsPanel(name) {
   return jobs.length ? `<div class="job-list">${jobs.map(j=>`<div class="job-row"><strong>${j.task.toUpperCase()}</strong>${badge(j.status)}<span title="${esc(j.error_message || j.started_at || j.submitted_at)}">${esc(j.error_message || (j.elapsed_seconds == null ? sourceLabel(j.execution_source) : Number(j.elapsed_seconds).toFixed(2)+' s'))}</span>${j.run_id?`<a class="mini" href="#/analysis/${j.task}?run=${j.run_id}">结果 #${j.run_id}</a>`:''}</div>`).join('')}</div>` : empty('暂无本次服务启动后的任务');
 }
 function serviceControls() {
-  return `<div class="btn-row"><button class="primary" data-action="all">执行全部</button><button class="mini" data-action="daemon-start">启动周期</button><button class="mini" data-action="daemon-stop">停止周期</button></div><p class="muted">停止周期后，已接受的计算仍会完成并保存结果。</p>`;
+  return `<div class="btn-row"><button type="button" class="primary" data-action="all">执行全部</button><button type="button" class="mini" data-action="retry-failed">重试失败任务</button><button type="button" class="mini" data-action="daemon-start">启动周期</button><button type="button" class="mini" data-action="daemon-stop">停止周期</button></div><p class="muted">停止周期后，已接受的计算仍会完成并保存结果。</p>`;
+}
+function trendChart(points) {
+  const width=760,height=170,left=38,right=18,top=18,bottom=28;
+  if(!points?.length)return `<div class="empty">暂无趋势数据</div>`;
+  const names=['se','lf','ca'], colors={se:'#1769e0',lf:'#14966b',ca:'#ce8b24'};
+  const values=names.map(name=>points.map(item=>Number(item.tasks?.[name]?.runs||0)));
+  const max=Math.max(1,...values.flat());
+  const x=i=>left+(points.length===1?0:(width-left-right)*i/(points.length-1));
+  const y=value=>top+(height-top-bottom)*(1-value/max);
+  const lines=names.map((name,index)=>{
+    const coords=values[index].map((value,i)=>`${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+    const last=values[index][values[index].length-1]||0;
+    return `<polyline points="${coords}" fill="none" stroke="${colors[name]}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/><text x="${Math.min(width-right-22,x(values[index].length-1)+6)}" y="${y(last)-5}" fill="${colors[name]}" font-size="11">${name.toUpperCase()} ${last}</text>`;
+  }).join('');
+  const grid=[0,Math.ceil(max/2),max].map(value=>`<line x1="${left}" x2="${width-right}" y1="${y(value)}" y2="${y(value)}" stroke="#e3e9f2"/><text x="${left-8}" y="${y(value)+4}" text-anchor="end" fill="#6d7890" font-size="10">${value}</text>`).join('');
+  return `<svg class="trend-chart" role="img" aria-label="最近任务执行趋势" viewBox="0 0 ${width} ${height}"><title>最近任务执行趋势</title><desc>按小时统计 SE、LF、CA 的执行次数。</desc>${grid}<line x1="${left}" x2="${width-right}" y1="${height-bottom}" y2="${height-bottom}" stroke="#b8c4d6"/>${lines}<text x="${left}" y="${height-6}" fill="#6d7890" font-size="10">${esc(points[0].bucket)}</text><text x="${width-right}" y="${height-6}" text-anchor="end" fill="#6d7890" font-size="10">${esc(points[points.length-1].bucket)}</text></svg>`;
 }
 async function overview() {
-  const [overview,config] = await Promise.all([api('/api/overview'),api('/api/config')]);
+  const [overview,config,trend] = await Promise.all([api('/api/overview'),api('/api/config'),api('/api/metrics/trend?limit=24')]);
   const d=overview.data;
   let content;
   if (state.overviewTab==='history') content=`<section class="card full-panel"><h2>最近运行</h2>${runTable(d.recent_runs.slice(0,pageSize()))}<a class="mini" href="#/runs">筛选全部历史 →</a></section>`;
   else if(state.overviewTab==='jobs')content=`<section class="card"><h2>执行管理</h2>${serviceControls()}<div data-jobs>${jobsPanel()}</div></section>`;
-  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="#/analysis/${t}">查看</a></div></section>`}).join('')}</div><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
+  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="#/analysis/${t}">查看</a></div></section>`}).join('')}</div><section class="card trend-card"><div class="section-head"><h2>最近执行趋势</h2><span class="muted">按小时统计执行次数</span></div>${trendChart(trend.data)}</section><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button type="button" class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
   return tabs([['tasks','任务监控'],['jobs','执行管理'],['history','最近运行']],state.overviewTab)+`<div class="analysis-body">${content}</div>`;
 }
 async function history(name) {
@@ -211,6 +227,7 @@ document.addEventListener('click',async e=>{
     if(el.dataset.col){state.browse[task()].col+=Number(el.dataset.col);return render();}
     const action=el.dataset.action;
     if(action==='all'||action==='run-all'){el.disabled=true;try{return await submit();}finally{el.disabled=false;}}
+    if(action==='retry-failed'){el.disabled=true;try{const d=(await api('/api/actions/retry-failed',{})).data;const jobs=Object.values(d.tasks||{});for(const j of jobs)if(j.accepted)state.watching.set(j.job_id,j.task);notify(jobs.length?jobs.map(j=>`${j.task.toUpperCase()}：${j.accepted?'已接受重试':j.reason}`).join('；'):'没有失败任务');await refreshStatus();}finally{el.disabled=false;}return render();}
     if(action?.startsWith('daemon-')){const r=await api(`/api/actions/daemon/${action.slice(7)}`,{});notify(r.data.stopping?'正在停止调度':action==='daemon-start'?'周期调度已启动':'周期调度已停止；当前任务将继续完成');return refreshStatus();}
     if(action==='export')return exportPage();
     if(action==='close-dialog')return document.querySelector('#value-dialog').close();

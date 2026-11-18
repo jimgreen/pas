@@ -156,6 +156,22 @@ def test_run_all_with_no_enabled_tasks_is_not_reported_as_success(tmp_path):
     assert response["ok"] is False
 
 
+def test_trend_api_and_retry_failed_api(tmp_path):
+    app, scheduler = make_app(tmp_path)
+    trend = app.api_get("/api/metrics/trend?limit=2")
+    assert trend["ok"] is True
+    assert isinstance(trend["data"], list)
+
+    class RetryScheduler(FakeScheduler):
+        def retry_failed_async(self, task=None):
+            return {"accepted": True, "tasks": {"se": {"accepted": True, "job_id": "job1", "task": "se"}}}
+
+    app.scheduler = RetryScheduler()
+    retry = app.api_post("/api/actions/retry-failed", {})
+    assert retry["ok"] is True
+    assert retry["data"]["tasks"]["se"]["accepted"] is True
+
+
 def test_dbdef_browse_api_returns_catalog_and_rows(tmp_path):
     app, _ = make_app(tmp_path)
     result = {

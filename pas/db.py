@@ -46,6 +46,9 @@ class Repository:
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA synchronous = NORMAL")
+            self._conn.execute("PRAGMA busy_timeout = 30000")
+            self._conn.execute("PRAGMA mmap_size = 268435456")
         return self._conn
 
     @synchronized
@@ -322,6 +325,34 @@ class Repository:
         return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
 
     @synchronized
+    def trend(self, limit: int = 48) -> list[dict[str, Any]]:
+        """Return compact hourly run statistics for the overview chart."""
+        limit = max(1, min(int(limit), 168))
+        rows = self._rows(
+            "SELECT task_type, status, started_at, elapsed_seconds "
+            "FROM calculation_run ORDER BY started_at DESC, run_id DESC LIMIT ?",
+            (limit * 12,),
+        )
+        buckets: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in rows:
+            timestamp = str(row.get("started_at") or "")
+            bucket = timestamp[:13] if len(timestamp) >= 13 else timestamp or "unknown"
+            item = buckets.setdefault(bucket, {}).setdefault(row["task_type"], {"runs": 0, "succeeded": 0, "failed": 0, "elapsed": []})
+            item["runs"] += 1
+            item["succeeded"] += int(row["status"] == "succeeded")
+            item["failed"] += int(row["status"] == "failed")
+            if row.get("elapsed_seconds") is not None:
+                item["elapsed"].append(float(row["elapsed_seconds"]))
+        result = []
+        for bucket in sorted(buckets)[-limit:]:
+            tasks = {}
+            for name, item in buckets[bucket].items():
+                elapsed = item.pop("elapsed")
+                tasks[name] = {**item, "avg_elapsed_seconds": sum(elapsed) / len(elapsed) if elapsed else None}
+            result.append({"bucket": bucket, "tasks": tasks})
+        return result
+
+    @synchronized
     def upsert_schedule(self, task_type: str, enabled: bool, period_seconds: float, config: dict[str, Any], next_due_at: str | None = None) -> int:
         now = utc_now()
         conn = self._connection()
@@ -386,24 +417,19 @@ class Repository:
         stats = result.get("statistics", {})
         conn = self._connection()
         conn.execute("INSERT INTO se_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, _bool(result.get("converged")), _bool(result.get("observable")), int(stats.get("iterations", result.get("iterations", 0))), float(stats.get("objective", result.get("objective", 0.0))), float(stats.get("max_correction", result.get("max_correction", 0.0))), float(stats.get("residual_inf", result.get("residual_inf", 0.0))), int(stats.get("rank", 0)), int(stats.get("state_count", 0)), int(stats.get("measurement_count", 0)), int(stats.get("deficiency", 0)), int(stats.get("prefiltered_measurement_count", 0)), int(stats.get("pseudo_measurement_count", 0)), int(stats.get("bad_data_count", 0)), int(stats.get("normal_measurement_count", 0)), json.dumps(result.get("state", []), ensure_ascii=False), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        for row in result.get("measurements", []):
-            conn.execute("INSERT INTO se_measurement_result(run_id, measurement_idx, measurement_name, device_type, device_name, measurement_type, value, estimated_value, residual, normalized_residual, valid, source, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, row.get("idx", 0), row.get("name", ""), row.get("device_type", ""), row.get("device_name", ""), row.get("meas_type", ""), row.get("value"), row.get("estimated_value"), row.get("residual"), row.get("normalized_residual"), _bool(row.get("valid", True)), row.get("source", ""), row.get("reason", "")))
+        conn.executemany("INSERT INTO se_measurement_result(run_id, measurement_idx, measurement_name, device_type, device_name, measurement_type, value, estimated_value, residual, normalized_residual, valid, source, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, row.get("idx", 0), row.get("name", ""), row.get("device_type", ""), row.get("device_name", ""), row.get("meas_type", ""), row.get("value"), row.get("estimated_value"), row.get("residual"), row.get("normalized_residual"), _bool(row.get("valid", True)), row.get("source", ""), row.get("reason", "")) for row in result.get("measurements", [])))
 
     @synchronized
     def store_lf_result(self, run_id: int, result: dict[str, Any]) -> None:
         conn = self._connection()
         conn.execute("INSERT INTO lf_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, _bool(result.get("converged")), int(result.get("iterations", 0)), float(result.get("norm_f", 0.0)), str(result.get("failure_reason", "") or ""), result.get("ac_converged"), result.get("ac_iterations"), result.get("ac_norm_f"), result.get("dc_converged"), result.get("dc_iterations"), result.get("dc_norm_f"), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        for row in result.get("devices", []):
-            conn.execute("INSERT INTO lf_device_result(run_id, domain, device_type, device_key, node_from, node_to, voltage_from, voltage_to, p_from, q_from, p_to, q_to, current_from, current_to, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, row.get("domain", ""), row.get("device_type", ""), row.get("device_key", ""), row.get("node_from"), row.get("node_to"), row.get("voltage_from"), row.get("voltage_to"), row.get("p_from"), row.get("q_from"), row.get("p_to"), row.get("q_to"), row.get("current_from"), row.get("current_to"), json.dumps(row, ensure_ascii=False)))
+        conn.executemany("INSERT INTO lf_device_result(run_id, domain, device_type, device_key, node_from, node_to, voltage_from, voltage_to, p_from, q_from, p_to, q_to, current_from, current_to, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, row.get("domain", ""), row.get("device_type", ""), row.get("device_key", ""), row.get("node_from"), row.get("node_to"), row.get("voltage_from"), row.get("voltage_to"), row.get("p_from"), row.get("q_from"), row.get("p_to"), row.get("q_to"), row.get("current_from"), row.get("current_to"), json.dumps(row, ensure_ascii=False)) for row in result.get("devices", [])))
 
     @synchronized
     def store_ca_result(self, run_id: int, result: dict[str, Any]) -> None:
         conn = self._connection()
         conn.execute("INSERT INTO ca_result VALUES (?, ?, ?, ?, ?, ?)", (run_id, result.get("risk_level", "无"), int(result.get("n0_risk_count", 0)), int(result.get("n1_scan_count", 0)), int(result.get("n1_risk_count", 0)), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        for row in result.get("risks", []):
-            value = row.get("risk_value")
-            real = value if isinstance(value, (int, float)) else None
-            conn.execute("INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, str(row.get("contingency", "N-0")), str(row.get("risk_source", "")), str(row.get("risk_dist", "")), str(row.get("risk_type", "")), real, None if real is not None else str(value or ""), str(row.get("risk_info", "")), utc_now()))
+        conn.executemany("INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, str(row.get("contingency", "N-0")), str(row.get("risk_source", "")), str(row.get("risk_dist", "")), str(row.get("risk_type", "")), row.get("risk_value") if isinstance(row.get("risk_value"), (int, float)) else None, None if isinstance(row.get("risk_value"), (int, float)) else str(row.get("risk_value") or ""), str(row.get("risk_info", "")), utc_now()) for row in result.get("risks", [])))
 
     @synchronized
     def store_result(self, task_type: str, run_id: int, result: dict[str, Any]) -> None:
@@ -522,6 +548,31 @@ class RepositoryHub:
             for key in counts:
                 counts[key] += int(item.get(key, 0))
         return {"counts": counts, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
+
+    def trend(self, limit: int = 48) -> list[dict[str, Any]]:
+        rows = []
+        for repository in self.repositories.values():
+            rows.extend(repository.trend(limit))
+        buckets: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in rows:
+            target = buckets.setdefault(row["bucket"], {})
+            for name, values in row["tasks"].items():
+                item = target.setdefault(name, {"runs": 0, "succeeded": 0, "failed": 0, "elapsed_sum": 0.0, "elapsed_count": 0})
+                item["runs"] += values["runs"]
+                item["succeeded"] += values["succeeded"]
+                item["failed"] += values["failed"]
+                if values["avg_elapsed_seconds"] is not None:
+                    item["elapsed_sum"] += values["avg_elapsed_seconds"] * values["runs"]
+                    item["elapsed_count"] += values["runs"]
+        result = []
+        for bucket in sorted(buckets)[-max(1, min(int(limit), 168)):]:
+            tasks = {}
+            for name, values in buckets[bucket].items():
+                count = values.pop("elapsed_count")
+                total = values.pop("elapsed_sum")
+                tasks[name] = {**values, "avg_elapsed_seconds": total / count if count else None}
+            result.append({"bucket": bucket, "tasks": tasks})
+        return result
 
     def list_config(self) -> list[dict[str, Any]]:
         return self.control.list_config() if self.control is not None else []

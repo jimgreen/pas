@@ -69,6 +69,9 @@ class PasWebApp:
             return {"ok": True, "data": scheduler_status}
         if parsed.path == "/api/overview":
             return {"ok": True, "data": self.repository.overview()}
+        if parsed.path == "/api/metrics/trend":
+            query = parse_qs(parsed.query)
+            return {"ok": True, "data": self.repository.trend(_int_query(query, "limit", 24, 1, 168))}
         if parsed.path == "/api/schedules":
             return {"ok": True, "data": self.repository.list_schedules()}
         if parsed.path.startswith("/api/jobs/"):
@@ -185,6 +188,15 @@ class PasWebApp:
                 return {"ok": False, "error": "invalid_task"}
             data = self.scheduler.trigger_task_async(task) if task else self.scheduler.trigger_all_async()
             return {"ok": bool(data["accepted"]), "data": data, "error": None if data["accepted"] else data.get("reason", "already_running")}
+        if path == "/api/actions/retry-failed":
+            task = payload.get("task")
+            if task is not None and task not in ("se", "lf", "ca"):
+                return {"ok": False, "error": "invalid_task"}
+            try:
+                data = self.scheduler.retry_failed_async(task)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": bool(data["accepted"]), "data": data, "error": None if data["accepted"] else "no_failed_run"}
         if path in {"/api/actions/run-once", "/api/actions/trigger"}:
             task = payload.get("task")
             if task is not None and task not in ("se", "lf", "ca"):

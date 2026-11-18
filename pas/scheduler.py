@@ -183,6 +183,17 @@ class Scheduler:
         items = {name: self.trigger_task_async(name) for name in TASK_NAMES if name in self.runners}
         return {"accepted": any(item["accepted"] for item in items.values()), "tasks": items}
 
+    def retry_failed_async(self, name: str | None = None) -> dict[str, Any]:
+        """Retry the latest failed run for one task or for every task."""
+        names = (name,) if name else TASK_NAMES
+        if any(item not in TASK_NAMES for item in names):
+            raise ValueError("invalid task")
+        results = {}
+        for item in names:
+            failed = self.repositories[item].list_runs(1, item, status="failed")
+            results[item] = self.trigger_task_async(item) if failed else {"accepted": False, "task": item, "reason": "no_failed_run"}
+        return {"accepted": any(item["accepted"] for item in results.values()), "tasks": results}
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             job = self._jobs.get(job_id)
