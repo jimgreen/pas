@@ -35,7 +35,7 @@ Web 人工执行优先使用 `POST /api/actions/submit`，接口立即返回任�
 
 总览的“运行趋势”支持 6/24/48/168 小时窗口、执行/成功/失败次数及平均耗时切换、分页统计明细与窗口 CSV 导出。`GET /api/metrics/trend?limit=24` 按 UTC 自然小时聚合完整窗口，包含尚未结束的当前小时，空小时补齐；平均耗时只按有耗时的记录计算。执行控制页提供“重试失败任务”，仅当该任务最近一次运行失败才重试；`POST /api/actions/retry-failed` 可传 `{"task":"lf"}` 限定任务，已恢复成功的旧失败记录不会重跑。
 
-Web 页面按功能分层：总览展示三类任务状态和服务状态；运行历史支持任务/状态筛选与分页；SE、LF、CA 页面分别提供功能概览、运行记录、结构化结果明细和执行控制标签；系统设置提供数据库健康检查、调度控制和 PAS 日志标签。Web 进程启动后会自动恢复周期调度，仍可在界面或 `/api/actions/daemon/{start|stop}` 手动控制。页面通过 `/api/status`、`/api/health`、`/api/runs`、`/api/runs/{task}/{run_id}`、`/api/config` 和 `/api/logs` 与后台实时联动。
+Web 采用独立 HTML 页面：`/overview.html` 总览、`/analysis/se.html` 状态估计、`/analysis/lf.html` 潮流分析、`/analysis/ca.html` 静态安全、`/runs.html` 运行历史、`/settings.html` 系统设置；根路径 `/` 兼容打开总览。每个页面共享样式和 API 客户端，但拥有独立 URL、页面状态和加载生命周期，页面之间使用真实链接切换，不再把所有功能放在同一个 HTML 文档中。总览展示三类任务状态和服务状态；运行历史支持任务/状态筛选与分页；SE、LF、CA 页面分别提供功能概览、运行记录、结构化结果明细和执行控制标签；系统设置提供数据库健康检查、调度控制和 PAS 日志标签。Web 进程启动后会自动恢复周期调度，仍可在界面或 `/api/actions/daemon/{start|stop}` 手动控制。页面通过 `/api/status`、`/api/health`、`/api/runs`、`/api/runs/{task}/{run_id}`、`/api/config` 和 `/api/logs` 与后台实时联动。
 
 用户提供的 42 个 PAS `dbdef` 定义已生成到 `pas/dbdef_catalog.json` 和 `pas/dbdef_schema.sql`，并在四个数据库初始化时幂等建表。SE、LF、CA 的一次成功计算会在各自结果库中同时写入通用结果表和对应的 `pas_se_*`、`pas_lf_*`、`pas_ra_*` 原始表；`pas_dbdef_run` 保存运行编号与 dbdef 记录时间的关联，Web 结果详情会展示本次实际写入的表和行数。LF 使用内核 `result_mode="full"` 回写 AC/DC 设备端值、节点和功率/电流明细。
 

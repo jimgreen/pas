@@ -75,6 +75,26 @@ def test_static_route_rejects_path_traversal(tmp_path):
     assert app.static_path("/../runs.db") is None
 
 
+def test_static_web_is_split_into_real_pages():
+    web_root = Path(__file__).resolve().parents[1] / "web"
+    pages = {
+        "index.html": "/overview",
+        "overview.html": "/overview",
+        "analysis/se.html": "/analysis/se",
+        "analysis/lf.html": "/analysis/lf",
+        "analysis/ca.html": "/analysis/ca",
+        "runs.html": "/runs",
+        "settings.html": "/settings",
+    }
+    for relative, route in pages.items():
+        html = (web_root / relative).read_text(encoding="utf-8")
+        assert f'<body data-page="{route}">' in html
+        assert "href=\"#/" not in html
+    assert (web_root / "analysis" / "se.html").is_file()
+    assert (web_root / "analysis" / "lf.html").is_file()
+    assert (web_root / "analysis" / "ca.html").is_file()
+
+
 def test_http_filtered_export_stream_and_validation(tmp_path):
     import csv
     import io

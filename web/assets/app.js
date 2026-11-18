@@ -1,7 +1,14 @@
 const TASKS = ['se', 'lf', 'ca'];
 const LABELS = {se:'状态估计 SE', lf:'潮流分析 LF', ca:'静态安全 CA'};
+const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html'};
+const pageUrl = (route, query='') => {
+  const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
+  return `${PAGE_URLS[key] || PAGE_URLS.overview}${query}`;
+};
+const initialPage = document.body.dataset.page || location.hash.split('?')[0].slice(1) || '/overview';
+const initialQuery = location.search || (location.hash.includes('?') ? `?${location.hash.split('?')[1]}` : '');
 const state = {
-  route: location.hash.slice(1) || '/overview', token: 0, page: 0,
+  route: initialPage + initialQuery, token: 0, page: 0,
   filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule',
   tabs: {se:'summary',lf:'summary',ca:'summary'}, selected:{},
   browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:'',sort:'',direction:'asc',view:'all'}])),
@@ -42,11 +49,11 @@ function pager(page,total,scope) {
 }
 function runTable(rows) {
   if (!rows.length) return empty('暂无运行记录');
-  return `<div class="table-wrap"><table><thead><tr><th>任务 / 来源</th><th>状态</th><th>开始时间</th><th>耗时 / 操作</th></tr></thead><tbody>${rows.map(r=>`<tr><td title="${sourceLabel(r.execution_source)}">${r.task_type.toUpperCase()} · ${r.execution_source==='manual'?'人工':'周期'}</td><td>${badge(r.status)}</td><td data-value="${esc(r.started_at)}" title="${esc(r.started_at)}">${esc(r.started_at)}</td><td><a href="#/analysis/${r.task_type}?run=${r.run_id}">${r.elapsed_seconds==null?'查看':Number(r.elapsed_seconds).toFixed(2)+'s'} →</a></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>任务 / 来源</th><th>状态</th><th>开始时间</th><th>耗时 / 操作</th></tr></thead><tbody>${rows.map(r=>`<tr><td title="${sourceLabel(r.execution_source)}">${r.task_type.toUpperCase()} · ${r.execution_source==='manual'?'人工':'周期'}</td><td>${badge(r.status)}</td><td data-value="${esc(r.started_at)}" title="${esc(r.started_at)}">${esc(r.started_at)}</td><td><a href="${pageUrl(`/analysis/${r.task_type}`,`?run=${r.run_id}`)}">${r.elapsed_seconds==null?'查看':Number(r.elapsed_seconds).toFixed(2)+'s'} →</a></td></tr>`).join('')}</tbody></table></div>`;
 }
 function jobsPanel(name) {
   const jobs = (state.status.jobs || []).filter(j=>!name || j.task===name).slice(-3).reverse();
-  return jobs.length ? `<div class="job-list">${jobs.map(j=>`<div class="job-row"><strong>${j.task.toUpperCase()}</strong>${badge(j.status)}<span title="${esc(j.error_message || j.started_at || j.submitted_at)}">${esc(j.error_message || (j.elapsed_seconds == null ? sourceLabel(j.execution_source) : Number(j.elapsed_seconds).toFixed(2)+' s'))}</span>${j.run_id?`<a class="mini" href="#/analysis/${j.task}?run=${j.run_id}">结果 #${j.run_id}</a>`:''}</div>`).join('')}</div>` : empty('暂无本次服务启动后的任务');
+  return jobs.length ? `<div class="job-list">${jobs.map(j=>`<div class="job-row"><strong>${j.task.toUpperCase()}</strong>${badge(j.status)}<span title="${esc(j.error_message || j.started_at || j.submitted_at)}">${esc(j.error_message || (j.elapsed_seconds == null ? sourceLabel(j.execution_source) : Number(j.elapsed_seconds).toFixed(2)+' s'))}</span>${j.run_id?`<a class="mini" href="${pageUrl(`/analysis/${j.task}`,`?run=${j.run_id}`)}">结果 #${j.run_id}</a>`:''}</div>`).join('')}</div>` : empty('暂无本次服务启动后的任务');
 }
 function serviceControls() {
   return `<div class="btn-row"><button type="button" class="primary" data-action="all">执行全部</button><button type="button" class="mini" data-action="retry-failed">重试失败任务</button><button type="button" class="mini" data-action="daemon-start">启动周期</button><button type="button" class="mini" data-action="daemon-stop">停止周期</button></div><p class="muted">停止周期后，已接受的计算仍会完成并保存结果。</p>`;
@@ -82,9 +89,9 @@ async function overview() {
   const [overview,config] = await Promise.all([api('/api/overview'),api('/api/config')]);
   const d=overview.data;
   let content;
-  if (state.overviewTab==='history') content=`<section class="card full-panel"><h2>最近运行</h2>${runTable(d.recent_runs.slice(0,pageSize()))}<a class="mini" href="#/runs">筛选全部历史 →</a></section>`;
+  if (state.overviewTab==='history') content=`<section class="card full-panel"><h2>最近运行</h2>${runTable(d.recent_runs.slice(0,pageSize()))}<a class="mini" href="${PAGE_URLS.runs}">筛选全部历史 →</a></section>`;
   else if(state.overviewTab==='jobs')content=`<section class="card"><h2>执行管理</h2>${serviceControls()}<div data-jobs>${jobsPanel()}</div></section>`;
-  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="#/analysis/${t}">查看</a></div></section>`}).join('')}</div><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button type="button" class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
+  else content=`<div class="grid three task-cards">${TASKS.map(t=>{const cfg=config.data.tasks[t], latest=d.recent_runs.find(r=>r.task_type===t);return `<section class="card"><h2>${LABELS[t]}</h2>${metric('周期',`${cfg.period_seconds} 秒`)}${metric('自动执行',cfg.enabled?'启用':'停用')}<p>${latest?badge(latest.status):'暂无记录'}</p><div class="btn-row">${button(t)}<a class="mini" href="${PAGE_URLS[t]}">查看</a></div></section>`}).join('')}</div><section class="card service-card">${metric('累计执行',d.counts.total_runs)}${metric('执行失败',d.counts.failed_runs)}<button type="button" class="mini" data-tab="jobs">后台调度与任务进度 →</button></section>`;
   return tabs([['tasks','任务监控'],['trend','运行趋势'],['jobs','执行管理'],['history','最近运行']],state.overviewTab)+`<div class="analysis-body">${content}</div>`;
 }
 async function history(name) {
@@ -286,12 +293,12 @@ document.addEventListener('click',async e=>{
     if(action==='close-dialog')return document.querySelector('#value-dialog').close();
     if(action==='clear'){state.filter={task:'',status:'',source:''};state.page=0;}
     if(action==='reset-search')Object.assign(state.browse[task()],{q:'',page:0});
-    if(action==='latest'){state.selected[task()]=null;state.route=state.route.split('?')[0];if(location.hash.slice(1)!==state.route){location.hash=state.route;return;}}
+    if(action==='latest'){state.selected[task()]=null;window.location.href=pageUrl(state.route.split('?')[0]);return;}
     if(['refresh','clear','reset-search','latest'].includes(action))return render();
   }catch(err){notify(err.message,true);await refreshStatus();}
 });
 document.addEventListener('keydown',e=>{const target=e.target.closest?.('[data-value]');if(e.key==='Enter'&&target){e.preventDefault();showValue(target.dataset.value);}});
-window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'/overview';state.page=0;const name=task();if(name&&state.route.includes('?run=')){state.tabs[name]='summary';Object.assign(state.browse[name],{page:0,col:0,q:''});}render();});
+window.addEventListener('hashchange',()=>{const route=location.hash.slice(1)||'/overview';window.location.href=pageUrl(route,route.includes('?')?`?${route.split('?')[1]}`:'');});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{state.page=0;state.logPage=0;state.diagPage=0;state.trend.page=0;for(const b of Object.values(state.browse))b.page=0;render();},180);});
 refreshStatus().then(render);
 async function poll(){await refreshStatus();setTimeout(poll,state.watching.size||(state.status.active_tasks||[]).length?2000:6000);}

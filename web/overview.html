@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PAS 在线分析平台</title><link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/overview">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><div><strong>PAS</strong><small>在线分析平台</small></div></div>
+      <nav>
+        <a href="/overview.html" data-route="overview">总览</a>
+        <div class="nav-group"><span>分析功能</span><a href="/analysis/se.html" data-route="se">状态估计 SE</a><a href="/analysis/lf.html" data-route="lf">潮流分析 LF</a><a href="/analysis/ca.html" data-route="ca">静态安全 CA</a></div>
+        <div class="nav-group"><span>运行管理</span><a href="/runs.html" data-route="runs">运行历史</a><a href="/settings.html" data-route="settings">系统设置</a></div>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot"></span><span id="service-state">服务检查中</span></div>
+    </aside>
+    <main class="main"><header class="topbar"><div><span class="eyebrow">POWER ANALYSIS SERVICE</span><h1 id="page-title">运行总览</h1></div><div class="top-actions"><button class="ghost" data-action="refresh">刷新</button><button class="primary" data-action="run-all">立即执行全部</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="app" class="content"></div></main>
+  </div>
+  <dialog id="value-dialog" aria-label="完整字段值"></dialog>
+  <script src="/assets/app.js"></script>
+</body>
+</html>
+
