@@ -162,6 +162,76 @@ class Repository:
             tables[table_name] = {"count": count, "rows": rows}
         return {"record_time": record_time, "tables": tables}
 
+    def _dbdef_links(self, task_type: str, run_id: int) -> list[dict[str, Any]]:
+        allowed = set(table_names(task_type))
+        rows = self._rows(
+            "SELECT table_name, record_time, row_count, created_at FROM pas_dbdef_run WHERE run_id = ? AND task_type = ? ORDER BY table_name",
+            (int(run_id), task_type),
+        )
+        return [row for row in rows if row["table_name"] in allowed]
+
+    def list_dbdef_tables(self, task_type: str, run_id: int) -> list[dict[str, Any]]:
+        """List the dbdef tables and their columns written by a run."""
+        links = self._dbdef_links(task_type, run_id)
+        catalog = load_catalog()
+        result = []
+        for link in links:
+            definition = catalog[link["table_name"]]
+            result.append(
+                {
+                    "table_name": link["table_name"],
+                    "record_time": link["record_time"],
+                    "row_count": link["row_count"],
+                    "created_at": link["created_at"],
+                    "columns": [
+                        {"name": col["name"], "type": col["type"], "is_key": bool(col.get("is_key"))}
+                        for col in definition["columns"]
+                    ],
+                }
+            )
+        return result
+
+    def browse_dbdef_table(self, task_type: str, run_id: int, table_name: str, limit: int = 50, offset: int = 0, search: str = "") -> dict[str, Any] | None:
+        """Return one dbdef table page for a specific calculation run."""
+        if table_name not in set(table_names(task_type)):
+            raise ValueError(f"unsupported dbdef table for {task_type}: {table_name}")
+        catalog = load_catalog()[table_name]
+        links = [row for row in self._dbdef_links(task_type, run_id) if row["table_name"] == table_name]
+        if not links:
+            return None
+        record_time = int(links[0]["record_time"])
+        if "time" in catalog["column_map"]:
+            predicate = "[time] = ?"
+            parameters: list[Any] = [record_time]
+        elif "id" in catalog["column_map"]:
+            predicate = "[id] >= ? AND [id] < ?"
+            parameters = [int(run_id) * 1_000_000, (int(run_id) + 1) * 1_000_000]
+        else:
+            raise ValueError(f"dbdef table has no run selector: {table_name}")
+        search = str(search or "").strip()
+        if search:
+            terms = [f"CAST([{col['name']}] AS TEXT) LIKE ?" for col in catalog["columns"]]
+            predicate += " AND (" + " OR ".join(terms) + ")"
+            parameters.extend([f"%{search}%"] * len(terms))
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        conn = self._connection()
+        total = int(conn.execute(f"SELECT COUNT(*) FROM [{table_name}] WHERE {predicate}", tuple(parameters)).fetchone()[0] or 0)
+        rows = self._rows(
+            f"SELECT * FROM [{table_name}] WHERE {predicate} ORDER BY rowid LIMIT ? OFFSET ?",
+            tuple(parameters + [limit, offset]),
+        )
+        return {
+            "table_name": table_name,
+            "record_time": record_time,
+            "columns": [
+                {"name": col["name"], "type": col["type"], "is_key": bool(col.get("is_key"))}
+                for col in catalog["columns"]
+            ],
+            "rows": rows,
+            "meta": {"limit": limit, "offset": offset, "total": total, "search": search},
+        }
+
     def overview(self, limit: int = 12) -> dict[str, Any]:
         counts = self._rows("SELECT COUNT(*) AS total_runs, SUM(status = 'succeeded') AS succeeded_runs, SUM(status = 'failed') AS failed_runs, SUM(status = 'running') AS running_runs FROM calculation_run")[0]
         return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
@@ -307,6 +377,12 @@ class RepositoryHub:
 
     def get_result(self, task_type: str, run_id: int) -> dict[str, Any] | None:
         return self.for_task(task_type).get_result(task_type, run_id)
+
+    def list_dbdef_tables(self, task_type: str, run_id: int) -> list[dict[str, Any]]:
+        return self.for_task(task_type).list_dbdef_tables(task_type, run_id)
+
+    def browse_dbdef_table(self, task_type: str, run_id: int, table_name: str, limit: int = 50, offset: int = 0, search: str = "") -> dict[str, Any] | None:
+        return self.for_task(task_type).browse_dbdef_table(task_type, run_id, table_name, limit, offset, search)
 
     def overview(self, limit: int = 12) -> dict[str, Any]:
         counts = {"total_runs": 0, "succeeded_runs": 0, "failed_runs": 0, "running_runs": 0}

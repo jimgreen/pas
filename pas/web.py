@@ -10,7 +10,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .db import Repository
 
@@ -96,6 +96,29 @@ class PasWebApp:
                 if result is None:
                     return {"ok": False, "error": "result_not_found"}
                 return {"ok": True, "data": result}
+        if parsed.path.startswith("/api/dbdef/"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) in {4, 5} and parts[0] == "api" and parts[1] == "dbdef" and parts[2] in {"se", "lf", "ca"}:
+                task = parts[2]
+                run_id = _int_path(parts[3])
+                if run_id is None:
+                    return {"ok": False, "error": "invalid_run_id"}
+                repository = self.repository
+                try:
+                    if len(parts) == 4:
+                        tables = repository.list_dbdef_tables(task, run_id)
+                        return {"ok": True, "data": {"task_type": task, "run_id": run_id, "tables": tables}}
+                    query = parse_qs(parsed.query)
+                    limit = _int_query(query, "limit", 50, 1, 500)
+                    offset = _int_query(query, "offset", 0, 0, 1_000_000)
+                    search = query.get("q", [""])[0]
+                    table_name = unquote(parts[4])
+                    data = repository.browse_dbdef_table(task, run_id, table_name, limit, offset, search)
+                except ValueError as exc:
+                    return {"ok": False, "error": str(exc)}
+                if data is None:
+                    return {"ok": False, "error": "dbdef_table_not_found"}
+                return {"ok": True, "data": data}
         if parsed.path == "/api/config":
             tasks = {name: {"name": name, "enabled": bool(getattr(task, "enabled", False)), "period_seconds": float(getattr(task, "period_seconds", 0)), "model_file": str(getattr(task, "model_file", None)) if getattr(task, "model_file", None) else None, "measurement_file": str(getattr(task, "measurement_file", None)) if getattr(task, "measurement_file", None) else None, "parameter_file": str(getattr(task, "parameter_file", None)) if getattr(task, "parameter_file", None) else None, "limit_file": str(getattr(task, "limit_file", None)) if getattr(task, "limit_file", None) else None, "scan_n1": bool(getattr(task, "scan_n1", True))} for name, task in self.config.tasks.items()}
             result_databases = {name: str(path) for name, path in getattr(self.config, "databases", {}).items()}

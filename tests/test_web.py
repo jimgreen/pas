@@ -146,3 +146,31 @@ def test_run_all_with_no_enabled_tasks_is_not_reported_as_success(tmp_path):
     response = app.api_post("/api/actions/run-once", {})
 
     assert response["ok"] is False
+
+
+def test_dbdef_browse_api_returns_catalog_and_rows(tmp_path):
+    app, _ = make_app(tmp_path)
+    result = {
+        "converged": True,
+        "observable": True,
+        "statistics": {"measurement_count": 1, "normal_measurement_count": 1},
+        "measurements": [{"idx": 1, "name": "m1", "device_name": "bus1", "meas_type": 1, "value": 1.0, "estimated_value": 1.01, "valid": True}],
+    }
+    with app.repository.result_transaction():
+        app.repository.store_se_result(1, result)
+        app.repository.store_dbdef_result("se", 1, result, "2026-11-17T00:00:00+00:00")
+
+    catalog = app.api_get("/api/dbdef/se/1")
+    assert catalog["ok"] is True
+    assert any(row["table_name"] == "pas_se_meas" for row in catalog["data"]["tables"])
+    rows = app.api_get("/api/dbdef/se/1/pas_se_meas?limit=1&q=bus1")
+    assert rows["ok"] is True
+    assert rows["data"]["meta"]["total"] == 1
+    assert rows["data"]["rows"][0]["dev_name"] == "bus1"
+
+
+def test_dbdef_browse_api_rejects_table_from_another_task(tmp_path):
+    app, _ = make_app(tmp_path)
+    response = app.api_get("/api/dbdef/se/1/pas_ra_info")
+    assert response["ok"] is False
+    assert "unsupported dbdef table" in response["error"]
