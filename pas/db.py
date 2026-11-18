@@ -149,6 +149,20 @@ class Repository:
         return self._rows("SELECT * FROM schedule ORDER BY task_type")
 
     @synchronized
+    def health(self) -> dict[str, Any]:
+        """Return a lightweight SQLite readiness check for the operations page."""
+        conn = self._connection()
+        try:
+            check = str(conn.execute("PRAGMA quick_check").fetchone()[0])
+        except sqlite3.DatabaseError as exc:
+            check = str(exc)
+        return {
+            "path": str(self.path),
+            "exists": self.path.is_file(),
+            "sqlite": "ok" if check.lower() == "ok" else check,
+        }
+
+    @synchronized
     def count_runs(self, task_type: str | None = None, status: str | None = None, execution_source: str | None = None) -> int:
         clauses = []
         parameters: list[Any] = []
@@ -396,7 +410,8 @@ class Repository:
     @synchronized
     def overview(self, limit: int = 12) -> dict[str, Any]:
         counts = self._rows("SELECT COUNT(*) AS total_runs, SUM(status = 'succeeded') AS succeeded_runs, SUM(status = 'failed') AS failed_runs, SUM(status = 'running') AS running_runs FROM calculation_run")[0]
-        return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": self.list_runs(limit), "schedules": self.list_schedules()}
+        recent = self.list_runs(limit) if int(limit) > 0 else []
+        return {"counts": {key: int(value or 0) for key, value in counts.items()}, "recent_runs": recent, "schedules": self.list_schedules()}
 
     @synchronized
     def trend(self, limit=48, end_at=None):
@@ -559,6 +574,13 @@ class RepositoryHub:
         for repository in self.repositories.values():
             rows.extend(repository.list_schedules())
         return sorted(rows, key=lambda row: row["task_type"])
+
+    def health(self) -> dict[str, Any]:
+        databases = {}
+        if self.control is not None:
+            databases["pas"] = self.control.health()
+        databases.update({name: repository.health() for name, repository in self.repositories.items()})
+        return databases
 
     def update_schedule_due(self, task_type: str, next_due_at: str | None) -> None:
         self.for_task(task_type).update_schedule_due(task_type, next_due_at)

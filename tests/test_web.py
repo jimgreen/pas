@@ -174,6 +174,54 @@ def test_status_api_reports_web_and_daemon_state(tmp_path):
     assert response["data"]["daemon_running"] is False
 
 
+def test_health_api_reports_database_and_task_readiness(tmp_path):
+    app, _ = make_app(tmp_path)
+
+    response = app.api_get("/api/health")
+
+    assert response["ok"] is True
+    assert response["data"]["status"] == "degraded"  # The fake task inputs are absent.
+    assert response["data"]["databases"]["pas"]["sqlite"] == "ok"
+    assert response["data"]["tasks"]["se"]["inputs_ready"] is False
+    app.repository.close()
+
+
+def test_web_daemon_control_is_idempotent(tmp_path):
+    class DaemonScheduler(FakeScheduler):
+        def __init__(self):
+            super().__init__()
+            self.stop = None
+
+        def run_daemon(self, stop_event):
+            self.stop = stop_event
+            self.running = True
+            stop_event.wait(2)
+            self.running = False
+
+        def shutdown(self):
+            if self.stop:
+                self.stop.set()
+
+    repo = Repository(tmp_path / "runs.db")
+    repo.initialize()
+    scheduler = DaemonScheduler()
+    config = SimpleNamespace(
+        database=tmp_path / "runs.db",
+        kernel_root=tmp_path / "kernel",
+        tasks={name: SimpleNamespace(name=name, enabled=False, period_seconds=60) for name in ("se", "lf", "ca")},
+    )
+    app = PasWebApp(config, repo, scheduler, tmp_path)
+    try:
+        assert app.api_post("/api/actions/daemon/start")["data"]["running"] is True
+        assert app.api_post("/api/actions/daemon/start")["data"]["running"] is True
+        assert app.api_get("/api/status")["data"]["daemon_running"] is True
+        stopped = app.api_post("/api/actions/daemon/stop")
+        assert stopped["data"] == {"running": False, "stopping": False}
+    finally:
+        app.close()
+        repo.close()
+
+
 def test_invalid_result_id_returns_json_error(tmp_path):
     app, _ = make_app(tmp_path)
 

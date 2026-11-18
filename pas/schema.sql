@@ -1630,3 +1630,6 @@ CREATE INDEX IF NOT EXISTS idx_lf_device_run ON lf_device_result(run_id, result_
 CREATE INDEX IF NOT EXISTS idx_ca_risk_run ON ca_risk(run_id, risk_id);
 CREATE INDEX IF NOT EXISTS idx_calculation_run_time ON calculation_run(started_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_calculation_run_julian ON calculation_run(julianday(started_at));
+CREATE INDEX IF NOT EXISTS idx_calculation_run_task_time ON calculation_run(task_type, started_at DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_calculation_run_filter_time ON calculation_run(task_type, status, execution_source, started_at DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_calculation_metric_run ON calculation_metric(run_id, metric_id);

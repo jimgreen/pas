@@ -20,6 +20,7 @@ const colSize = () => innerWidth < 700 ? 3 : 6;
 const task = () => state.route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
 const busy = t => [...(state.status.active_tasks || []), ...(state.status.pending_tasks || [])].includes(t);
 const badge = s => `<span class="badge ${s === 'succeeded' ? 'success' : s === 'failed' ? 'failed' : s === 'running' || s === 'queued' ? 'running' : ''}">${esc(statusLabel(s))}</span>`;
+const healthBadge = ok => `<span class="badge ${ok ? 'success' : 'failed'}">${ok ? '正常' : '需关注'}</span>`;
 const button = t => `<button type="button" class="mini" data-task="${t}" ${busy(t)?'disabled':''}>${busy(t)?'执行中':'执行'} ${t.toUpperCase()}</button>`;
 const tabs = (items, active) => `<div class="tabs">${items.map(([key,label])=>`<button class="tab ${key===active?'active':''}" data-tab="${key}">${label}</button>`).join('')}</div>`;
 const metric = (label,value) => `<div class="metric"><span>${esc(label)}</span><strong title="${esc(value)}">${esc(value ?? '—')}</strong></div>`;
@@ -174,12 +175,18 @@ async function analysis(name) {
   return tabs([['summary','结果摘要'],['diagnostics','诊断统计'],['history','运行记录'],['details','计算明细'],['dbdef','dbdef 表'],['operation','执行控制']],active)+`<div class="analysis-body">${content}</div>`;
 }
 async function settings() {
-  const cfg=(await api('/api/config')).data;let content;
+  const cfg=(await api('/api/config')).data;
+  const health=state.settingsTab==='database'?(await api('/api/health')).data:null;
   if(state.settingsTab==='schedule')content=`<div class="settings-select"><select aria-label="调度任务" data-schedule-task>${TASKS.map(t=>`<option value="${t}" ${state.scheduleTask===t?'selected':''}>${LABELS[t]}</option>`).join('')}</select></div>${controlView(cfg,state.scheduleTask)}`;
   else if(state.settingsTab==='logs') {
     const d=await api(`/api/logs?limit=${pageSize()}&offset=${state.logPage*pageSize()}`);
     content=`<section class="card full-panel"><h2>PAS 日志</h2><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>消息</th><th>上下文</th></tr></thead><tbody>${d.data.map(l=>`<tr><td data-value="${esc(l.created_at)}">${esc(l.created_at)}</td><td>${esc(l.level)}</td><td data-value="${esc(l.message)}">${esc(l.message)}</td><td data-value="${esc(l.context_json)}">${esc(l.context_json)}</td></tr>`).join('')}</tbody></table></div>${pager(state.logPage,d.meta.total,'logs')}</section>`;
-  } else content=`<section class="card"><h2>SQLite 数据库</h2>${[['PAS',cfg.control_database],...TASKS.map(t=>[t.toUpperCase(),cfg.result_databases[t]]),['内核目录',cfg.kernel_root]].map(([k,v])=>`<div class="path-row"><strong>${k}</strong><span tabindex="0" data-value="${esc(v)}">${esc(v)}</span></div>`).join('')}</section>`;
+  } else {
+    const databases=health?.databases||{};
+    const dbRows=[['PAS',databases.pas],...TASKS.map(t=>[t.toUpperCase(),databases[t]])].map(([name,item])=>`<div class="health-row"><strong>${name}</strong><span>${item?healthBadge(item.sqlite==='ok'&&item.exists):healthBadge(false)}</span><span class="health-path" tabindex="0" data-value="${esc(item?.path||'—')}" title="点击查看完整路径">${esc(item?.path||'—')}</span></div>`).join('');
+    const taskRows=TASKS.map(name=>{const item=health?.tasks?.[name]||{};const latest=item.latest_run;return `<div class="health-row"><strong>${name.toUpperCase()}</strong><span>${healthBadge(item.inputs_ready!==false)}</span><span>${item.inputs_ready===false?`缺少：${esc((item.missing_inputs||[]).join('、'))}`:`最近 ${latest?`${statusLabel(latest.status)} · #${latest.run_id}`:'暂无运行'}`}</span></div>`;}).join('');
+    content=`<div class="two health-grid"><section class="card"><div class="section-head"><h2>SQLite 数据库</h2>${healthBadge(health?.status==='ok')}</div>${dbRows}</section><section class="card"><div class="section-head"><h2>任务输入与最近运行</h2>${healthBadge(health?.status==='ok')}</div>${taskRows}</section></div><section class="card"><h2>路径与内核</h2>${[['PAS 控制库',cfg.control_database],...TASKS.map(t=>[`${t.toUpperCase()} 结果库`,cfg.result_databases[t]]),['内核目录',cfg.kernel_root]].map(([k,v])=>`<div class="path-row"><strong>${k}</strong><span tabindex="0" data-value="${esc(v)}">${esc(v)}</span></div>`).join('')}</section>`;
+  }
   return tabs([['schedule','调度参数'],['database','数据库'],['logs','运行日志']],state.settingsTab)+`<div class="analysis-body">${content}</div>`;
 }
 async function render() {

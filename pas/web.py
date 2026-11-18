@@ -43,13 +43,32 @@ class PasWebApp:
         self._daemon_stop: threading.Event | None = None
         self._daemon_lock = threading.RLock()
 
-    def close(self) -> None:
+    def start_daemon(self) -> bool:
+        """Start periodic scheduling once and report whether it is running."""
+        with self._daemon_lock:
+            if self._daemon_thread and self._daemon_thread.is_alive():
+                return True
+            self._daemon_stop = threading.Event()
+            self._daemon_thread = threading.Thread(
+                target=self.scheduler.run_daemon,
+                args=(self._daemon_stop,),
+                name="pas-web-daemon",
+                daemon=True,
+            )
+            self._daemon_thread.start()
+            return True
+
+    def stop_daemon(self, timeout: float | None = 2.0) -> bool:
         with self._daemon_lock:
             if self._daemon_stop:
                 self._daemon_stop.set()
             if self._daemon_thread:
-                self._daemon_thread.join()
-            self.scheduler.shutdown()
+                self._daemon_thread.join(timeout=timeout)
+            return bool(self._daemon_thread and self._daemon_thread.is_alive())
+
+    def close(self) -> None:
+        self.stop_daemon(timeout=None)
+        self.scheduler.shutdown()
 
     def static_path(self, request_path: str) -> Path | None:
         raw_path = urlparse(request_path).path
@@ -67,6 +86,39 @@ class PasWebApp:
             scheduler_status = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
             scheduler_status.update({"daemon_running": bool(self._daemon_thread and self._daemon_thread.is_alive()), "web_running": True})
             return {"ok": True, "data": scheduler_status}
+        if parsed.path == "/api/health":
+            scheduler_status = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
+            raw_databases = self.repository.health() if callable(getattr(self.repository, "health", None)) else {}
+            databases = {"pas": raw_databases} if "sqlite" in raw_databases else raw_databases
+            tasks = {}
+            all_ready = True
+            for name, task in self.config.tasks.items():
+                required = {
+                    "se": ("model_file", "measurement_file", "parameter_file"),
+                    "lf": ("model_file", "parameter_file"),
+                    "ca": ("model_file", "limit_file"),
+                }.get(name, ())
+                missing = [field for field in required if not getattr(task, field, None) or not Path(getattr(task, field)).is_file()]
+                latest = self.repository.list_runs(1, name) if callable(getattr(self.repository, "list_runs", None)) else []
+                tasks[name] = {
+                    "enabled": bool(getattr(task, "enabled", False)),
+                    "inputs_ready": not missing,
+                    "missing_inputs": missing,
+                    "latest_run": latest[0] if latest else None,
+                }
+                all_ready = all_ready and (not tasks[name]["enabled"] or not missing)
+            db_ready = all(item.get("sqlite") == "ok" and item.get("exists") for item in databases.values())
+            daemon_running = bool(self._daemon_thread and self._daemon_thread.is_alive())
+            daemon_ready = daemon_running or not any(item["enabled"] for item in tasks.values())
+            return {"ok": True, "data": {
+                "status": "ok" if db_ready and all_ready and daemon_ready else "degraded",
+                "daemon_running": daemon_running,
+                "daemon_ready": daemon_ready,
+                "databases": databases,
+                "tasks": tasks,
+                "active_tasks": scheduler_status.get("active_tasks", []),
+                "pending_tasks": scheduler_status.get("pending_tasks", []),
+            }}
         if parsed.path == "/api/overview":
             return {"ok": True, "data": self.repository.overview()}
         if parsed.path == "/api/metrics/trend":
@@ -218,21 +270,10 @@ class PasWebApp:
             result = trigger_all() if callable(trigger_all) else self.scheduler.run_once()
             return {"ok": bool(result) and all(result.values()), "data": {"results": result, "execution_source": "manual"}}
         if path == "/api/actions/daemon/start":
-            with self._daemon_lock:
-                if self._daemon_thread and self._daemon_thread.is_alive():
-                    return {"ok": True, "data": {"running": True}}
-                self._daemon_stop = threading.Event()
-                self._daemon_thread = threading.Thread(target=self.scheduler.run_daemon, args=(self._daemon_stop,), daemon=True)
-                self._daemon_thread.start()
-                return {"ok": True, "data": {"running": True}}
+            return {"ok": True, "data": {"running": self.start_daemon()}}
         if path == "/api/actions/daemon/stop":
-            with self._daemon_lock:
-                if self._daemon_stop:
-                    self._daemon_stop.set()
-                if self._daemon_thread:
-                    self._daemon_thread.join(timeout=2)
-                running = bool(self._daemon_thread and self._daemon_thread.is_alive())
-                return {"ok": True, "data": {"running": running, "stopping": running}}
+            running = self.stop_daemon()
+            return {"ok": True, "data": {"running": running, "stopping": running}}
         if path == "/api/actions/daemon/status":
             return {"ok": True, "data": {"running": bool(self._daemon_thread and self._daemon_thread.is_alive())}}
         return {"ok": False, "error": "not_found"}
@@ -317,9 +358,11 @@ class PasWebApp:
         return Handler
 
 
-def serve(config: Any, repository: Repository, scheduler: Any, static_root: str | Path, host: str = "127.0.0.1", port: int = 8080) -> ThreadingHTTPServer:
+def serve(config: Any, repository: Repository, scheduler: Any, static_root: str | Path, host: str = "127.0.0.1", port: int = 8080, *, start_daemon: bool = False) -> ThreadingHTTPServer:
     app = PasWebApp(config, repository, scheduler, static_root)
     server = ThreadingHTTPServer((host, int(port)), app.handler_class())
     server.app = app
+    if start_daemon:
+        app.start_daemon()
     logger.info("PAS web listening on http://%s:%s", host, port)
     return server

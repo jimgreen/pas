@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     scheduler, repository = _build_scheduler(args.config)
-    server = serve(scheduler.config, repository, scheduler, Path(__file__).resolve().parent.parent / "web", args.host, args.port)
+    server = serve(scheduler.config, repository, scheduler, Path(__file__).resolve().parent.parent / "web", args.host, args.port, start_daemon=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
