@@ -6,18 +6,20 @@ import argparse
 import logging
 import threading
 
-from .config import load_config
+from .config import add_workspace_arguments, load_config
 from .db import Repository, RepositoryHub
 from . import kernels
 from .scheduler import Scheduler
 
 
-def _build_scheduler(config_path: str) -> tuple[Scheduler, RepositoryHub]:
-    config = load_config(config_path)
+def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, RepositoryHub]:
+    config = load_config(config_path, **workspace_options)
     result_repositories = {name: Repository(path) for name, path in config.databases.items()}
     repository = RepositoryHub(result_repositories, Repository(config.database))
     repository.initialize()
     if repository.control is not None:
+        repository.control.set_config("workspace", {key: str(getattr(config, key) or "") for key in
+            ("workspace_root", "runtime", "scenario", "workspace_directory")})
         repository.control.set_config("kernel_root", str(config.kernel_root))
         repository.control.set_config("database", str(config.database))
         repository.control.set_config("result_databases", {name: str(path) for name, path in config.databases.items()})
@@ -42,14 +44,16 @@ def main(argv: list[str] | None = None) -> int:
     for command in ("init-db", "run-once", "daemon"):
         item = sub.add_parser(command)
         item.add_argument("--config", required=True)
+        add_workspace_arguments(item)
     args = parser.parse_args(argv)
+    workspace_options = {key: getattr(args, key) for key in ("workspace_root", "runtime", "scenario")}
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "init-db":
-        scheduler, repository = _build_scheduler(args.config)
+        scheduler, repository = _build_scheduler(args.config, **workspace_options)
         scheduler.shutdown()
         repository.close()
         return 0
-    scheduler, repository = _build_scheduler(args.config)
+    scheduler, repository = _build_scheduler(args.config, **workspace_options)
     try:
         if args.command == "run-once":
             results = scheduler.trigger_all()

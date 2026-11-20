@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,10 @@ class AppConfig:
     tick_seconds: float
     retry_seconds: float
     tasks: dict[str, TaskConfig]
+    workspace_root: Path | None = None
+    runtime: str | None = None
+    scenario: str | None = None
+    workspace_directory: Path | None = None
 
 
 def _path(value: Any, base: Path) -> Path | None:
@@ -149,7 +154,22 @@ def _positive(value: Any, field: str, default: float) -> float:
     return number
 
 
-def load_config(path: str | Path) -> AppConfig:
+def add_workspace_arguments(parser: Any) -> None:
+    parser.add_argument("--workspace-root", help="Workspace root directory")
+    parser.add_argument("--runtime", help="Runtime directory, e.g. realtime")
+    parser.add_argument("--scenario", help="Scenario directory, e.g. qinling")
+
+
+def _component(value: Any, field: str) -> str:
+    text = str(value or "")
+    if (not re.fullmatch(r"[\w-]+", text) or
+            text.upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}):
+        raise ConfigError(f"{field} must be a single safe directory name")
+    return text
+
+
+def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
+                runtime: str | None = None, scenario: str | None = None) -> AppConfig:
     source = Path(path).expanduser().resolve()
     try:
         raw = json.loads(source.read_text(encoding="utf-8"))
@@ -160,28 +180,39 @@ def load_config(path: str | Path) -> AppConfig:
     if not isinstance(raw, dict):
         raise ConfigError("configuration root must be an object")
     base = source.parent
+    workspace_root = _path(workspace_root or raw.get("workspace_root"), base)
+    runtime = runtime if runtime is not None else raw.get("runtime")
+    scenario = scenario if scenario is not None else raw.get("scenario")
+    workspace = None
+    if workspace_root is not None or runtime is not None or scenario is not None:
+        if workspace_root is None:
+            raise ConfigError("workspace_root is required with runtime/scenario")
+        runtime, scenario = _component(runtime, "runtime"), _component(scenario, "scenario")
+        workspace = (workspace_root / runtime / scenario).resolve()
+        if not workspace.is_relative_to(workspace_root):
+            raise ConfigError("workspace directory must stay inside workspace_root")
     configured_kernel_root = _path(raw.get("kernel_root"), base)
     kernel_root = _discover_kernel_root(configured_kernel_root) if configured_kernel_root is not None else None
     if kernel_root is None:
         raise ConfigError("kernel_root is required")
-    database = _path(raw.get("database", "runs.db"), base)
+    database = (workspace / "sqldb/pas/pas.sqlite3").resolve() if workspace else _path(raw.get("database", "runs.db"), base)
     assert database is not None
-    database.parent.mkdir(parents=True, exist_ok=True)
     raw_databases = raw.get("databases") or {}
     if not isinstance(raw_databases, dict):
         raise ConfigError("databases must be an object")
     databases: dict[str, Path] = {}
     for name in TASK_NAMES:
-        configured = _path(raw_databases.get(name), base)
+        configured = (workspace / f"sqldb/pas/{name}.sqlite3").resolve() if workspace else _path(raw_databases.get(name), base)
         if configured is None:
             suffix = database.suffix or ".db"
             configured = database.with_name(f"{database.stem}.{name}{suffix}")
         databases[name] = configured
-        configured.parent.mkdir(parents=True, exist_ok=True)
     if len(set(databases.values())) != len(TASK_NAMES):
         raise ConfigError("databases.se, databases.lf, and databases.ca must be distinct")
     if database in databases.values():
         raise ConfigError("database (pas control database) must differ from result databases")
+    if workspace and any(not target.is_relative_to(workspace) for target in [database, *databases.values()]):
+        raise ConfigError("workspace database paths must stay inside workspace directory")
     scheduler = raw.get("scheduler") or {}
     tick_seconds = _positive(scheduler.get("tick_seconds"), "scheduler.tick_seconds", 1.0)
     retry_seconds = _positive(scheduler.get("retry_seconds"), "scheduler.retry_seconds", 60.0)
@@ -194,14 +225,25 @@ def load_config(path: str | Path) -> AppConfig:
         if not isinstance(values, dict):
             raise ConfigError(f"tasks.{name} must be an object")
         enabled = bool(values.get("enabled", False))
+        def input_path(field: str) -> Path | None:
+            if workspace is not None:
+                if field == "model_file":
+                    model = (workspace / "sqldb/model/devices.sqlite3").resolve()
+                    if not model.is_relative_to(workspace):
+                        raise ConfigError("model path must stay inside workspace directory")
+                    return model
+                defaults = {"measurement_file": "meas/measurements.meas", "parameter_file": f"config/{name}.para", "limit_file": "config/ca.calmt"}
+                return _path(values.get(field, defaults[field]), workspace)
+            return _relocated_path(values.get(field), base, configured_kernel_root or kernel_root, kernel_root)
+
         task = TaskConfig(
             name=name,
             enabled=enabled,
             period_seconds=_positive(values.get("period_seconds"), f"tasks.{name}.period_seconds", 60.0),
-            model_file=_relocated_path(values.get("model_file"), base, configured_kernel_root or kernel_root, kernel_root),
-            measurement_file=_relocated_path(values.get("measurement_file"), base, configured_kernel_root or kernel_root, kernel_root),
-            parameter_file=_relocated_path(values.get("parameter_file"), base, configured_kernel_root or kernel_root, kernel_root),
-            limit_file=_relocated_path(values.get("limit_file"), base, configured_kernel_root or kernel_root, kernel_root),
+            model_file=input_path("model_file"),
+            measurement_file=input_path("measurement_file") if name == "se" else None,
+            parameter_file=input_path("parameter_file") if name != "ca" else None,
+            limit_file=input_path("limit_file") if name == "ca" else None,
             scan_n1=bool(values.get("scan_n1", True)),
         )
         if enabled:
@@ -214,7 +256,8 @@ def load_config(path: str | Path) -> AppConfig:
                 if not candidate.is_file():
                     raise ConfigError(f"tasks.{name}.{field} does not exist: {candidate}")
         tasks[name] = task
-    return AppConfig(source, kernel_root, database, databases, tick_seconds, retry_seconds, tasks)
+    return AppConfig(source, kernel_root, database, databases, tick_seconds, retry_seconds, tasks,
+                     workspace_root, runtime, scenario, workspace)
 
 
 def validate_task_inputs(task: TaskConfig) -> None:

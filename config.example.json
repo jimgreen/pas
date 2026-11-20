@@ -1,32 +1,29 @@
 {
   "kernel_root": "D:/codex/hybrid_power_kernel_acceptance_d1603be",
-  "database": "D:/codex/sqldb/realtime/pas/pas.db",
-  "databases": {
-    "se": "D:/codex/sqldb/realtime/pas/se.db",
-    "lf": "D:/codex/sqldb/realtime/pas/lf.db",
-    "ca": "D:/codex/sqldb/realtime/pas/ca.db"
+  "scheduler": {
+    "tick_seconds": 1,
+    "retry_seconds": 60
   },
-  "scheduler": {"tick_seconds": 1, "retry_seconds": 60},
   "tasks": {
     "se": {
-      "enabled": true,
+      "enabled": false,
       "period_seconds": 60,
-      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/ac/ieee14.e",
-      "measurement_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/meas/ac/ieee14.meas",
+      "measurement_file": "meas/measurements.meas",
       "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/se/se.para"
     },
     "lf": {
       "enabled": true,
       "period_seconds": 60,
-      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/hybrid/qinling.e",
       "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/lf/lf.para"
     },
     "ca": {
-      "enabled": true,
+      "enabled": false,
       "period_seconds": 300,
-      "model_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/model/hybrid/qinling.e",
-      "limit_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/ca/qinling.calmt",
+      "limit_file": "config/ca.calmt",
       "scan_n1": false
     }
-  }
+  },
+  "workspace_root": "D:/codex/workspace",
+  "runtime": "realtime",
+  "scenario": "qinling"
 }

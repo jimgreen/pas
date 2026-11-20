@@ -27,11 +27,36 @@ SQLite schema 在服务启动时幂等创建。常用查询示例：
 
 `database` 是 PAS 控制数据库，保存 `pas_config` 参数表和 `pas_log` 日志表；`databases.se`、`databases.lf`、`databases.ca` 分别是 SE、LF、CA 的结果数据库。未显式配置 `databases` 时，服务会从 `database` 自动派生三个带任务后缀的路径。Web 的“系统设置”页面会展示四个数据库路径、调度参数和 PAS 日志；运行总览与运行历史会跨三个结果库聚合。
 
-当前示例配置将 `pas.db`、`se.db`、`lf.db`、`ca.db` 四个 SQLite 文件统一放在 `D:/codex/sqldb/realtime/pas`，可按部署环境修改为其他绝对路径。
+当前示例配置使用场景工作目录。配置字段 `workspace_root`、`runtime`、`scenario` 分别为 `D:/codex/workspace`、`realtime`、`qinling`，推导出 `D:/codex/workspace/realtime/qinling`。场景名按实际目录拼写为 `qinling`。
+
+| 用途 | 相对工作目录的路径 |
+| --- | --- |
+| 模型输入（只读） | `sqldb/model/devices.sqlite3` |
+| SE 计算结果 | `sqldb/pas/se.sqlite3` |
+| LF 计算结果 | `sqldb/pas/lf.sqlite3` |
+| CA 计算结果 | `sqldb/pas/ca.sqlite3` |
+| PAS 参数、日志 | `sqldb/pas/pas.sqlite3` |
+
+工作目录模式统一推导模型和四个数据库路径，优先于旧 `database`、`databases`、任务 `model_file` 字段。不配置工作目录参数时保持旧路径配置方式。旧库不会自动迁移或删除；新场景库从新的运行记录开始。
+
+CLI 和 Web 均支持参数覆盖（命令行优先于 JSON）：
+
+```powershell
+python -m pas.webapp --config D:/codex/pas/config.example.json --workspace-root D:/codex/workspace --runtime realtime --scenario qinling --host 127.0.0.1 --port 8091
+python -m pas.cli init-db --config config.example.json --workspace-root D:/codex/workspace --runtime realtime --scenario qinling
+```
+
+运行态和场景名必须为单个目录名，不允许路径穿越、绝对路径或 Windows 保留名称。不同运行态/场景分别保存结果与调度覆盖参数。辅助输入的相对路径按工作目录解析；默认 SE 量测为 `meas/measurements.meas`，SE/LF 参数为 `config/se.para`、`config/lf.para`，CA 限值为 `config/ca.calmt`，也可显式配置绝对路径。当前示例保留内核的 SE/LF 算法参数文件。
+
+`devices.sqlite3` 使用 RTDB 内嵌结构（`rtdb_schema_tables`、`rtdb_schema_columns`、`rtdb_data_*`）。每次调用在单个只读事务中读取全部声明表与列，包含 WAL 中已提交的数据，生成临时 E 模型交给内核；不读取旁边同名旧 E 模型，也不修改模型库。快照随调用释放，结果摘要保存源路径、SHA-256、表数和行数。SQLite 输入每次重新读取，暂不使用 E 文件模板缓存，防止模型更新后复用旧模板。非法结构、NULL、非有限数值或内核无法表示的字符串会明确失败。
+
+SE 使用支持 AC/DC/混合模型的 `HybridStateEstimator`。SQLite 模式会核对量测/限值中的设备名，拒绝混用其他场景的输入。当前实际模型库只有设备表，尚缺匹配的 SE 量测和 CA 限值，因此示例配置暂时关闭 SE/CA 周期调度，LF 每 60 秒自动执行。补齐两个场景文件后，可在对应页面启用周期调度或人工执行；缺少文件时人工执行会记录失败原因，不伪造计算结果。
+
+`/workspace.html` 是独立工作目录页面，分目录参数、模型输入、结果数据库展示当前有效配置；`GET /api/config` 的 `workspace` 字段返回这些参数。
 
 周期执行由 `daemon` 调度器负责，任务按各自 `period_seconds` 到期提交，不同任务可并行执行，同一任务避免重复执行，并将下一次执行时间写入 `schedule.next_due_at`。Web/API 的人工触发使用同一套内核、事务和回写流程，即使任务的周期开关为关闭，也可以单独执行；每条 `calculation_run.execution_source` 标记为 `schedule` 或 `manual`，便于界面和日志区分来源。对应接口为 `POST /api/actions/trigger`（传入 `{"task":"se"}`）或兼容接口 `POST /api/actions/run-once`。
 
-Web 人工执行优先使用 `POST /api/actions/submit`，接口立即返回任务编号，前端通过 `/api/jobs/{job_id}` 轮询状态；同一任务已有等待或运行任务时会拒绝重复提交。`POST /api/schedules/{se|lf|ca}` 可在线保存周期和启用状态，配置写入 `pas.db` 的 `pas_config.schedule_overrides`，服务重启会恢复。调度器使用有界线程池并行执行不同任务、合并错过的周期 tick，并在退出时等待已接受任务完成。
+Web 人工执行优先使用 `POST /api/actions/submit`，接口立即返回任务编号，前端通过 `/api/jobs/{job_id}` 轮询状态；同一任务已有等待或运行任务时会拒绝重复提交。`POST /api/schedules/{se|lf|ca}` 可在线保存周期和启用状态，配置写入 PAS 控制库的 `pas_config.schedule_overrides`，服务重启会恢复。调度器使用有界线程池并行执行不同任务、合并错过的周期 tick，并在退出时等待已接受任务完成。
 
 总览的“运行趋势”支持 6/24/48/168 小时窗口、执行/成功/失败次数及平均耗时切换、分页统计明细与窗口 CSV 导出。`GET /api/metrics/trend?limit=24` 按 UTC 自然小时聚合完整窗口，包含尚未结束的当前小时，空小时补齐；平均耗时只按有耗时的记录计算。执行控制页提供“重试失败任务”，仅当该任务最近一次运行失败才重试；`POST /api/actions/retry-failed` 可传 `{"task":"lf"}` 限定任务，已恢复成功的旧失败记录不会重跑。
 

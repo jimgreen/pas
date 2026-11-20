@@ -12,6 +12,8 @@ from types import SimpleNamespace
 from typing import Any
 
 from .model_cache import lf_models
+from .model_input import kernel_model, validate_references
+from .config import validate_task_inputs
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
@@ -213,38 +215,52 @@ def normalize_ca(n0_risks: list[Any], n1_risks: list[Any], n1_scan_count: int | 
 
 
 def run_se(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+    validate_task_inputs(config)
     configure_kernel_path(kernel_root or config.kernel_root)
-    from secore.ac_se import ACStateEstimator
-    estimator = ACStateEstimator(e_file=config.model_file, meas_file=config.measurement_file, parameter_file=config.parameter_file, auto_prepare=False)
-    estimator.prepare()
-    se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
-    return normalize_se(se_result, estimator.estimate_result)
+    from secore.hybrid_se import HybridStateEstimator
+    with kernel_model(config.model_file) as model:
+        if model.metadata["format"] == "rtdb_sqlite":
+            validate_references(model.path, config.measurement_file, measurements=True)
+        estimator = HybridStateEstimator(e_file=model.path, meas_file=config.measurement_file, parameter_file=config.parameter_file, auto_prepare=False)
+        estimator.prepare()
+        se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
+        result = normalize_se(se_result, estimator.estimate_result)
+        result["summary"]["model_input"] = model.metadata
+        return result
 
 
 def run_lf(config: Any, kernel_root: str | Path | None = None, *, use_model_cache: bool = True) -> dict[str, Any]:
+    validate_task_inputs(config)
     configure_kernel_path(kernel_root or config.kernel_root)
     from lfcore.hybrid_lf import HybridPowerFlowCalc, _read_lf_network_from_file
     started = time.perf_counter()
-    if use_model_cache:
-        network, cache_hit = lf_models.load(config.model_file, _read_lf_network_from_file)
-    else:
-        network, cache_hit = _read_lf_network_from_file(config.model_file), False
-    read_seconds = time.perf_counter() - started
-    started = time.perf_counter()
-    calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="full", verbose=False)
-    calc.run()
-    solve_seconds = time.perf_counter() - started
-    started = time.perf_counter()
-    result = normalize_lf(calc)
-    result["performance"] = {"model_read_seconds": read_seconds, "solve_seconds": solve_seconds,
-                             "normalization_seconds": time.perf_counter() - started, "model_cache_hit": int(cache_hit)}
-    return result
+    with kernel_model(config.model_file) as model:
+        if use_model_cache and model.metadata["format"] != "rtdb_sqlite":
+            network, cache_hit = lf_models.load(model.path, _read_lf_network_from_file)
+        else:
+            network, cache_hit = _read_lf_network_from_file(model.path), False
+        read_seconds = time.perf_counter() - started
+        started = time.perf_counter()
+        calc = HybridPowerFlowCalc(network, parameter_file=config.parameter_file, result_mode="full", verbose=False)
+        calc.run()
+        solve_seconds = time.perf_counter() - started
+        started = time.perf_counter()
+        result = normalize_lf(calc)
+        result["summary"]["model_input"] = model.metadata
+        result["performance"] = {"model_read_seconds": read_seconds, "solve_seconds": solve_seconds,
+                                 "normalization_seconds": time.perf_counter() - started, "model_cache_hit": int(cache_hit)}
+        return result
 
 
 def run_ca(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
+    validate_task_inputs(config)
     configure_kernel_path(kernel_root or config.kernel_root)
     from cacore.hybrid_ca import run_hybrid_ca
-    with tempfile.TemporaryDirectory(prefix="pas_ca_") as temp:
+    with kernel_model(config.model_file) as model, tempfile.TemporaryDirectory(prefix="pas_ca_") as temp:
         root = Path(temp)
-        n0, n1 = run_hybrid_ca(config.model_file, config.limit_file, root / "n0.e", root / "n1.e", root / "info.e", scan_n1=config.scan_n1)
-    return normalize_ca(n0, n1, None)[0]
+        if model.metadata["format"] == "rtdb_sqlite":
+            validate_references(model.path, config.limit_file)
+        n0, n1 = run_hybrid_ca(model.path, config.limit_file, root / "n0.e", root / "n1.e", root / "info.e", scan_n1=config.scan_n1)
+    result = normalize_ca(n0, n1, None)[0]
+    result["summary"]["model_input"] = model.metadata
+    return result

@@ -33,6 +33,11 @@ def _fingerprint(task: Any) -> str:
             try:
                 stat = path.stat()
                 digest.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode())
+                if path.suffix.lower() in {".sqlite3", ".sqlite", ".db"}:
+                    wal = Path(str(path) + "-wal")
+                    if wal.exists():
+                        wal_stat = wal.stat()
+                        digest.update(f"wal:{wal_stat.st_size}:{wal_stat.st_mtime_ns}".encode())
             except OSError:
                 continue
     return digest.hexdigest()

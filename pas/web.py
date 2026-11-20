@@ -219,7 +219,9 @@ class PasWebApp:
             control = getattr(self.repository, "control", None)
             control_database = getattr(self.config, "database", None) or getattr(control, "path", None)
             config_rows = self.repository.list_config() if callable(getattr(self.repository, "list_config", None)) else []
-            return {"ok": True, "data": {"kernel_root": str(self.config.kernel_root), "database": str(control_database or ""), "control_database": str(control_database or ""), "result_databases": result_databases, "pas_config": config_rows, "tasks": tasks}}
+            workspace = {key: str(getattr(self.config, key, None) or "") for key in
+                         ("workspace_root", "runtime", "scenario", "workspace_directory")}
+            return {"ok": True, "data": {"workspace": workspace, "kernel_root": str(self.config.kernel_root), "database": str(control_database or ""), "control_database": str(control_database or ""), "result_databases": result_databases, "pas_config": config_rows, "tasks": tasks}}
         if parsed.path == "/api/logs":
             query = parse_qs(parsed.query)
             try:

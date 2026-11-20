@@ -1,15 +1,15 @@
 const TASKS = ['se', 'lf', 'ca'];
 const LABELS = {se:'状态估计 SE', lf:'潮流分析 LF', ca:'静态安全 CA'};
-const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html'};
+const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html', workspace:'/workspace.html'};
 const pageUrl = (route, query='') => {
-  const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
+  const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route === '/workspace' ? 'workspace' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
   return `${PAGE_URLS[key] || PAGE_URLS.overview}${query}`;
 };
 const initialPage = document.body.dataset.page || location.hash.split('?')[0].slice(1) || '/overview';
 const initialQuery = location.search || (location.hash.includes('?') ? `?${location.hash.split('?')[1]}` : '');
 const state = {
   route: initialPage + initialQuery, token: 0, page: 0,
-  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule',
+  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule', workspaceTab:'directory',
   tabs: {se:'summary',lf:'summary',ca:'summary'}, selected:{},
   browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:'',sort:'',direction:'asc',view:'all'}])),
   controlTab:'config', summaryMode:'result', diagPage:0, diagCol:0, trend:{hours:24,metric:'runs',mode:'chart',page:0}, status:{}, watching:new Map(), exportData:null, logPage:0, scheduleTask:'se'
@@ -181,7 +181,24 @@ async function analysis(name) {
   }
   return tabs([['summary','结果摘要'],['diagnostics','诊断统计'],['history','运行记录'],['details','计算明细'],['dbdef','dbdef 表'],['operation','执行控制']],active)+`<div class="analysis-body">${content}</div>`;
 }
+async function workspace() {
+  const cfg=(await api('/api/config')).data,w=cfg.workspace||{};
+  let rows,title;
+  if(state.workspaceTab==='model') {
+    title='模型与计算输入';
+    rows=[['SQLite 模型',cfg.tasks.lf?.model_file],['SE 量测',cfg.tasks.se?.measurement_file],['SE 参数',cfg.tasks.se?.parameter_file],['LF 参数',cfg.tasks.lf?.parameter_file],['CA 限值',cfg.tasks.ca?.limit_file]];
+  } else if(state.workspaceTab==='results') {
+    title='计算结果与参数日志';
+    rows=[['PAS 参数日志',cfg.control_database],...TASKS.map(t=>[`${t.toUpperCase()} 计算结果`,cfg.result_databases[t]])];
+  } else {
+    title='当前工作目录';
+    rows=[['根目录',w.workspace_root],['运行态',w.runtime],['场景名',w.scenario],['工作目录',w.workspace_directory]];
+  }
+  const html=rows.map(([label,value])=>`<div class="workspace-row"><strong>${esc(label)}</strong><button class="workspace-path ghost" data-value="${esc(value||'未配置')}" title="查看完整路径">${esc(value||'未配置')}</button></div>`).join('');
+  return tabs([['directory','目录参数'],['model','模型输入'],['results','结果数据库']],state.workspaceTab)+`<div class="analysis-body"><section class="card full-panel"><h2>${title}</h2>${html}</section></div>`;
+}
 async function settings() {
+  let content;
   const cfg=(await api('/api/config')).data;
   const health=state.settingsTab==='database'?(await api('/api/health')).data:null;
   if(state.settingsTab==='schedule')content=`<div class="settings-select"><select aria-label="调度任务" data-schedule-task>${TASKS.map(t=>`<option value="${t}" ${state.scheduleTask===t?'selected':''}>${LABELS[t]}</option>`).join('')}</select></div>${controlView(cfg,state.scheduleTask)}`;
@@ -199,10 +216,10 @@ async function settings() {
 async function render() {
   const token=++state.token;state.exportData=null;
   const route=state.route.split('?')[0], name=task();
-  document.querySelector('#page-title').textContent=name?LABELS[name]:({'/runs':'运行历史','/settings':'系统设置'}[route]||'运行总览');
+  document.querySelector('#page-title').textContent=name?LABELS[name]:({'/runs':'运行历史','/settings':'系统设置','/workspace':'工作目录'}[route]||'运行总览');
   document.querySelectorAll('[data-route]').forEach(a=>a.classList.toggle('active',a.dataset.route===(name||route.slice(1))));
   try {
-    const html=name?await analysis(name):route==='/runs'?await history():route==='/settings'?await settings():await overview();
+    const html=name?await analysis(name):route==='/runs'?await history():route==='/settings'?await settings():route==='/workspace'?await workspace():await overview();
     if(token===state.token)document.querySelector('#app').innerHTML=html;
   } catch(e) {if(token===state.token)document.querySelector('#app').innerHTML=`<section class="card"><h2>加载失败</h2><p>${esc(e.message)}</p><button class="mini" data-action="refresh">重试</button></section>`;}
 }
@@ -280,7 +297,7 @@ document.addEventListener('click',async e=>{
     if(el.dataset.diagCol){state.diagCol+=Number(el.dataset.diagCol);return render();}
     if(el.dataset.sort){const c=state.browse[task()];c.direction=c.sort===el.dataset.sort&&c.direction==='asc'?'desc':'asc';c.sort=el.dataset.sort;c.page=0;return render();}
     if(el.dataset.control){state.controlTab=el.dataset.control;return render();}
-    if(el.dataset.tab){if(task())state.tabs[task()]=el.dataset.tab;else if(state.route==='/settings')state.settingsTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
+    if(el.dataset.tab){if(task())state.tabs[task()]=el.dataset.tab;else if(state.route==='/settings')state.settingsTab=el.dataset.tab;else if(state.route==='/workspace')state.workspaceTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
     if(el.dataset.page){const delta=Number(el.dataset.page);if(el.dataset.scope==='trend')state.trend.page+=delta;else if(el.dataset.scope==='diagnostics')state.diagPage+=delta;else if(el.dataset.scope==='browse')state.browse[task()].page+=delta;else if(el.dataset.scope==='logs')state.logPage+=delta;else state.page+=delta;return render();}
     if(el.dataset.col){state.browse[task()].col+=Number(el.dataset.col);return render();}
     const action=el.dataset.action;
