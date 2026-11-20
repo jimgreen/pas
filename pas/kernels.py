@@ -14,6 +14,7 @@ from typing import Any
 from .model_cache import lf_models
 from .model_input import kernel_model, validate_references
 from .config import validate_task_inputs
+from .input_store import measurement_input, read_limits, SQLITE_SUFFIXES
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
@@ -219,14 +220,17 @@ def run_se(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]
     configure_kernel_path(kernel_root or config.kernel_root)
     from secore.hybrid_se import HybridStateEstimator
     with kernel_model(config.model_file) as model:
-        if model.metadata["format"] == "rtdb_sqlite":
-            validate_references(model.path, config.measurement_file, measurements=True)
-        estimator = HybridStateEstimator(e_file=model.path, meas_file=config.measurement_file, parameter_file=config.parameter_file, auto_prepare=False)
-        estimator.prepare()
-        se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
-        result = normalize_se(se_result, estimator.estimate_result)
-        result["summary"]["model_input"] = model.metadata
-        return result
+        from efile_read import EBook
+        snapshot = {name:block.data for name,block in EBook(model.path).data.items()}
+        with measurement_input(config, snapshot) as (meas_file, measurement_metadata):
+            if model.metadata["format"] == "rtdb_sqlite":
+                validate_references(model.path, meas_file, measurements=True)
+            estimator = HybridStateEstimator(e_file=model.path, meas_file=meas_file, parameter_file=config.parameter_file, auto_prepare=False)
+            estimator.prepare()
+            se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
+            result = normalize_se(se_result, estimator.estimate_result)
+            result["summary"].update(model_input=model.metadata,measurement_input=measurement_metadata)
+            return result
 
 
 def run_lf(config: Any, kernel_root: str | Path | None = None, *, use_model_cache: bool = True) -> dict[str, Any]:
@@ -258,9 +262,43 @@ def run_ca(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]
     from cacore.hybrid_ca import run_hybrid_ca
     with kernel_model(config.model_file) as model, tempfile.TemporaryDirectory(prefix="pas_ca_") as temp:
         root = Path(temp)
-        if model.metadata["format"] == "rtdb_sqlite":
-            validate_references(model.path, config.limit_file)
-        n0, n1 = run_hybrid_ca(model.path, config.limit_file, root / "n0.e", root / "n1.e", root / "info.e", scan_n1=config.scan_n1)
-    result = normalize_ca(n0, n1, None)[0]
+        scan_count, limit_metadata = None, {'source':str(config.limit_file)}
+        if config.limit_file.suffix.lower() in SQLITE_SUFFIXES:
+            from efile_read import EBook
+            snapshot = {name:block.data for name,block in EBook(model.path).data.items()}
+            constraints, limit_metadata = read_limits(config, snapshot)
+            n0,n1,scan_count = _ca_with_constraints(model.path,constraints,config.scan_n1,root)
+        else:
+            if model.metadata["format"] == "rtdb_sqlite":
+                validate_references(model.path, config.limit_file)
+            n0,n1 = run_hybrid_ca(model.path,config.limit_file,root/'n0.e',root/'n1.e',root/'info.e',scan_n1=config.scan_n1)
+    result = normalize_ca(n0, n1, scan_count)[0]
+    result["summary"]["limit_input"] = limit_metadata
     result["summary"]["model_input"] = model.metadata
     return result
+
+
+def _ca_with_constraints(model, constraints, scan_n1, directory):
+    """Use native CA checks with sparse DB bounds (no invented zero bounds)."""
+    from cacore.hybrid_ca import (_run_case, collect_limit_risks, _active_load_power,
+                                 _contingency_rows, _write_outage_case, CARisk)
+    base,error = _run_case(model)
+    if error is not None or base is None or not base.converged:
+        return [CARisk('BASE','HybridPowerFlow','潮流发散',1,str(error or 'hybrid_power_flow_not_converged'))],[],0
+    n0,n1,count = collect_limit_risks(base,constraints,'BASE'),[],0
+    base_load = _active_load_power(base)
+    if scan_n1:
+        for table,source_table,name in _contingency_rows(model):
+            count += 1
+            source = f'N-1:{source_table}.{name}'
+            # Names are display values, never filesystem paths.
+            outage = directory/f'outage_{count}.e'
+            _write_outage_case(model,outage,table,name)
+            result,error = _run_case(outage)
+            if error is not None or result is None or not result.converged:
+                n1.append(CARisk(source,'HybridPowerFlow','潮流发散',1,str(error or 'hybrid_power_flow_not_converged')))
+                continue
+            n1.extend(collect_limit_risks(result,constraints,source))
+            loss=max(0.,base_load-_active_load_power(result))
+            if loss>1e-6: n1.append(CARisk(source,'Load','负荷损失',loss,f'loss={loss};base_load={base_load}'))
+    return n0,n1,count

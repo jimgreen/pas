@@ -33,7 +33,9 @@ def test_workspace_parameters_determine_model_and_isolated_outputs(tmp_path):
     assert config.database == work / "sqldb/pas/pas.sqlite3"
     assert all(config.databases[t] == work / f"sqldb/pas/{t}.sqlite3" for t in ('se','lf','ca'))
     assert all(task.model_file == work / "sqldb/model/devices.sqlite3" for task in config.tasks.values())
-    assert config.tasks['se'].measurement_file == work / "meas/measurements.meas"
+    assert config.tasks['se'].measurement_file == work / "sqldb/scada/devices.sqlite3"
+    assert config.tasks['se'].scada_source_file == work / "sqldb/scada/scdfe_c.sqlite3"
+    assert config.tasks['ca'].limit_file == config.databases['ca']
     other = load_config(source, runtime="study", scenario="other")
     assert other.workspace_directory == tmp_path / "workspace/study/other"
     assert not set(other.databases.values()) & set(config.databases.values())

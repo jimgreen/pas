@@ -6,10 +6,12 @@
   },
   "tasks": {
     "se": {
-      "enabled": false,
+      "enabled": true,
       "period_seconds": 60,
-      "measurement_file": "meas/measurements.meas",
-      "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/se/se.para"
+      "measurement_file": "sqldb/scada/devices.sqlite3",
+      "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/se/se.para",
+      "scada_source_file": "sqldb/scada/scdfe_c.sqlite3",
+      "point_catalog_file": "sqldb/scada/point_catalog.json"
     },
     "lf": {
       "enabled": true,
@@ -17,9 +19,9 @@
       "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/lf/lf.para"
     },
     "ca": {
-      "enabled": false,
+      "enabled": true,
       "period_seconds": 300,
-      "limit_file": "config/ca.calmt",
+      "limit_file": "sqldb/pas/ca.sqlite3",
       "scan_n1": false
     }
   },

@@ -1,8 +1,8 @@
 const TASKS = ['se', 'lf', 'ca'];
 const LABELS = {se:'状态估计 SE', lf:'潮流分析 LF', ca:'静态安全 CA'};
-const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html', workspace:'/workspace.html'};
+const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html', workspace:'/workspace.html', measurements:'/measurements.html', limits:'/limits.html'};
 const pageUrl = (route, query='') => {
-  const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route === '/workspace' ? 'workspace' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
+  const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route === '/workspace' ? 'workspace' : route === '/measurements' ? 'measurements' : route === '/limits' ? 'limits' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
   return `${PAGE_URLS[key] || PAGE_URLS.overview}${query}`;
 };
 const initialPage = document.body.dataset.page || location.hash.split('?')[0].slice(1) || '/overview';
@@ -186,7 +186,7 @@ async function workspace() {
   let rows,title;
   if(state.workspaceTab==='model') {
     title='模型与计算输入';
-    rows=[['SQLite 模型',cfg.tasks.lf?.model_file],['SE 量测',cfg.tasks.se?.measurement_file],['SE 参数',cfg.tasks.se?.parameter_file],['LF 参数',cfg.tasks.lf?.parameter_file],['CA 限值',cfg.tasks.ca?.limit_file]];
+    rows=[['SQLite 模型',cfg.tasks.lf?.model_file],['SE 量测',cfg.tasks.se?.measurement_file],['SCADA采集库',cfg.tasks.se?.scada_source_file],['SE 参数',cfg.tasks.se?.parameter_file],['LF 参数',cfg.tasks.lf?.parameter_file],['CA 限值',cfg.tasks.ca?.limit_file]];
   } else if(state.workspaceTab==='results') {
     title='计算结果与参数日志';
     rows=[['PAS 参数日志',cfg.control_database],...TASKS.map(t=>[`${t.toUpperCase()} 计算结果`,cfg.result_databases[t]])];
@@ -216,10 +216,10 @@ async function settings() {
 async function render() {
   const token=++state.token;state.exportData=null;
   const route=state.route.split('?')[0], name=task();
-  document.querySelector('#page-title').textContent=name?LABELS[name]:({'/runs':'运行历史','/settings':'系统设置','/workspace':'工作目录'}[route]||'运行总览');
+  document.querySelector('#page-title').textContent=name?LABELS[name]:({'/runs':'运行历史','/settings':'系统设置','/workspace':'工作目录','/measurements':'设备量测','/limits':'安全限值'}[route]||'运行总览');
   document.querySelectorAll('[data-route]').forEach(a=>a.classList.toggle('active',a.dataset.route===(name||route.slice(1))));
   try {
-    const html=name?await analysis(name):route==='/runs'?await history():route==='/settings'?await settings():route==='/workspace'?await workspace():await overview();
+    const html=name?await analysis(name):route==='/runs'?await history():route==='/settings'?await settings():route==='/workspace'?await workspace():['/measurements','/limits'].includes(route)?await inputPage(route.slice(1)):await overview();
     if(token===state.token)document.querySelector('#app').innerHTML=html;
   } catch(e) {if(token===state.token)document.querySelector('#app').innerHTML=`<section class="card"><h2>加载失败</h2><p>${esc(e.message)}</p><button class="mini" data-action="refresh">重试</button></section>`;}
 }

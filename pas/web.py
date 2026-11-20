@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .db import Repository
+from . import input_store
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,17 @@ class PasWebApp:
 
     def api_get(self, path: str) -> dict[str, Any]:
         parsed = urlparse(path)
+        if parsed.path.startswith('/api/inputs/'):
+            try:
+                kind=parsed.path.rsplit('/',1)[-1]
+                if kind=='limit-options':
+                    return {'ok':True,'data':input_store.limit_options(self.config.tasks['ca'])}
+                query=parse_qs(parsed.query)
+                data=input_store.browse_inputs(self.config,kind,q=query.get('q',[''])[0],
+                    page=_int_query(query,'page',0,0,1000000),size=_int_query(query,'size',8,1,100),view=query.get('view',['all'])[0])
+                return {'ok':True,'data':data}
+            except (ValueError,OSError,input_store.sqlite3.Error) as exc:
+                return {'ok':False,'error':str(exc)}
         if parsed.path == "/api/status":
             scheduler_status = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
             scheduler_status.update({"daemon_running": bool(self._daemon_thread and self._daemon_thread.is_alive()), "web_running": True})
@@ -106,6 +118,17 @@ class PasWebApp:
                     "missing_inputs": missing,
                     "latest_run": latest[0] if latest else None,
                 }
+                input_path=getattr(task,'measurement_file' if name=='se' else 'limit_file',None)
+                if name in ('se','ca') and input_path and Path(input_path).suffix.lower() in input_store.SQLITE_SUFFIXES and Path(input_path).is_file():
+                    try:
+                        stats=input_store.browse_inputs(self.config,'measurements' if name=='se' else 'limits',size=1)['stats']
+                        tasks[name]['input_statistics']=stats
+                        tasks[name]['inputs_ready']=not missing and bool(stats.get('se_valid') if name=='se' else stats.get('enabled'))
+                        if not tasks[name]['inputs_ready']:
+                            tasks[name]['missing_inputs'].append('有效实时量测' if name=='se' else '启用的安全限值')
+                    except (ValueError,OSError,input_store.sqlite3.Error) as exc:
+                        tasks[name]['inputs_ready']=False
+                        tasks[name]['missing_inputs'].append(str(exc))
                 all_ready = all_ready and (not tasks[name]["enabled"] or not missing)
             db_ready = all(item.get("sqlite") == "ok" and item.get("exists") for item in databases.values())
             daemon_running = bool(self._daemon_thread and self._daemon_thread.is_alive())
@@ -221,6 +244,9 @@ class PasWebApp:
             config_rows = self.repository.list_config() if callable(getattr(self.repository, "list_config", None)) else []
             workspace = {key: str(getattr(self.config, key, None) or "") for key in
                          ("workspace_root", "runtime", "scenario", "workspace_directory")}
+            for field in ('scada_source_file','point_catalog_file'):
+                value=getattr(self.config.tasks.get('se'),field,None)
+                tasks['se'][field]=str(value) if value else None
             return {"ok": True, "data": {"workspace": workspace, "kernel_root": str(self.config.kernel_root), "database": str(control_database or ""), "control_database": str(control_database or ""), "result_databases": result_databases, "pas_config": config_rows, "tasks": tasks}}
         if parsed.path == "/api/logs":
             query = parse_qs(parsed.query)
@@ -238,6 +264,24 @@ class PasWebApp:
             payload = {}
         if not isinstance(payload, dict):
             return {"ok": False, "error": "payload_must_be_object"}
+        if path.startswith('/api/inputs/'):
+            try:
+                action=path.removeprefix('/api/inputs/')
+                if action=='sync':
+                    data=input_store.sync_measurements(self.config.tasks['se'])
+                elif action=='refresh':
+                    data=input_store.refresh_measurements(self.config.tasks['se']);data.pop('rows',None)
+                elif action=='seed-limits':
+                    data=input_store.seed_limits(self.config.tasks['ca'])
+                elif action=='limits':
+                    data=input_store.save_limit(self.config.tasks['ca'],payload)
+                elif action.startswith(('measurement/','mapping/')):
+                    entity,identity=action.split('/')
+                    data=input_store.update_measurement(self.config.tasks['se'],entity,int(identity),payload)
+                else: raise ValueError('Unknown input action')
+                return {'ok':True,'data':data}
+            except (ValueError,TypeError,OSError,input_store.sqlite3.Error) as exc:
+                return {'ok':False,'error':str(exc)}
         if path.startswith("/api/schedules/"):
             name = path.rsplit("/", 1)[-1]
             try:

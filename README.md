@@ -46,11 +46,11 @@ python -m pas.webapp --config D:/codex/pas/config.example.json --workspace-root 
 python -m pas.cli init-db --config config.example.json --workspace-root D:/codex/workspace --runtime realtime --scenario qinling
 ```
 
-运行态和场景名必须为单个目录名，不允许路径穿越、绝对路径或 Windows 保留名称。不同运行态/场景分别保存结果与调度覆盖参数。辅助输入的相对路径按工作目录解析；默认 SE 量测为 `meas/measurements.meas`，SE/LF 参数为 `config/se.para`、`config/lf.para`，CA 限值为 `config/ca.calmt`，也可显式配置绝对路径。当前示例保留内核的 SE/LF 算法参数文件。
+运行态和场景名必须为单个目录名，不允许路径穿越、绝对路径或 Windows 保留名称。不同运行态/场景分别保存结果与调度覆盖参数。辅助输入的相对路径按工作目录解析；默认 SE 量测库为 `sqldb/scada/devices.sqlite3`，SCADA 源库为 `sqldb/scada/scdfe_c.sqlite3`，点目录为 `sqldb/scada/point_catalog.json`；SE/LF 参数为 `config/se.para`、`config/lf.para`，CA 限值库为 `sqldb/pas/ca.sqlite3`，也可显式配置绝对路径。当前示例保留内核的 SE/LF 算法参数文件。
 
 `devices.sqlite3` 使用 RTDB 内嵌结构（`rtdb_schema_tables`、`rtdb_schema_columns`、`rtdb_data_*`）。每次调用在单个只读事务中读取全部声明表与列，包含 WAL 中已提交的数据，生成临时 E 模型交给内核；不读取旁边同名旧 E 模型，也不修改模型库。快照随调用释放，结果摘要保存源路径、SHA-256、表数和行数。SQLite 输入每次重新读取，暂不使用 E 文件模板缓存，防止模型更新后复用旧模板。非法结构、NULL、非有限数值或内核无法表示的字符串会明确失败。
 
-SE 使用支持 AC/DC/混合模型的 `HybridStateEstimator`。SQLite 模式会核对量测/限值中的设备名，拒绝混用其他场景的输入。当前实际模型库只有设备表，尚缺匹配的 SE 量测和 CA 限值，因此示例配置暂时关闭 SE/CA 周期调度，LF 每 60 秒自动执行。补齐两个场景文件后，可在对应页面启用周期调度或人工执行；缺少文件时人工执行会记录失败原因，不伪造计算结果。
+SE 使用支持 AC/DC/混合模型的 `HybridStateEstimator`。SQLite 模式会核对量测/限值中的设备名，拒绝混用其他场景的输入。当前配置启用 SE/LF 每 60 秒、CA 每 300 秒的周期任务。SE 先刷新设备量测库，再读取有效实测点；当没有有效实测点时记录输入不可用原因，下一周期再次采集，不用零占位或给定回读伪造状态估计。CA 每次从结果库内的 `ca_limit` 读取当时启用的限值，修改后无需重启。
 
 `/workspace.html` 是独立工作目录页面，分目录参数、模型输入、结果数据库展示当前有效配置；`GET /api/config` 的 `workspace` 字段返回这些参数。
 
@@ -103,3 +103,35 @@ select r.run_id, r.task_type, r.status,
 from calculation_run r
 order by r.run_id desc;
 ```
+
+
+## SCADA 设备量测与 CA 限值
+
+场景目录下的 `sqldb/scada/devices.sqlite3` 新增以下普通 SQLite 表，采集源 `scdfe_c.sqlite3` 始终以只读方式访问：
+
+| 表 | 用途 |
+| --- | --- |
+| `device` | 模型表名、模型设备编号、名称及 SCADA dev_id 对应关系 |
+| `device_measurement` | 量测定义、单位、SE 类型、权重、有效期和是否参与估计 |
+| `scada_point_mapping` | 量测与 SCADA RTU/YC或YX点号的关联、倍率、偏移、启停及版本 |
+| `measurement_value` | 最新工程值、源值、质量码、源时间、有效性和拒绝原因 |
+| `measurement_refresh` | 每次采集批次、数量、时间和源库错误 |
+| `input_change_log` | 目录同步及参数、关联修改的审计记录 |
+| `device_measurement_view` | 设备、量测、点关联及最新值的联合浏览视图 |
+
+首次启动根据同场景的 `point_catalog.json` 与模型表、设备编号、名称进行严格匹配，生成 YC/YX 量测和关联；不会将 YK/YT 控制点纳入量测。重复同步补充新定义，保留人工修改的权重、关联和启停；目录中删除的点不再有效。当前秦岭目录有 181 个设备、1839 条 YC/YX 量测，其中 445 条类型可进入 SE。
+
+每次 SE 或界面“立即采集”在同一个 SCADA 只读事务中读取 YC/YX，使用已经完成工程转换的 `value`，不重复应用 SCADA 的 raw_scale。只有质量码为 0、未锁定、时间有效、未超过有效期且设备关联匹配的值可用；YC 采用 `raw_time`，YX 采用 `refresh_time`（Unix 毫秒）。默认有效期 120 秒，可逐量测调整。源库故障会使本批次全部无效，旧值不冒充新数据。SE 按模型声明单位换算 V/kV、A/kA、kW/MW 等；三相平衡内核采用 AB 电压和 A 相电流，不把三相读数重复计为独立量测。给定回读、SOC、频率等仍可浏览，但不纳入当前 SE。源点身份、量测语义或单位不匹配时拒绝使用。
+
+CA 的 `sqldb/pas/ca.sqlite3` 新增 `ca_limit` 和 `ca_limit_change_log`。限值按模型表、设备编号、指标唯一，保存上下限、单位、启停、来源和版本；上下限可以单边为空。启动/“补充模型限值”从模型中明确声明的功率、电流、标幺电压边界初始化，电压按对应节点基准转换；零占位、缺失或不合理边界不自动启用。初始秦岭模型提取 80 条限值，不代表已覆盖所有设备或所有安全检查，现场运行边界仍需按设备要求维护。已有人工修改与停用保持不变。
+
+CA 在同一读取快照中加载启用边界，直接传给参考内核检查函数；不通过 E 文件把缺失边界补为零。结果摘要保存限值快照摘要；SE 摘要保存量测批次、源库、有效数量和快照摘要。模型文件/量测文件/.calmt 的旧配置仍兼容。
+
+独立页面 `/measurements.html` 提供实时量测、SCADA关联、SE参数三个标签，支持搜索、有效性筛选、分页、立即采集、目录同步、点关联及权重/有效期/参与状态编辑。`/limits.html` 支持限值新增、编辑、启停、筛选和模型限值补充。编辑使用版本检查，防止覆盖其他操作员刚保存的配置。所有动作都通过后台 API 落库：
+
+- `GET /api/inputs/measurements`、`GET /api/inputs/limits`：`q`、`view`、`page`（从0开始）、`size`（1至100）分页浏览。
+- `POST /api/inputs/sync`、`POST /api/inputs/refresh`、`POST /api/inputs/seed-limits`：同步定义、刷新量测、补充限值。
+- `POST /api/inputs/measurement/{id}`：携带 `version` 修改 `weight/max_age_seconds/se_enabled`。
+- `POST /api/inputs/mapping/{id}`：携带关联的 `version` 修改 `rtu_id/pnt_no/enabled/scale/offset`。
+- `GET /api/inputs/limit-options`：获取当前模型可配置的设备与指标。
+- `POST /api/inputs/limits`：新增，或携带 `limit_id/version` 修改限值；上下限字段为 `lower_value/upper_value`，JSON null 表示不设该侧边界。

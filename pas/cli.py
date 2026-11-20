@@ -10,6 +10,7 @@ from .config import add_workspace_arguments, load_config
 from .db import Repository, RepositoryHub
 from . import kernels
 from .scheduler import Scheduler
+from .input_store import initialize_inputs
 
 
 def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, RepositoryHub]:
@@ -17,6 +18,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
     result_repositories = {name: Repository(path) for name, path in config.databases.items()}
     repository = RepositoryHub(result_repositories, Repository(config.database))
     repository.initialize()
+    initialize_inputs(config)
     if repository.control is not None:
         repository.control.set_config("workspace", {key: str(getattr(config, key) or "") for key in
             ("workspace_root", "runtime", "scenario", "workspace_directory")})

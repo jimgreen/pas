@@ -33,8 +33,8 @@ def _cell(value):
     return f"'{text}'" if not text or any(c.isspace() for c in text) else text
 
 
-def read_sqlite_model(path: Path) -> tuple[str, int, int]:
-    """See committed WAL data; keep metadata and all rows in one transaction."""
+def read_model_tables(path: Path) -> dict[str, dict]:
+    """Read declared RTDB fields and values from a single read-only transaction."""
     connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
     try:
         connection.execute("PRAGMA query_only=ON")
@@ -42,7 +42,7 @@ def read_sqlite_model(path: Path) -> tuple[str, int, int]:
         tables = connection.execute("SELECT table_name FROM rtdb_schema_tables ORDER BY ordinal,table_name").fetchall()
         if not tables:
             raise ValueError("SQLite model has no embedded RTDB tables")
-        parts, row_count = [], 0
+        result = {}
         for (name,) in tables:
             name = _identifier(name)
             columns = connection.execute("SELECT ordinal,eng_name FROM rtdb_schema_columns WHERE table_name=? ORDER BY ordinal", (name,)).fetchall()
@@ -52,20 +52,30 @@ def read_sqlite_model(path: Path) -> tuple[str, int, int]:
             physical = {item[1] for item in connection.execute(f'PRAGMA table_info("rtdb_data_{name}")')}
             if not {"_pos", *(f"c{i}" for i in range(len(columns)))} <= physical:
                 raise ValueError(f"Physical columns do not match embedded schema for {name}")
-            parts.extend([f"<{name}>\n", "@ " + " ".join(fields) + "\n"])
             selected = ",".join(f'"c{i}"' for i in range(len(columns)))
-            for row in connection.execute(f'SELECT {selected} FROM "rtdb_data_{name}" ORDER BY "_pos"'):
-                parts.append("# " + " ".join(_cell(value) for value in row) + "\n")
-                row_count += 1
-            parts.append(f"</{name}>\n\n")
-        if not any(name[0] in {"ACNode", "DCNode", "Node"} for name in tables):
+            result[name] = {"fields": fields, "rows": [dict(zip(fields, row)) for row in
+                connection.execute(f'SELECT {selected} FROM "rtdb_data_{name}" ORDER BY "_pos"')]}
+        if not any(name in result for name in ("ACNode", "DCNode", "Node")):
             raise ValueError("SQLite model contains no AC/DC node table")
-        return "".join(parts), len(tables), row_count
+        return result
     except sqlite3.Error as exc:
         raise ValueError(f"Cannot read embedded RTDB SQLite model {path}: {exc}") from exc
     finally:
         connection.rollback()
         connection.close()
+
+
+def read_sqlite_model(path: Path) -> tuple[str, int, int]:
+    tables = read_model_tables(path)
+    parts, count = [], 0
+    for name, block in tables.items():
+        fields = block["fields"]
+        parts.extend([f"<{name}>\n", "@ " + " ".join(fields) + "\n"])
+        for row in block["rows"]:
+            parts.append("# " + " ".join(_cell(row[field]) for field in fields) + "\n")
+            count += 1
+        parts.append(f"</{name}>\n\n")
+    return "".join(parts), len(tables), count
 
 
 @dataclass(frozen=True)

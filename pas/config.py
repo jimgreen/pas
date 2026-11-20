@@ -29,6 +29,8 @@ class TaskConfig:
     parameter_file: Path | None = None
     limit_file: Path | None = None
     scan_n1: bool = True
+    scada_source_file: Path | None = None
+    point_catalog_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -232,7 +234,8 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                     if not model.is_relative_to(workspace):
                         raise ConfigError("model path must stay inside workspace directory")
                     return model
-                defaults = {"measurement_file": "meas/measurements.meas", "parameter_file": f"config/{name}.para", "limit_file": "config/ca.calmt"}
+                defaults = {"measurement_file": "sqldb/scada/devices.sqlite3", "parameter_file": f"config/{name}.para", "limit_file": "sqldb/pas/ca.sqlite3",
+                            "scada_source_file": "sqldb/scada/scdfe_c.sqlite3", "point_catalog_file": "sqldb/scada/point_catalog.json"}
                 return _path(values.get(field, defaults[field]), workspace)
             return _relocated_path(values.get(field), base, configured_kernel_root or kernel_root, kernel_root)
 
@@ -245,6 +248,8 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
             parameter_file=input_path("parameter_file") if name != "ca" else None,
             limit_file=input_path("limit_file") if name == "ca" else None,
             scan_n1=bool(values.get("scan_n1", True)),
+            scada_source_file=input_path("scada_source_file") if name == "se" else None,
+            point_catalog_file=input_path("point_catalog_file") if name == "se" else None,
         )
         if enabled:
             required = {"se": ("model_file", task.model_file, "measurement_file", task.measurement_file, "parameter_file", task.parameter_file),
@@ -254,6 +259,11 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                 if candidate is None:
                     raise ConfigError(f"tasks.{name}.{field} is required")
                 if not candidate.is_file():
+                    managed = workspace is not None and (
+                        name == 'se' and field == 'measurement_file' and candidate == workspace / 'sqldb/scada/devices.sqlite3' or
+                        name == 'ca' and field == 'limit_file' and candidate == databases['ca'])
+                    if managed:
+                        continue  # Created by initialize_inputs before scheduler startup.
                     raise ConfigError(f"tasks.{name}.{field} does not exist: {candidate}")
         tasks[name] = task
     return AppConfig(source, kernel_root, database, databases, tick_seconds, retry_seconds, tasks,
@@ -267,3 +277,6 @@ def validate_task_inputs(task: TaskConfig) -> None:
         value = getattr(task, field, None)
         if value is None or not Path(value).is_file():
             raise ConfigError(f"tasks.{task.name}.{field} does not exist: {value}")
+    if task.name == 'se' and task.measurement_file.suffix.lower() in {'.sqlite3','.sqlite','.db'}:
+        if task.scada_source_file is None or not task.scada_source_file.is_file():
+            raise ConfigError(f"tasks.se.scada_source_file does not exist: {task.scada_source_file}")
