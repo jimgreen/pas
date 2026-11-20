@@ -15,6 +15,7 @@ import threading
 import time
 
 from .model_input import _cell, read_model_tables, SQLITE_SUFFIXES
+from .rtdb_schema import execute_schema, schema_transaction
 
 _refresh_lock = threading.RLock()
 
@@ -85,15 +86,17 @@ def initialize_inputs(config):
     se, ca = config.tasks['se'], config.tasks['ca']
     if se.measurement_file and se.measurement_file.suffix.lower() in SQLITE_SUFFIXES:
         with connect(se.measurement_file) as c:
-            c.executescript(Path(__file__).with_name('measurement_schema.sql').read_text(encoding='utf-8'))
-            if 'catalog_active' not in {r[1] for r in c.execute('PRAGMA table_info(device_measurement)')}:
-                c.execute('ALTER TABLE device_measurement ADD COLUMN catalog_active INTEGER NOT NULL DEFAULT 1')
+            with schema_transaction(c, se.measurement_file):
+                execute_schema(c, Path(__file__).with_name('measurement_schema.sql').read_text(encoding='utf-8'))
+                if 'catalog_active' not in {r[1] for r in c.execute('PRAGMA table_info(device_measurement)')}:
+                    c.execute('ALTER TABLE device_measurement ADD COLUMN catalog_active INTEGER NOT NULL DEFAULT 1')
         catalog = getattr(se, 'point_catalog_file', None)
         if catalog and catalog.is_file():
             sync_measurements(se)
     if ca.limit_file and ca.limit_file.suffix.lower() in SQLITE_SUFFIXES:
         with connect(ca.limit_file) as c:
-            c.executescript(Path(__file__).with_name('limit_schema.sql').read_text(encoding='utf-8'))
+            with schema_transaction(c, ca.limit_file):
+                execute_schema(c, Path(__file__).with_name('limit_schema.sql').read_text(encoding='utf-8'))
         seed_limits(ca)
 
 

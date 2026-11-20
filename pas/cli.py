@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import threading
+from contextlib import closing
 
 from .config import add_workspace_arguments, load_config
 from .db import Repository, RepositoryHub
 from . import kernels
 from .scheduler import Scheduler
 from .input_store import initialize_inputs
+from .model_input import SQLITE_SUFFIXES
+from .rtdb_schema import schema_transaction
 
 
 def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, RepositoryHub]:
@@ -43,13 +47,30 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Periodic online SE/LF/CA analysis service")
     sub = parser.add_subparsers(dest="command", required=True)
-    for command in ("init-db", "run-once", "daemon"):
+    for command in ("init-db", "run-once", "daemon", "sync-rtdb-schema"):
         item = sub.add_parser(command)
         item.add_argument("--config", required=True)
         add_workspace_arguments(item)
     args = parser.parse_args(argv)
     workspace_options = {key: getattr(args, key) for key in ("workspace_root", "runtime", "scenario")}
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.command == "sync-rtdb-schema":
+        config = load_config(args.config, **workspace_options)
+        paths = dict.fromkeys([config.database, *config.databases.values(),
+                               config.tasks["se"].measurement_file, config.tasks["ca"].limit_file])
+        for path in paths:
+            if path is None or path.suffix.lower() not in SQLITE_SUFFIXES:
+                continue
+            if not path.is_file():
+                logging.info("Skipping absent PAS database %s", path)
+                continue
+            with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True, timeout=30)) as connection:
+                connection.execute("PRAGMA foreign_keys=ON")
+                with schema_transaction(connection, path):
+                    pass
+                count = connection.execute("SELECT COUNT(*) FROM rtdb_schema_tables").fetchone()[0]
+                logging.info("Synchronized %d RTDB definitions in %s", count, path)
+        return 0
     if args.command == "init-db":
         scheduler, repository = _build_scheduler(args.config, **workspace_options)
         scheduler.shutdown()

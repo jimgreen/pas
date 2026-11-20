@@ -19,6 +19,7 @@ from typing import Any, Iterator
 
 from .analytics import DETAILS, detail_query, hour_window, merge_trends
 from .dbdef import build_dbdef_rows, load_catalog, normalize_dbdef_row, table_names, upsert_dbdef_row
+from .rtdb_schema import execute_schema, schema_transaction
 
 
 def synchronized(method):
@@ -80,17 +81,15 @@ class Repository:
     @synchronized
     def initialize(self) -> None:
         conn = self._connection()
-        conn.executescript((Path(__file__).with_name("schema.sql")).read_text(encoding="utf-8"))
-        # Existing deployments predate execution_source.  Apply this additive
-        # migration after the idempotent schema script so the four live SQLite
-        # files gain the field without being recreated.
-        columns = {row[1] for row in conn.execute("PRAGMA table_info(calculation_run)")}
-        if "execution_source" not in columns:
-            conn.execute("ALTER TABLE calculation_run ADD COLUMN execution_source TEXT NOT NULL DEFAULT 'schedule'")
-        if "snapshot_version" not in {row[1] for row in conn.execute("PRAGMA table_info(pas_dbdef_run)")}:
-            conn.execute("ALTER TABLE pas_dbdef_run ADD COLUMN snapshot_version INTEGER NOT NULL DEFAULT 0")
-        conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
-        conn.commit()
+        with schema_transaction(conn, self.path):
+            # Upgrade old runs before the schema attempts to index this field.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(calculation_run)")}
+            if columns and "execution_source" not in columns:
+                conn.execute("ALTER TABLE calculation_run ADD COLUMN execution_source TEXT NOT NULL DEFAULT 'schedule'")
+            execute_schema(conn, Path(__file__).with_name("schema.sql").read_text(encoding="utf-8"))
+            if "snapshot_version" not in {row[1] for row in conn.execute("PRAGMA table_info(pas_dbdef_run)")}:
+                conn.execute("ALTER TABLE pas_dbdef_run ADD COLUMN snapshot_version INTEGER NOT NULL DEFAULT 0")
+            conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
 
     @synchronized
     def get_config(self, key: str, default: Any = None) -> Any:

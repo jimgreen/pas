@@ -23,6 +23,14 @@ python -m pas.cli daemon --config config.example.json
 
 ## 数据库
 
+PAS 建表或迁移时，在同一个 SQLite 事务内同步 RTDB 内置定义。PAS、SE、LF、CA、设备量测和独立限值库均使用此规则。定义记录原表名、字段顺序、类型、主键、静态默认值和结构指纹。新增、重命名或删除表和字段时，旧定义随同更新。结构同步失败时，建表或迁移一并回滚。
+
+在支持 `storage_format=native` 的 RTDB 中选择 PAS 数据库文件，即可只读浏览原表。业务数据只有一份，运算和编辑仍由 PAS 完成。代码内的建表和迁移使用 `schema_transaction`。如通过外部 SQLite 工具直接执行 DDL，可用下面的命令补同步。命令只登记配置中已存在的 PAS 库。
+
+```powershell
+python -m pas.cli sync-rtdb-schema --config config.example.json
+```
+
 SQLite schema 在服务启动时幂等创建。常用查询示例：
 
 `database` 是 PAS 控制数据库，保存 `pas_config` 参数表和 `pas_log` 日志表；`databases.se`、`databases.lf`、`databases.ca` 分别是 SE、LF、CA 的结果数据库。未显式配置 `databases` 时，服务会从 `database` 自动派生三个带任务后缀的路径。Web 的“系统设置”页面会展示四个数据库路径、调度参数和 PAS 日志；运行总览与运行历史会跨三个结果库聚合。
