@@ -192,11 +192,14 @@ def build_dbdef_rows(task_type: str, result: dict[str, Any], run_id: int, starte
     rows: dict[str, list[dict[str, Any]]] = {}
     if task_type == "se":
         stats = result.get("statistics") or {}
+        se_stats = result.get("se_statistics") or {}
         measurements = result.get("measurements") or []
-        total = _integer(stats.get("measurement_count"), len(measurements)) or 0
-        bad = _integer(stats.get("bad_data_count"), 0) or 0
-        good = _integer(stats.get("normal_measurement_count"), max(0, total - bad)) or 0
-        info = {"time": record_time, "begin_time": begin_time, "end_time": end_time, "consumer_time": elapsed, "calc_status": int(bool(result.get("converged"))), "good_rate": (good / total if total else 0.0), "total_meas": total, "total_meas_prefilter": _integer(stats.get("prefiltered_measurement_count"), 0), "total_meas_bad": bad, "total_meas_err": _number(stats.get("residual_inf"), 0.0), "total_meas_good": good, "total_calc_count": 1, "total_seconv_rate": int(bool(result.get("converged"))), "total_good_rate": (good / total if total else 0.0), "calc_iters": _integer(stats.get("iterations"), result.get("iterations", 0)), "name": "se", "obj_scaling_factor": _number(stats.get("objective"), result.get("objective", 0.0)), "model_time": record_time, "data_time": record_time, "msg_info": str(result.get("summary", {}).get("message", "") or "")}
+        total = _integer(se_stats.get("meas_count"), _integer(stats.get("measurement_count"), len(measurements))) or 0
+        bad = _integer(se_stats.get("bad_data_count"), _integer(stats.get("bad_data_count"), 0)) or 0
+        good = _integer(se_stats.get("good_meas_count"), _integer(stats.get("normal_measurement_count"), max(0, total - bad))) or 0
+        good_rate = _number(se_stats.get("pass_rate"), (good / total if total else 0.0)) or 0.0
+        total_err = _number(se_stats.get("total_residual"), _number(stats.get("residual_inf"), 0.0)) or 0.0
+        info = {"time": record_time, "begin_time": begin_time, "end_time": end_time, "consumer_time": elapsed, "calc_status": int(bool(result.get("converged"))), "good_rate": good_rate, "total_meas": total, "total_meas_prefilter": _integer(se_stats.get("prefiltered_count"), _integer(stats.get("prefiltered_measurement_count"), 0)), "total_meas_bad": bad, "total_meas_err": total_err, "total_meas_good": good, "total_calc_count": 1, "total_seconv_rate": int(bool(result.get("converged"))), "total_good_rate": good_rate, "calc_iters": _integer(stats.get("iterations"), result.get("iterations", 0)), "name": "se", "obj_scaling_factor": _number(stats.get("objective"), result.get("objective", 0.0)), "model_time": record_time, "data_time": record_time, "msg_info": str(result.get("summary", {}).get("message", "") or "")}
         rows["pas_se_info"] = [info]
         for idx, item in enumerate(measurements, 1):
             item = dict(item)
@@ -204,7 +207,9 @@ def build_dbdef_rows(task_type: str, result: dict[str, Any], run_id: int, starte
             source = str(item.get("source", "") or "")
             reason = str(item.get("reason", "") or "")
             row_id = run_id * 1_000_000 + idx
-            base = {"id": row_id, "meas_id": _integer(item.get("idx"), idx), "meas_name": item.get("name", item.get("measurement_name", "")), "dev_name": item.get("device_name", item.get("dev_name", "")), "meas_type": _code(item.get("meas_type", item.get("measurement_type", 0))), "meas_value": _number(item.get("value")), "max_value": _number(item.get("max_value")), "min_value": _number(item.get("min_value")), "meas_status": int(valid), "se_value": _number(item.get("estimated_value", item.get("se_value"))), "is_filter": int("filter" in source.lower() or "filter" in reason.lower()), "is_bad": int((not valid) or "bad" in source.lower() or "bad" in reason.lower()), "is_aval": int(item.get("value") is not None), "is_good": int(valid), "meas_st": _integer(item.get("meas_st"), 0), "meas_mpsys": _integer(item.get("meas_mpsys"), 0), "meas_time": record_time}
+            is_filter = int("filter" in source.lower() or "filter" in reason.lower())
+            is_bad = int(bool(item.get("is_bad")) or (not valid and not is_filter) or "bad" in source.lower() or "bad" in reason.lower())
+            base = {"id": row_id, "meas_id": _integer(item.get("idx"), idx), "meas_name": item.get("name", item.get("measurement_name", "")), "dev_name": item.get("device_name", item.get("dev_name", "")), "meas_type": _code(item.get("meas_type", item.get("measurement_type", 0))), "meas_value": _number(item.get("value")), "max_value": _number(item.get("max_value")), "min_value": _number(item.get("min_value")), "meas_status": int(valid), "se_value": _number(item.get("estimated_value", item.get("se_value"))), "is_filter": is_filter, "is_bad": is_bad, "is_aval": int(item.get("value") is not None), "is_good": int(bool(item.get("is_good", valid and not is_bad))), "meas_st": _integer(item.get("meas_st"), 0), "meas_mpsys": _integer(item.get("meas_mpsys"), 0), "meas_time": record_time}
             rows.setdefault("pas_se_meas", []).append(base)
             if base["is_bad"]:
                 rows.setdefault("pas_se_badmeas", []).append({**base, "filter_reason": reason})
@@ -217,8 +222,29 @@ def build_dbdef_rows(task_type: str, result: dict[str, Any], run_id: int, starte
             if "pseudo" in source.lower() or "pseudo" in reason.lower():
                 pseudo = {**base, "meas_weight": _number(item.get("weight")), "meas_time": record_time}
                 rows.setdefault("pas_se_psemeas", []).append(pseudo)
-                rows.setdefault("pas_se_psemeas_define", []).append({**pseudo, "meas_useflag": int(valid)})
-        for idx, (name, value) in enumerate(_flatten_scalars(stats), 1):
+        # 将外部采集库扫描到的缺测/坏质量/置不参与点写入 pas_se_nomeas
+        for m_seq, miss in enumerate(result.get("missing_measurements") or [], 1):
+            m_row_id = run_id * 1_000_000 + m_seq
+            rows.setdefault("pas_se_nomeas", []).append(
+                {
+                    "id": m_row_id,
+                    "meas_id": _integer(miss.get("device_idx"), m_seq),
+                    "meas_name": str(miss.get("meas_name", "")),
+                    "dev_name": str(miss.get("device_name", "")),
+                    "meas_type": _code(miss.get("se_type", 0)),
+                    "meas_value": _number(miss.get("raw_value")),
+                    "max_value": None,
+                    "min_value": None,
+                    "meas_status": 0,
+                    "se_value": None,
+                    "filter_reason": str(miss.get("reason", "missing_sample")),
+                    "meas_st": 0,
+                    "meas_mpsys": 0,
+                    "meas_time": record_time,
+                }
+            )
+        merged_stats = {**stats, **{k: v for k, v in se_stats.items() if isinstance(v, (int, float, bool))}}
+        for idx, (name, value) in enumerate(_flatten_scalars(merged_stats), 1):
             rows.setdefault("pas_se_statics", []).append({"time": record_time, "idx": idx, "name": name, "value": _number(value) if not isinstance(value, str) else value})
     elif task_type == "lf":
         summary = result.get("summary") or {}

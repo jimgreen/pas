@@ -79,6 +79,29 @@ def test_export_uses_engineering_value_and_unit_conversion_without_source_writes
     assert task.scada_source_file.read_bytes()==before
 
 
+def test_scdfe_d_snapshot_reads_collected_engineering_values_without_refreshing(tmp_path):
+    task = environment(tmp_path).tasks["se"]
+    refresh_measurements(task)
+    with connect(task.measurement_file) as connection:
+        connection.execute("ALTER TABLE device_measurement ADD COLUMN notuse INTEGER DEFAULT 0")
+        connection.execute("DROP VIEW device_measurement_view")
+        connection.execute("UPDATE measurement_value SET value=7.5,source_value=3.0 WHERE measurement_id=1")
+        connection.execute("UPDATE device_measurement SET se_type='P_GEN',se_enabled=1 WHERE measurement_id=2")
+    before = task.measurement_file.read_bytes()
+    with measurement_input(task, scada_snapshot=True) as (path, metadata):
+        assert "P_GEN 1.0 1 7.5" in path.read_text(encoding="utf-8")
+        assert metadata["se_valid"] == 1
+        assert metadata["rejected"] == {"unsupported_quantity": 1}
+        assert metadata["format"] == "scdfe_d_sqlite"
+    assert task.measurement_file.read_bytes() == before
+
+    with connect(task.measurement_file) as connection:
+        connection.execute("UPDATE measurement_value SET valid=0,quality=128,reason='bad_quality' WHERE measurement_id=1")
+    with pytest.raises(ValueError, match="候选 2，有效 0.*bad_quality=1"):
+        with measurement_input(task, scada_snapshot=True):
+            pytest.fail("An invalid measurement reached SE")
+
+
 def test_mapping_edit_invalidates_sample_and_checks_device_identity(tmp_path):
     cfg=environment(tmp_path);task=cfg.tasks['se']
     refresh_measurements(task)

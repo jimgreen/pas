@@ -1633,3 +1633,360 @@ CREATE INDEX IF NOT EXISTS idx_calculation_run_julian ON calculation_run(juliand
 CREATE INDEX IF NOT EXISTS idx_calculation_run_task_time ON calculation_run(task_type, started_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_calculation_run_filter_time ON calculation_run(task_type, status, execution_source, started_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_calculation_metric_run ON calculation_metric(run_id, metric_id);
+
+-- 在线 SE 结果四类核心表：统计表、量测表、坏数据表、各类设备表（均带主键以同步 RTDB）
+CREATE TABLE IF NOT EXISTS se_statistics (
+    run_id INTEGER PRIMARY KEY REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    calc_time TEXT NOT NULL,
+    elapsed_seconds REAL NOT NULL DEFAULT 0.0,
+    kernel_seconds REAL NOT NULL DEFAULT 0.0,
+    meas_count INTEGER NOT NULL DEFAULT 0,
+    valid_meas_count INTEGER NOT NULL DEFAULT 0,
+    good_meas_count INTEGER NOT NULL DEFAULT 0,
+    pass_rate REAL NOT NULL DEFAULT 0.0,
+    total_residual REAL NOT NULL DEFAULT 0.0,
+    residual_inf REAL NOT NULL DEFAULT 0.0,
+    objective REAL NOT NULL DEFAULT 0.0,
+    bad_data_count INTEGER NOT NULL DEFAULT 0,
+    prefiltered_count INTEGER NOT NULL DEFAULT 0,
+    pseudo_count INTEGER NOT NULL DEFAULT 0,
+    converged INTEGER NOT NULL DEFAULT 0,
+    observable INTEGER NOT NULL DEFAULT 0,
+    iterations INTEGER NOT NULL DEFAULT 0,
+    max_correction REAL NOT NULL DEFAULT 0.0,
+    model_source TEXT NOT NULL DEFAULT '',
+    meas_source TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_se_statistics_calc_time ON se_statistics(calc_time DESC);
+
+CREATE TABLE IF NOT EXISTS se_measurement (
+    meas_id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    meas_name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    meas_value REAL,
+    se_value REAL,
+    residual REAL,
+    normalized_residual REAL,
+    weight REAL,
+    valid INTEGER NOT NULL DEFAULT 1,
+    is_bad INTEGER NOT NULL DEFAULT 0,
+    is_good INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_se_measurement_dev ON se_measurement(device_type, device_idx);
+
+CREATE TABLE IF NOT EXISTS se_bad_data (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    meas_id INTEGER NOT NULL,
+    meas_name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    meas_value REAL,
+    se_value REAL,
+    residual REAL,
+    normalized_residual REAL,
+    weight REAL,
+    reason TEXT NOT NULL DEFAULT '',
+    ack_status TEXT NOT NULL DEFAULT 'unacked',
+    ack_time TEXT NOT NULL DEFAULT '',
+    ack_note TEXT NOT NULL DEFAULT '',
+    policy_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACNode (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    uab_meas REAL,
+    uab_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCNode (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    u_meas REAL,
+    u_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACGenerator (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    p_meas REAL,
+    p_se REAL,
+    q_meas REAL,
+    q_se REAL,
+    uab_meas REAL,
+    uab_se REAL,
+    ia_meas REAL,
+    ia_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCGenerator (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    p_meas REAL,
+    p_se REAL,
+    u_meas REAL,
+    u_se REAL,
+    i_meas REAL,
+    i_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACLoad (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    p_meas REAL,
+    p_se REAL,
+    q_meas REAL,
+    q_se REAL,
+    uab_meas REAL,
+    uab_se REAL,
+    ia_meas REAL,
+    ia_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCLoad (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    p_meas REAL,
+    p_se REAL,
+    u_meas REAL,
+    u_se REAL,
+    i_meas REAL,
+    i_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACBranch (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    i_p_meas REAL,
+    i_p_se REAL,
+    i_q_meas REAL,
+    i_q_se REAL,
+    i_uab_meas REAL,
+    i_uab_se REAL,
+    i_ia_meas REAL,
+    i_ia_se REAL,
+    j_p_meas REAL,
+    j_p_se REAL,
+    j_q_meas REAL,
+    j_q_se REAL,
+    j_uab_meas REAL,
+    j_uab_se REAL,
+    j_ia_meas REAL,
+    j_ia_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCBranch (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    i_p_meas REAL,
+    i_p_se REAL,
+    i_u_meas REAL,
+    i_u_se REAL,
+    i_i_meas REAL,
+    i_i_se REAL,
+    j_p_meas REAL,
+    j_p_se REAL,
+    j_u_meas REAL,
+    j_u_se REAL,
+    j_i_meas REAL,
+    j_i_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACZeroBranch (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    i_p_meas REAL,
+    i_p_se REAL,
+    i_q_meas REAL,
+    i_q_se REAL,
+    i_uab_meas REAL,
+    i_uab_se REAL,
+    i_ia_meas REAL,
+    i_ia_se REAL,
+    j_p_meas REAL,
+    j_p_se REAL,
+    j_q_meas REAL,
+    j_q_se REAL,
+    j_uab_meas REAL,
+    j_uab_se REAL,
+    j_ia_meas REAL,
+    j_ia_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCDCConverter (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    i_p_meas REAL,
+    i_p_se REAL,
+    i_u_meas REAL,
+    i_u_se REAL,
+    i_i_meas REAL,
+    i_i_se REAL,
+    j_p_meas REAL,
+    j_p_se REAL,
+    j_u_meas REAL,
+    j_u_se REAL,
+    j_i_meas REAL,
+    j_i_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCACConverter (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    ac_p_meas REAL,
+    ac_p_se REAL,
+    ac_q_meas REAL,
+    ac_q_se REAL,
+    ac_uab_meas REAL,
+    ac_uab_se REAL,
+    ac_ia_meas REAL,
+    ac_ia_se REAL,
+    dc_p_meas REAL,
+    dc_p_se REAL,
+    dc_u_meas REAL,
+    dc_u_se REAL,
+    dc_i_meas REAL,
+    dc_i_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_ACBreak (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    ia_meas REAL,
+    ia_se REAL
+);
+
+CREATE TABLE IF NOT EXISTS se_dev_DCBreak (
+    idx INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    i_meas REAL,
+    i_se REAL
+);
+
+-- 状态估计伪量测结果表（区分人工定义 user_defined 与内核可观测性自动补充 kernel_auto）
+CREATE TABLE IF NOT EXISTS se_pseudo_result (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    meas_id INTEGER NOT NULL,
+    meas_name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    pseudo_value REAL,
+    se_value REAL,
+    residual REAL,
+    weight REAL,
+    origin TEXT NOT NULL DEFAULT 'kernel_auto',
+    define_id INTEGER,
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_se_pseudo_result_origin ON se_pseudo_result(origin, device_type);
+
+-- 状态估计坏量测处置策略表（suppress: 屏蔽不参与 / replace_pseudo: 屏蔽并由伪量测替代）
+CREATE TABLE IF NOT EXISTS se_bad_meas_policy (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL DEFAULT 'suppress' CHECK (action IN ('suppress', 'replace_pseudo')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    pseudo_define_id INTEGER,
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    UNIQUE(device_type, device_name, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_se_bad_policy_enabled ON se_bad_meas_policy(enabled, device_type);
+
+-- 状态估计可疑遥信/状态结果表（与 pas_se_susstat 同步落库）
+CREATE TABLE IF NOT EXISTS se_suspect_status (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    scada_status INTEGER,
+    model_status INTEGER,
+    se_inferred_status INTEGER,
+    evidence TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT ''
+);
+
+-- 状态估计运行日志与审计统一表（全生命周期阶段日志 + 参数/伪量测/坏量测变更 + 清理审计）
+CREATE TABLE IF NOT EXISTS se_run_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    calc_time TEXT NOT NULL,
+    level TEXT NOT NULL CHECK (level IN ('DEBUG', 'INFO', 'WARN', 'ERROR')),
+    stage TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'system',
+    elapsed_ms REAL,
+    message TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_se_run_log_time ON se_run_log(calc_time DESC, log_id DESC);
+CREATE INDEX IF NOT EXISTS idx_se_run_log_run ON se_run_log(run_id, log_id);
+CREATE INDEX IF NOT EXISTS idx_se_run_log_filter ON se_run_log(level, stage, calc_time DESC);
+
+-- 状态估计运行日志存储与定期自动删除策略表（单行配置）
+CREATE TABLE IF NOT EXISTS se_log_policy (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    retention_days INTEGER NOT NULL DEFAULT 30,
+    keep_error_days INTEGER NOT NULL DEFAULT 90,
+    max_rows INTEGER NOT NULL DEFAULT 50000,
+    cleanup_interval_hours REAL NOT NULL DEFAULT 6.0,
+    min_level TEXT NOT NULL DEFAULT 'INFO' CHECK (min_level IN ('DEBUG', 'INFO', 'WARN', 'ERROR')),
+    last_cleanup_at TEXT NOT NULL DEFAULT '',
+    last_deleted_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);

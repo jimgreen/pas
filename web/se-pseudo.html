@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>伪量测管理 · 状态估计 SE · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/se-pseudo" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
+          <div class="nav-sub">
+            <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-pseudo.html" data-route="se-pseudo" class="active" data-i18n="nav.se_pseudo">伪量测管理</a>
+            <a href="/se-bad.html" data-route="se-bad" data-i18n="nav.se_bad">坏量测管理</a>
+            <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
+            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se_detail">状态估计明细</a>
+          </div>
+          <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.pseudo">伪量测管理</h1>
+            <span id="pseudo-run-meta" class="se-run-meta tabular">--</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section class="se-kpi-strip cols-4" aria-label="KPI">
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.defined">伪量测定义</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-def-enabled">0</strong><small id="kpi-def-total">/ 0</small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.stat">伪状态</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-stat-enabled">0</strong><small id="kpi-stat-total">/ 0</small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.res_user">人工注入</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-res-user">0</strong></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.res_auto">内核补充</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-res-auto">0</strong></div>
+        </article>
+      </section>
+
+      <nav class="se-view-tabs" id="pseudo-tabs" role="tablist">
+        <button type="button" class="se-tab active" data-view="defines" role="tab" data-i18n="tab.defines">伪量测定义</button>
+        <button type="button" class="se-tab" data-view="results" role="tab" data-i18n="tab.results">本次伪量测结果</button>
+        <button type="button" class="se-tab" data-view="stats" role="tab" data-i18n="tab.stats">伪状态定义</button>
+      </nav>
+
+      <div class="se-workspace">
+        <!-- 1. 伪量测定义 -->
+        <section class="se-panel active" data-panel="defines">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <select id="def-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <input id="def-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/指标">
+                <label class="se-check-inline">
+                  <input type="checkbox" id="def-enabled-only">
+                  <span data-i18n="filter.enabled_only">仅看已启用</span>
+                </label>
+              </div>
+              <div class="se-tool-group">
+                <button type="button" class="se-btn primary" id="btn-add-meas" data-i18n="btn.add_meas">+ 新增伪量测</button>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="def-table-wrap"></div>
+          </div>
+        </section>
+
+        <!-- 2. 本次伪量测结果 -->
+        <section class="se-panel" data-panel="results">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <div class="se-segmented" id="res-origin-seg">
+                  <button type="button" class="seg active" data-origin="all" data-i18n="common.all">全部</button>
+                  <button type="button" class="seg" data-origin="user_defined" data-i18n="origin.user">人工定义</button>
+                  <button type="button" class="seg" data-origin="kernel_auto" data-i18n="origin.auto">内核补充</button>
+                </div>
+                <select id="res-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <input id="res-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/指标">
+              </div>
+              <div class="se-tool-group">
+                <span class="se-muted tabular" id="res-count-meta">--</span>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="res-table-wrap"></div>
+            <div class="se-pager" id="res-pager"></div>
+          </div>
+        </section>
+
+        <!-- 3. 伪状态定义 -->
+        <section class="se-panel" data-panel="stats">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <select id="stat-type-filter" class="se-select compact" aria-label="Device type"></select>
+              </div>
+              <div class="se-tool-group">
+                <button type="button" class="se-btn primary" id="btn-add-stat" data-i18n="btn.add_stat">+ 新增伪状态</button>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="stat-table-wrap"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 新增/编辑伪量测模态框 -->
+  <dialog id="meas-dialog" class="se-modal wide" aria-labelledby="meas-dlg-title">
+    <h3 id="meas-dlg-title" data-i18n="dlg.meas_title">伪量测定义</h3>
+    <form id="meas-form" class="se-form-grid">
+      <input type="hidden" name="id" value="">
+      <label class="se-field">
+        <span data-i18n="col.device_type">设备类型</span>
+        <select name="device_type" id="fm-dev-type" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.device_name">目标设备</span>
+        <select name="device_name" id="fm-dev-name" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.metric">量测指标</span>
+        <select name="metric" id="fm-metric" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.source_mode">来源模式</span>
+        <select name="source_mode" id="fm-mode">
+          <option value="manual" data-i18n="mode.manual">人工给定</option>
+          <option value="zero_injection" data-i18n="mode.zero">零注入约束</option>
+          <option value="bad_replace" data-i18n="mode.bad_replace">坏量测替代</option>
+        </select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.value">设定值</span>
+        <input type="number" step="any" name="meas_value" id="fm-value" required>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.weight">权重</span>
+        <select id="fm-weight-preset">
+          <option value="1e-4">1e-4</option>
+          <option value="1e-2">1e-2</option>
+          <option value="1">1.0</option>
+          <option value="1e-6">1e-6</option>
+          <option value="custom" data-i18n="weight.custom">自定义</option>
+        </select>
+      </label>
+      <label class="se-field" id="fm-weight-custom-wrap" hidden>
+        <span data-i18n="col.weight_custom">自定义权重</span>
+        <input type="number" step="any" min="1e-12" max="1e6" name="meas_weight" id="fm-weight" value="0.0001">
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.status">状态</span>
+        <select name="meas_useflag" id="fm-useflag">
+          <option value="1" data-i18n="common.enabled">已启用</option>
+          <option value="0" data-i18n="common.disabled">已停用</option>
+        </select>
+      </label>
+      <label class="se-field full">
+        <span data-i18n="col.note">备注</span>
+        <input type="text" name="note" id="fm-note" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-meas-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" data-i18n="action.save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 新增/编辑伪状态模态框 -->
+  <dialog id="stat-dialog" class="se-modal wide" aria-labelledby="stat-dlg-title">
+    <h3 id="stat-dlg-title" data-i18n="dlg.stat_title">伪状态定义</h3>
+    <form id="stat-form" class="se-form-grid">
+      <input type="hidden" name="id" value="">
+      <label class="se-field">
+        <span data-i18n="col.device_type">设备类型</span>
+        <select name="device_type" id="fs-dev-type" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.device_name">目标设备</span>
+        <select name="device_name" id="fs-dev-name" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.stat_val">强制状态</span>
+        <select name="stat_value" id="fs-value">
+          <option value="1" data-i18n="stat.on">1 · 合位 / 运行</option>
+          <option value="0" data-i18n="stat.off">0 · 分位 / 停运</option>
+        </select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.status">启用状态</span>
+        <select name="stat_useflag" id="fs-useflag">
+          <option value="1" data-i18n="common.enabled">已启用</option>
+          <option value="0" data-i18n="common.disabled">已停用</option>
+        </select>
+      </label>
+      <label class="se-field full">
+        <span data-i18n="col.note">备注</span>
+        <input type="text" name="note" id="fs-note" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-stat-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" data-i18n="action.save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 高危删除模态确认框 -->
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-desc" class="se-modal-desc"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="btn-confirm-cancel" autofocus data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="btn-confirm-ok" data-i18n="action.delete">删除</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/se-common.js"></script>
+  <script src="/assets/se-pseudo.js"></script>
+</body>
+</html>

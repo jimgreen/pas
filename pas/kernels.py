@@ -4,17 +4,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sys
 import tempfile
 import time
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 from .model_cache import lf_models
-from .model_input import kernel_model, validate_references
+from .model_input import kernel_model, read_model_tables, validate_references
 from .config import validate_task_inputs
-from .input_store import measurement_input, read_limits, SQLITE_SUFFIXES
+from .input_store import (
+    SE_DEVICE_RESULT_METRICS,
+    SE_SOLVER_METRICS,
+    SQLITE_SUFFIXES,
+    is_scdfe_d_wide_db,
+    measurement_input,
+    read_limits,
+)
+from .se_bad import detect_suspect_statuses
+from .se_params import se_parameter_file
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
@@ -215,22 +226,668 @@ def normalize_ca(n0_risks: list[Any], n1_risks: list[Any], n1_scan_count: int | 
     return ({"risk_level": level, "n0_risk_count": len(n0), "n1_scan_count": _int(n1_scan_count, 0), "n1_risk_count": len(n1), "risks": combined, "summary": {"n0": n0, "n1": n1}}, {"n0": n0, "n1": n1})
 
 
-def run_se(config: Any, kernel_root: str | Path | None = None) -> dict[str, Any]:
-    validate_task_inputs(config)
+_U_UNIT_TO_SCALE = {"mV": 1_000_000.0, "V": 1000.0, "kV": 1.0}
+_P_UNIT_TO_SCALE = {"W": 1000.0, "kW": 1.0, "MW": 0.001}
+_I_UNIT_TO_SCALE = {"mA": 1_000_000.0, "A": 1000.0, "kA": 1.0}
+_Q_UNIT_BY_P = {"W": "var", "kW": "kvar", "MW": "Mvar"}
+
+
+class _ModelUnitConverter:
+    """与参考内核 unit_system.py 完全一致的标幺值 <-> 模型工程单位换算器。"""
+
+    def __init__(self, snapshot: dict[str, list[dict[str, Any]]]):
+        model_rows = snapshot.get("Model") or snapshot.get("PowerBase") or [{}]
+        row = model_rows[0] if model_rows else {}
+        self.p_base = _number(row.get("p_base"), 100.0)
+        self.u_unit = str(row.get("u_unit") or "kV")
+        self.p_unit = str(row.get("p_unit") or "kW")
+        self.i_unit = str(row.get("i_unit") or "kA")
+        self.q_unit = _Q_UNIT_BY_P.get(self.p_unit, "kvar")
+        self.u_scale = _U_UNIT_TO_SCALE.get(self.u_unit, 1.0)
+        self.p_scale = _P_UNIT_TO_SCALE.get(self.p_unit, 1.0)
+        self.i_scale = _I_UNIT_TO_SCALE.get(self.i_unit, 1.0)
+        self.p_base_kw = self.p_base / self.p_scale
+        self.ac_vbase = {
+            _int(item.get("idx")): _number(item.get("vbase"), 1.0)
+            for item in snapshot.get("ACNode") or ()
+            if item.get("idx") is not None
+        }
+        self.dc_vbase = {
+            _int(item.get("idx")): _number(item.get("vbase"), 1.0)
+            for item in snapshot.get("DCNode") or ()
+            if item.get("idx") is not None
+        }
+        self.devices_by_name: dict[str, dict[str, dict[str, Any]]] = {}
+        for table_name, rows in snapshot.items():
+            if not rows:
+                continue
+            mapping: dict[str, dict[str, Any]] = {}
+            for item in rows:
+                if "name" in item:
+                    mapping[str(item["name"])] = item
+                if "idx" in item:
+                    mapping.setdefault(str(item["idx"]), item)
+            if mapping:
+                self.devices_by_name[table_name] = mapping
+
+    def unit_for(self, meas_type: str) -> str:
+        prefix = str(meas_type or "").split("_", 1)[0]
+        if prefix == "V":
+            return self.u_unit
+        if prefix == "I":
+            return self.i_unit
+        if prefix == "Q":
+            return self.q_unit
+        if prefix == "P":
+            return self.p_unit
+        if prefix in {"ANGLE", "THETA"}:
+            return "rad"
+        return ""
+
+    def scale_for(self, device_type: str, device_name: str, meas_type: str) -> float:
+        mtype = str(meas_type or "")
+        if mtype.startswith(("P", "Q")):
+            return self.p_base
+        if mtype.startswith(("ANGLE", "THETA")):
+            return 1.0
+        row = self.devices_by_name.get(device_type, {}).get(str(device_name))
+        if row is None:
+            return 1.0
+        is_dc = device_type.startswith("DC") and device_type != "DCACConverter"
+        if device_type in {"ACNode", "DCNode"}:
+            vbase = _number(row.get("vbase"), 1.0)
+        elif device_type in {"ACGenerator", "ACLoad"}:
+            vbase = self.ac_vbase.get(_int(row.get("node")), 1.0)
+        elif device_type in {"DCGenerator", "DCLoad"}:
+            vbase = self.dc_vbase.get(_int(row.get("node")), 1.0)
+        elif device_type in {"ACBranch", "ACZeroBranch", "ACBreak", "ACSwitch", "ACTransformer"}:
+            node_key = "j_node" if mtype.endswith("_TO") else "i_node"
+            vbase = self.ac_vbase.get(_int(row.get(node_key)), 1.0)
+        elif device_type in {"DCBranch", "DCZeroBranch", "DCBreak", "DCSwitch", "DCDCConverter"}:
+            node_key = "j_node" if mtype.endswith("_TO") else "i_node"
+            vbase = self.dc_vbase.get(_int(row.get(node_key)), 1.0)
+        elif device_type == "DCACConverter":
+            if mtype.endswith("_DC"):
+                is_dc = True
+                vbase = self.dc_vbase.get(_int(row.get("dc_node")), 1.0)
+            else:
+                is_dc = False
+                vbase = self.ac_vbase.get(_int(row.get("ac_node")), 1.0)
+        else:
+            return 1.0
+        if mtype.startswith("V"):
+            return vbase
+        if mtype.startswith("I"):
+            vbase_kv = abs(vbase) / self.u_scale
+            if vbase_kv <= 1e-12:
+                return 1.0
+            denom = 1000.0 * (vbase_kv if is_dc else math.sqrt(3.0) * vbase_kv)
+            return (self.p_base_kw / denom) * self.i_scale
+        return 1.0
+
+    def ac_current_from_pqv(self, p_val: float | None, q_val: float | None, v_val: float | None) -> float | None:
+        """由交流有功、无功与线电压工程值反算三相平衡电流工程值。"""
+        if p_val is None or q_val is None or v_val is None:
+            return None
+        if abs(v_val) <= 1e-9:
+            return 0.0
+        p_kw = p_val / self.p_scale
+        q_kvar = q_val / self.p_scale
+        v_kv = abs(v_val) / self.u_scale
+        i_ka = math.hypot(p_kw, q_kvar) / (1000.0 * math.sqrt(3.0) * v_kv)
+        return i_ka * self.i_scale
+
+    def dc_current_from_pv(self, p_val: float | None, v_val: float | None) -> float | None:
+        """由直流功率与电压工程值反算直流电流工程值。"""
+        if p_val is None or v_val is None:
+            return None
+        if abs(v_val) <= 1e-9:
+            return 0.0
+        p_kw = p_val / self.p_scale
+        v_kv = v_val / self.u_scale
+        i_ka = p_kw / (1000.0 * v_kv)
+        return i_ka * self.i_scale
+
+
+def _resolve_pos_device_name(
+    device_type: str,
+    device_name: str,
+    name_arrays: dict[int, Any],
+    device_type_codes: dict[str, int],
+) -> str:
+    if not isinstance(device_name, str) or not device_name.startswith("pos:"):
+        return str(device_name or "")
+    try:
+        pos = int(device_name.split(":", 1)[1])
+    except ValueError:
+        return device_name
+    code = device_type_codes.get(device_type)
+    arr = name_arrays.get(code) if code is not None else None
+    if arr is not None and 0 <= pos < len(arr):
+        return str(arr[pos])
+    return device_name
+
+
+def _evaluate_all_device_se_values(
+    estimator: Any,
+    snapshot: dict[str, list[dict[str, Any]]],
+    converter: _ModelUnitConverter,
+    device_meas: dict[tuple[str, int, str], dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """基于求解状态向量 x 评估全网各类设备表的 SE 估计值，并与实测值配对。"""
+    import numpy as np
+    from model.meas_model import (
+        DEVICE_TYPE_CODES,
+        Measurement,
+        TableBackedMeasurementList,
+        measurement_table_from_measurements,
+    )
+    from model.meas_type import MEAS_TYPE_NAMES
+    from secore.se_math import ANGLE_MEASUREMENT_TYPES
+
+    eval_items: list[tuple[str, int, str, str, str]] = []
+    eval_measurements: list[Any] = []
+    eid = 0
+    for table_name, metric_map in SE_DEVICE_RESULT_METRICS.items():
+        for dev_row in snapshot.get(table_name) or ():
+            dev_idx = _int(dev_row.get("idx"))
+            dev_name = str(dev_row.get("name", dev_idx))
+            for metric, se_code in metric_map.items():
+                eid += 1
+                eval_items.append((table_name, dev_idx, dev_name, metric, se_code))
+                eval_measurements.append(
+                    Measurement(
+                        idx=eid,
+                        name=f"{table_name}.{dev_idx}.{metric}",
+                        device_type=table_name,
+                        device_name=dev_name,
+                        meas_type=se_code,
+                        weight=1.0,
+                        valid=True,
+                        value=0.0,
+                    )
+                )
+
+    evaluated_eng: dict[tuple[str, int, str], float | None] = {}
+    x_vec = getattr(getattr(estimator, "estimate_result", None), "x", None)
+    if eval_measurements and x_vec is not None and len(x_vec) > 0:
+        meas_code_by_name = {name: code for code, name in MEAS_TYPE_NAMES.items()}
+        name_arrays = estimator._measurement_name_arrays_by_type_code()
+        pos_lookup = {
+            int(code): {str(name): idx for idx, name in enumerate(arr)}
+            for code, arr in name_arrays.items()
+        }
+        eval_table = measurement_table_from_measurements(
+            eval_measurements,
+            device_type_codes=DEVICE_TYPE_CODES,
+            angle_measurement_types=ANGLE_MEASUREMENT_TYPES,
+        )
+        eval_table.device_pos = np.asarray(
+            [
+                pos_lookup.get(int(code), {}).get(str(name), -1)
+                for code, name in zip(eval_table.device_type_code, eval_table.device_name)
+            ],
+            dtype=np.int64,
+        )
+        eval_table.meas_type_code = np.asarray(
+            [meas_code_by_name.get(str(mt), 0) for mt in eval_table.meas_type],
+            dtype=np.int16,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            z_pu = estimator.evaluate(x_vec, TableBackedMeasurementList(eval_table))
+        for (table_name, dev_idx, dev_name, metric, se_code), pos, raw_pu in zip(
+            eval_items, eval_table.device_pos.tolist(), z_pu.tolist()
+        ):
+            if pos < 0 or not math.isfinite(raw_pu):
+                evaluated_eng[(table_name, dev_idx, metric)] = None
+            else:
+                scale = converter.scale_for(table_name, dev_name, se_code)
+                evaluated_eng[(table_name, dev_idx, metric)] = float(raw_pu) * scale
+
+    # 按设备表组装 <metric>_meas 与 <metric>_se，并对内核跳过评估的电流指标按物理公式补算
+    device_tables: dict[str, list[dict[str, Any]]] = {}
+    for table_name, metric_map in SE_DEVICE_RESULT_METRICS.items():
+        model_rows = snapshot.get(table_name) or ()
+        if not model_rows:
+            continue
+        rows_out: list[dict[str, Any]] = []
+        for dev_row in model_rows:
+            dev_idx = _int(dev_row.get("idx"))
+            dev_name = str(dev_row.get("name", dev_idx))
+            is_running = _int(dev_row.get("run_stat", 1), 1) != 0 and _int(dev_row.get("status", 1), 1) != 0
+            record: dict[str, Any] = {"idx": dev_idx, "name": dev_name}
+            for metric in metric_map:
+                meas_entry = device_meas.get((table_name, dev_idx, metric))
+                record[f"{metric}_meas"] = meas_entry.get("meas_value") if meas_entry else None
+                se_val = evaluated_eng.get((table_name, dev_idx, metric))
+                if not is_running and se_val is None:
+                    se_val = 0.0
+                record[f"{metric}_se"] = se_val
+
+            # 补算内核跳过评估的三相交流/直流电流 SE 估计值（如 ACGenerator.ia / ACLoad.ia / DCBreak.i 等）
+            if table_name in {"ACGenerator", "ACLoad"}:
+                if (record.get("ia_se") is None or abs(record["ia_se"]) <= 1e-12) and is_running:
+                    derived = converter.ac_current_from_pqv(record.get("p_se"), record.get("q_se"), record.get("uab_se"))
+                    if derived is not None:
+                        record["ia_se"] = derived
+            elif table_name in {"ACBranch", "ACZeroBranch"}:
+                for side in ("i", "j"):
+                    key = f"{side}_ia_se"
+                    if (record.get(key) is None or abs(record[key]) <= 1e-12) and is_running:
+                        derived = converter.ac_current_from_pqv(
+                            record.get(f"{side}_p_se"), record.get(f"{side}_q_se"), record.get(f"{side}_uab_se")
+                        )
+                        if derived is not None:
+                            record[key] = derived
+            elif table_name == "DCACConverter":
+                if (record.get("ac_ia_se") is None or abs(record["ac_ia_se"]) <= 1e-12) and is_running:
+                    derived = converter.ac_current_from_pqv(record.get("ac_p_se"), record.get("ac_q_se"), record.get("ac_uab_se"))
+                    if derived is not None:
+                        record["ac_ia_se"] = derived
+                if (record.get("dc_i_se") is None or abs(record["dc_i_se"]) <= 1e-12) and is_running:
+                    derived = converter.dc_current_from_pv(record.get("dc_p_se"), record.get("dc_u_se"))
+                    if derived is not None:
+                        record["dc_i_se"] = derived
+            elif table_name in {"DCGenerator", "DCLoad"}:
+                if (record.get("i_se") is None or abs(record["i_se"]) <= 1e-12) and is_running:
+                    derived = converter.dc_current_from_pv(record.get("p_se"), record.get("u_se"))
+                    if derived is not None:
+                        record["i_se"] = derived
+            elif table_name in {"DCBranch", "DCDCConverter"}:
+                for side in ("i", "j"):
+                    key = f"{side}_i_se"
+                    if (record.get(key) is None or abs(record[key]) <= 1e-12) and is_running:
+                        derived = converter.dc_current_from_pv(record.get(f"{side}_p_se"), record.get(f"{side}_u_se"))
+                        if derived is not None:
+                            record[key] = derived
+            rows_out.append(record)
+        device_tables[table_name] = rows_out
+    return device_tables
+
+
+def _enrich_se_result(
+    result: dict[str, Any],
+    estimator: Any,
+    snapshot: dict[str, list[dict[str, Any]]],
+    measurement_metadata: dict[str, Any],
+    model_metadata: dict[str, Any],
+    para_used: dict[str, Any],
+) -> dict[str, Any]:
+    """将 SE 结果反算至工程单位，还原设备/量测元数据并组装全网设备表与统计信息。"""
+    from model.meas_model import DEVICE_TYPE_CODES
+
+    converter = _ModelUnitConverter(snapshot)
+    name_arrays = estimator._measurement_name_arrays_by_type_code() if hasattr(estimator, "_measurement_name_arrays_by_type_code") else {}
+    lookup: dict[int, dict[str, Any]] = measurement_metadata.get("_measurement_lookup") or {}
+    device_meas: dict[tuple[str, int, str], dict[str, Any]] = measurement_metadata.get("device_meas") or {}
+
+    # 建立设备名 -> idx 反查表
+    dev_idx_by_name = {
+        table_name: {str(row.get("name", row.get("idx", ""))): _int(row.get("idx")) for row in rows}
+        for table_name, rows in snapshot.items()
+    }
+    # 若是非宽表来源，从实测 lookup 补齐 device_meas
+    if not device_meas and lookup:
+        for entry in lookup.values():
+            d_type = entry["model_table"]
+            d_idx = entry.get("model_idx")
+            if d_idx is None:
+                d_idx = dev_idx_by_name.get(d_type, {}).get(entry["device_name"])
+            metric = entry.get("metric")
+            if not metric:
+                for m_name, se_code in SE_DEVICE_RESULT_METRICS.get(d_type, {}).items():
+                    if se_code == entry["se_type"]:
+                        metric = m_name
+                        break
+            if d_idx is not None and metric:
+                device_meas[(d_type, int(d_idx), metric)] = {
+                    "meas_value": entry["value"],
+                    "unit": entry["unit"],
+                    "valid": 1,
+                }
+
+    enriched_rows: list[dict[str, Any]] = []
+    bad_rows: list[dict[str, Any]] = []
+    real_meas_count = 0
+    valid_real_count = 0
+    good_real_count = 0
+    total_residual_abs = 0.0
+    max_residual_eng = 0.0
+
+    for row in result.get("measurements") or ():
+        item = dict(row)
+        idx = _int(item.get("idx"))
+        meta = lookup.get(idx)
+        source = str(item.get("source") or "")
+        is_user_pseudo = bool(meta.get("is_user_pseudo")) if meta is not None else False
+        is_pseudo = source == "pseudo" or is_user_pseudo
+        is_prefiltered = source == "prefiltered" or bool(meta.get("policy_suppressed") if meta is not None else False)
+        is_bad = source == "bad_data"
+
+        if meta is not None:
+            dev_type = meta["model_table"]
+            dev_idx = meta.get("model_idx")
+            if dev_idx is None:
+                dev_idx = dev_idx_by_name.get(dev_type, {}).get(meta["device_name"])
+            dev_name = meta["device_name"]
+            metric = meta.get("metric") or ""
+            meas_name = meta["meas_name"]
+            mtype = meta["se_type"]
+            unit = meta["unit"]
+            orig_eng_value = meta["value"]
+            scale = converter.scale_for(dev_type, dev_name, mtype)
+        else:
+            dev_type = str(item.get("device_type") or "")
+            dev_name = _resolve_pos_device_name(dev_type, str(item.get("device_name") or ""), name_arrays, DEVICE_TYPE_CODES)
+            dev_idx = dev_idx_by_name.get(dev_type, {}).get(dev_name)
+            mtype = str(item.get("meas_type") or "")
+            metric = ""
+            for m_name, code in SE_DEVICE_RESULT_METRICS.get(dev_type, {}).items():
+                if code == mtype:
+                    metric = m_name
+                    break
+            meas_name = str(item.get("name") or f"m{idx}")
+            unit = converter.unit_for(mtype)
+            scale = converter.scale_for(dev_type, dev_name, mtype)
+            orig_eng_value = None
+
+        raw_pu_val = item.get("value")
+        est_pu_val = item.get("estimated_value")
+        if orig_eng_value is not None:
+            meas_val_eng = float(orig_eng_value)
+        elif isinstance(raw_pu_val, (int, float)) and math.isfinite(raw_pu_val):
+            meas_val_eng = float(raw_pu_val) * scale
+        else:
+            meas_val_eng = None
+
+        if isinstance(est_pu_val, (int, float)) and math.isfinite(est_pu_val):
+            se_val_eng = float(est_pu_val) * scale
+        else:
+            se_val_eng = None
+
+        if meas_val_eng is not None and se_val_eng is not None:
+            residual_eng = meas_val_eng - se_val_eng
+        elif isinstance(item.get("residual"), (int, float)) and math.isfinite(item["residual"]):
+            residual_eng = float(item["residual"]) * scale
+        else:
+            residual_eng = None
+
+        norm_res = item.get("normalized_residual")
+        norm_res_val = float(norm_res) if isinstance(norm_res, (int, float)) and math.isfinite(norm_res) else None
+        is_valid = bool(item.get("valid", True)) and not is_prefiltered
+        effective_source = "pseudo" if is_user_pseudo else ("prefiltered" if is_prefiltered and not is_bad else source)
+        is_good = (effective_source == "normal") and is_valid and not is_bad
+        reason_text = str(item.get("reason") or ("bad_data" if is_bad else ""))
+        if meta is not None and meta.get("policy_suppressed") and not reason_text:
+            reason_text = f"policy_suppressed:{meta.get('policy_reason') or 'manual'}"
+        elif is_user_pseudo and not reason_text:
+            reason_text = str(meta.get("pseudo_note") or "user_defined_pseudo")
+
+        enriched = {
+            **item,
+            "idx": idx,
+            "name": meas_name,
+            "device_type": dev_type,
+            "device_idx": dev_idx,
+            "device_name": dev_name,
+            "metric": metric,
+            "meas_type": mtype,
+            "unit": unit,
+            "value": meas_val_eng,
+            "estimated_value": se_val_eng,
+            "residual": residual_eng,
+            "normalized_residual": norm_res_val,
+            "valid": is_valid,
+            "is_bad": int(is_bad),
+            "is_good": int(is_good),
+            "is_pseudo": int(is_pseudo),
+            "pseudo_origin": "user_defined" if is_user_pseudo else ("kernel_auto" if is_pseudo else ""),
+            "pseudo_define_id": meta.get("pseudo_define_id") if is_user_pseudo and meta is not None else None,
+            "source": effective_source,
+            "reason": reason_text,
+        }
+        enriched_rows.append(enriched)
+
+        if not is_pseudo:
+            real_meas_count += 1
+            if not is_prefiltered:
+                valid_real_count += 1
+                if is_good:
+                    good_real_count += 1
+                if residual_eng is not None:
+                    abs_res = abs(residual_eng)
+                    total_residual_abs += abs_res
+                    if abs_res > max_residual_eng:
+                        max_residual_eng = abs_res
+        if is_bad:
+            bad_rows.append(enriched)
+
+    device_tables = _evaluate_all_device_se_values(estimator, snapshot, converter, device_meas)
+
+    # 1) 对正常量测，将最终收敛状态下的内核估计值回填至设备表；
+    # 2) 对坏数据，使用最终收敛状态 x 评估出的干净 se 值更新其 se_value / residual，避免展示被坏数据污染的中间值
+    dev_se_lookup: dict[tuple[str, int, str], float | None] = {}
+    for dev_type, rows_for_dev in device_tables.items():
+        for dev_rec in rows_for_dev:
+            for metric in SE_DEVICE_RESULT_METRICS.get(dev_type, ()):
+                dev_se_lookup[(dev_type, dev_rec["idx"], metric)] = dev_rec.get(f"{metric}_se")
+
+    for item in enriched_rows:
+        if not item.get("metric") or item.get("device_idx") is None:
+            continue
+        if item["source"] == "normal":
+            for dev_rec in device_tables.get(item["device_type"], ()):
+                if dev_rec["idx"] == item["device_idx"]:
+                    if item["value"] is not None:
+                        dev_rec[f"{item['metric']}_meas"] = item["value"]
+                    if item["estimated_value"] is not None:
+                        dev_rec[f"{item['metric']}_se"] = item["estimated_value"]
+                    break
+        elif item["source"] == "bad_data":
+            final_se = dev_se_lookup.get((item["device_type"], int(item["device_idx"]), item["metric"]))
+            if final_se is not None:
+                item["estimated_value"] = final_se
+                if item["value"] is not None:
+                    item["residual"] = item["value"] - final_se
+            for dev_rec in device_tables.get(item["device_type"], ()):
+                if dev_rec["idx"] == item["device_idx"] and item["value"] is not None:
+                    dev_rec[f"{item['metric']}_meas"] = item["value"]
+                    break
+
+    suspect_statuses = detect_suspect_statuses(
+        snapshot,
+        device_tables,
+        device_meas,
+        measurement_metadata.get("topology_overrides"),
+    )
+    missing_measurements = list(measurement_metadata.get("missing_measurements") or ())
+    pseudo_total_count = sum(1 for item in enriched_rows if item.get("is_pseudo"))
+    user_pseudo_count = sum(1 for item in enriched_rows if item.get("pseudo_origin") == "user_defined")
+
+    stats = dict(result.get("statistics") or {})
+    pass_rate = (good_real_count / valid_real_count) if valid_real_count > 0 else 0.0
+    se_statistics = {
+        "meas_count": real_meas_count or _int(stats.get("measurement_count")),
+        "valid_meas_count": valid_real_count,
+        "good_meas_count": good_real_count,
+        "pass_rate": pass_rate,
+        "total_residual": total_residual_abs,
+        "residual_inf": max_residual_eng if valid_real_count > 0 else _number(stats.get("residual_inf")),
+        "objective": _number(stats.get("objective")),
+        "bad_data_count": len(bad_rows),
+        "prefiltered_count": sum(1 for item in enriched_rows if item.get("source") == "prefiltered")
+        or _int(stats.get("prefiltered_measurement_count")),
+        "pseudo_count": pseudo_total_count or _int(stats.get("pseudo_measurement_count")),
+        "converged": bool(result.get("converged")),
+        "observable": bool(result.get("observable")),
+        "iterations": _int(stats.get("iterations", result.get("iterations", 0))),
+        "max_correction": _number(stats.get("max_correction", result.get("max_correction", 0.0))),
+        "model_source": str(model_metadata.get("source") or ""),
+        "meas_source": str(measurement_metadata.get("source") or ""),
+    }
+
+    clean_meas_meta = {
+        key: value
+        for key, value in measurement_metadata.items()
+        if key not in {"topology_overrides", "device_meas", "measurement_lookup", "_measurement_lookup", "missing_measurements"}
+    }
+    result["measurements"] = enriched_rows
+    result["bad_data"] = bad_rows
+    result["device_tables"] = device_tables
+    result["suspect_statuses"] = suspect_statuses
+    result["missing_measurements"] = missing_measurements
+    result["se_statistics"] = se_statistics
+    result["se_parameters"] = para_used
+    result["summary"].update(
+        model_input=model_metadata,
+        measurement_input=clean_meas_meta,
+        se_statistics=se_statistics,
+        device_table_counts={name: len(rows) for name, rows in device_tables.items()},
+        user_pseudo_count=user_pseudo_count,
+        policy_suppressed_count=int(measurement_metadata.get("policy_suppressed_count", 0)),
+        pseudo_stat_applied=int(measurement_metadata.get("pseudo_stat_applied", 0)),
+        suspect_status_count=len(suspect_statuses),
+        missing_measurement_count=len(missing_measurements),
+    )
+    return result
+
+
+def run_se(
+    config: Any,
+    kernel_root: str | Path | None = None,
+    *,
+    scada_snapshot: bool = False,
+    se_params: dict[str, Any] | None = None,
+    bad_policies: list[dict[str, Any]] | None = None,
+    pseudo_meas_defines: list[dict[str, Any]] | None = None,
+    pseudo_stat_defines: list[dict[str, Any]] | None = None,
+    stage_logger: Any = None,
+) -> dict[str, Any]:
+    def _log_stage(stage: str, message: str, *, level: str = "INFO", elapsed_ms: float | None = None, detail: dict[str, Any] | None = None) -> None:
+        if callable(stage_logger):
+            try:
+                stage_logger(stage=stage, level=level, message=message, elapsed_ms=elapsed_ms, detail=detail or {})
+            except Exception:
+                pass
+
+    validate_task_inputs(config, scada_snapshot=scada_snapshot)
     configure_kernel_path(kernel_root or config.kernel_root)
     from secore.hybrid_se import HybridStateEstimator
+
+    wide_mode = is_scdfe_d_wide_db(config.measurement_file)
+    t_load = time.perf_counter()
+    if wide_mode and Path(config.model_file).suffix.lower() in SQLITE_SUFFIXES:
+        raw_model_tables = read_model_tables(Path(config.model_file))
+        raw_snapshot = {name: block["rows"] for name, block in raw_model_tables.items()}
+        with measurement_input(
+            config,
+            raw_snapshot,
+            scada_snapshot=True,
+            bad_policies=bad_policies,
+            pseudo_meas_defines=pseudo_meas_defines,
+            pseudo_stat_defines=pseudo_stat_defines,
+        ) as (meas_file, measurement_metadata):
+            _log_stage(
+                "input_load",
+                f"加载模型与 scdfe_d 快照：有效量测 {measurement_metadata.get('se_valid', 0)}，缺测/拒收 {len(measurement_metadata.get('missing_measurements') or ())}",
+                elapsed_ms=(time.perf_counter() - t_load) * 1000.0,
+                detail={
+                    "se_valid": measurement_metadata.get("se_valid", 0),
+                    "rejected": measurement_metadata.get("rejected", {}),
+                    "missing_count": len(measurement_metadata.get("missing_measurements") or ()),
+                },
+            )
+            if measurement_metadata.get("policy_suppressed_count") or measurement_metadata.get("user_pseudo_injected") or measurement_metadata.get("pseudo_stat_applied"):
+                _log_stage(
+                    "policy_apply",
+                    f"应用在线策略：坏量测屏蔽 {measurement_metadata.get('policy_suppressed_count', 0)}，人工伪量测 {measurement_metadata.get('user_pseudo_injected', 0)}，伪状态 {measurement_metadata.get('pseudo_stat_applied', 0)}",
+                    detail={
+                        "policy_suppressed_count": measurement_metadata.get("policy_suppressed_count", 0),
+                        "user_pseudo_injected": measurement_metadata.get("user_pseudo_injected", 0),
+                        "pseudo_stat_applied": measurement_metadata.get("pseudo_stat_applied", 0),
+                    },
+                )
+            topology_overrides = measurement_metadata.get("topology_overrides")
+            with kernel_model(config.model_file, topology_overrides=topology_overrides) as model:
+                validate_references(model.path, meas_file, measurements=True)
+                patched_snapshot = (
+                    {name: block["rows"] for name, block in model.tables.items()}
+                    if model.tables is not None
+                    else raw_snapshot
+                )
+                with se_parameter_file(config.parameter_file, params=se_params) as (para_path, para_used):
+                    t_solve = time.perf_counter()
+                    estimator = HybridStateEstimator(
+                        e_file=model.path,
+                        meas_file=meas_file,
+                        parameter_file=para_path,
+                        auto_prepare=False,
+                    )
+                    estimator.prepare()
+                    se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
+                    solve_ms = (time.perf_counter() - t_solve) * 1000.0
+                    result = normalize_se(se_result, estimator.estimate_result)
+                    enriched = _enrich_se_result(
+                        result, estimator, patched_snapshot, measurement_metadata, model.metadata, para_used
+                    )
+                    se_stats = enriched.get("se_statistics") or {}
+                    _log_stage(
+                        "solve",
+                        f"SE 求解完成：收敛={enriched.get('converged')}，可观测={enriched.get('observable')}，迭代={se_stats.get('iterations', 0)}，合格率={se_stats.get('pass_rate', 0.0):.2%}",
+                        level="INFO" if enriched.get("converged") else "WARN",
+                        elapsed_ms=solve_ms,
+                        detail=se_stats,
+                    )
+                    if se_stats.get("bad_data_count", 0) > 0 or enriched.get("suspect_statuses"):
+                        _log_stage(
+                            "bad_detect",
+                            f"检出坏数据 {se_stats.get('bad_data_count', 0)} 条，可疑遥信 {len(enriched.get('suspect_statuses') or ())} 条",
+                            level="WARN",
+                            detail={
+                                "bad_data_count": se_stats.get("bad_data_count", 0),
+                                "suspect_status_count": len(enriched.get("suspect_statuses") or ()),
+                            },
+                        )
+                    return enriched
+
     with kernel_model(config.model_file) as model:
         from efile_read import EBook
-        snapshot = {name:block.data for name,block in EBook(model.path).data.items()}
-        with measurement_input(config, snapshot) as (meas_file, measurement_metadata):
+        snapshot = {name: block.data for name, block in EBook(model.path).data.items()}
+        with measurement_input(
+            config,
+            snapshot,
+            scada_snapshot=scada_snapshot,
+            bad_policies=bad_policies,
+            pseudo_meas_defines=pseudo_meas_defines,
+            pseudo_stat_defines=pseudo_stat_defines,
+        ) as (meas_file, measurement_metadata):
             if model.metadata["format"] == "rtdb_sqlite":
                 validate_references(model.path, meas_file, measurements=True)
-            estimator = HybridStateEstimator(e_file=model.path, meas_file=meas_file, parameter_file=config.parameter_file, auto_prepare=False)
-            estimator.prepare()
-            se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
-            result = normalize_se(se_result, estimator.estimate_result)
-            result["summary"].update(model_input=model.metadata,measurement_input=measurement_metadata)
-            return result
+            with se_parameter_file(config.parameter_file, params=se_params) as (para_path, para_used):
+                t_solve = time.perf_counter()
+                estimator = HybridStateEstimator(
+                    e_file=model.path,
+                    meas_file=meas_file,
+                    parameter_file=para_path,
+                    auto_prepare=False,
+                )
+                estimator.prepare()
+                se_result = estimator.run(result_mode="full", verbose=False, final_diagnostics=True)
+                solve_ms = (time.perf_counter() - t_solve) * 1000.0
+                result = normalize_se(se_result, estimator.estimate_result)
+                enriched = _enrich_se_result(
+                    result, estimator, snapshot, measurement_metadata, model.metadata, para_used
+                )
+                se_stats = enriched.get("se_statistics") or {}
+                _log_stage(
+                    "solve",
+                    f"SE 求解完成：收敛={enriched.get('converged')}，迭代={se_stats.get('iterations', 0)}，合格率={se_stats.get('pass_rate', 0.0):.2%}",
+                    level="INFO" if enriched.get("converged") else "WARN",
+                    elapsed_ms=solve_ms,
+                    detail=se_stats,
+                )
+                return enriched
 
 
 def run_lf(config: Any, kernel_root: str | Path | None = None, *, use_model_cache: bool = True) -> dict[str, Any]:

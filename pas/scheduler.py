@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 import math
 import threading
@@ -41,6 +42,38 @@ def _fingerprint(task: Any) -> str:
             except OSError:
                 continue
     return digest.hexdigest()
+
+
+def persist_completed_run(repo, name, run_id, result, started_at, started, kernel_seconds):
+    """Write the result and mark the run complete as one transaction."""
+    write_start = time.perf_counter()
+    total_elapsed = time.perf_counter() - started
+    with repo.result_transaction():
+        if name == "se":
+            try:
+                repo.store_result(
+                    name,
+                    run_id,
+                    result,
+                    calc_time=started_at,
+                    elapsed_seconds=total_elapsed,
+                    kernel_seconds=kernel_seconds,
+                )
+            except TypeError:
+                repo.store_result(name, run_id, result)
+        else:
+            repo.store_result(name, run_id, result)
+        writer = getattr(repo, "store_dbdef_result", None)
+        if callable(writer):
+            writer(name, run_id, {**result, "elapsed_seconds": kernel_seconds}, started_at, utc_now())
+        metric = getattr(repo, "store_metric", None)
+        if callable(metric):
+            metric(run_id, "kernel_seconds", kernel_seconds, unit="s")
+            metric(run_id, "persistence_seconds", time.perf_counter() - write_start, unit="s")
+            for key in ("model_read_seconds", "solve_seconds", "normalization_seconds", "model_cache_hit"):
+                if key in result.get("performance", {}):
+                    metric(run_id, key, result["performance"][key], unit="" if key == "model_cache_hit" else "s")
+        repo.finish_run(run_id, "succeeded", utc_now(), time.perf_counter() - started, 0, commit=False)
 
 
 class Scheduler:
@@ -113,23 +146,65 @@ class Scheduler:
             with self._lock:
                 job["run_id"] = run_id
             self._record_log("INFO", "开始执行分析任务", task=name, run_id=run_id, execution_source=source)
+            se_log_fn = getattr(repo, "record_se_run_log", None) if name == "se" else None
+            if callable(se_log_fn):
+                se_log_fn(
+                    level="INFO",
+                    stage="trigger",
+                    run_id=run_id,
+                    source=source,
+                    message=f"开始执行状态估计 #{run_id}（触发方式：{source}）",
+                    detail={"execution_source": source},
+                )
             kernel_start = time.perf_counter()
-            result = self.runners[name]()
+            runner = self.runners[name]
+            if name == "se" and callable(se_log_fn):
+                try:
+                    sig = inspect.signature(runner)
+                    accepts_ctx = any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD or p.name == "stage_logger"
+                        for p in sig.parameters.values()
+                    )
+                except (TypeError, ValueError):
+                    accepts_ctx = False
+                if accepts_ctx:
+                    def _stage_logger(stage: str, level: str = "INFO", message: str = "", elapsed_ms: float | None = None, detail: dict[str, Any] | None = None) -> None:
+                        se_log_fn(
+                            level=level,
+                            stage=stage,
+                            run_id=run_id,
+                            source=source,
+                            elapsed_ms=elapsed_ms,
+                            message=message,
+                            detail=detail,
+                        )
+                    result = runner(stage_logger=_stage_logger)
+                else:
+                    result = runner()
+            else:
+                result = runner()
             kernel_seconds = time.perf_counter() - kernel_start
-            write_start = time.perf_counter()
-            with repo.result_transaction():
-                repo.store_result(name, run_id, result)
-                writer = getattr(repo, "store_dbdef_result", None)
-                if callable(writer):
-                    writer(name, run_id, {**result, "elapsed_seconds": kernel_seconds}, job["started_at"], utc_now())
-                metric = getattr(repo, "store_metric", None)
-                if callable(metric):
-                    metric(run_id, "kernel_seconds", kernel_seconds, unit="s")
-                    metric(run_id, "persistence_seconds", time.perf_counter() - write_start, unit="s")
-                    for key in ("model_read_seconds", "solve_seconds", "normalization_seconds", "model_cache_hit"):
-                        if key in result.get("performance", {}):
-                            metric(run_id, key, result["performance"][key], unit="" if key == "model_cache_hit" else "s")
-                repo.finish_run(run_id, "succeeded", utc_now(), time.perf_counter() - started, 0, commit=False)
+            t_persist = time.perf_counter()
+            persist_completed_run(repo, name, run_id, result, job["started_at"], started, kernel_seconds)
+            if callable(se_log_fn):
+                se_stats = result.get("se_statistics") or {}
+                se_log_fn(
+                    level="INFO",
+                    stage="persist",
+                    run_id=run_id,
+                    source=source,
+                    elapsed_ms=(time.perf_counter() - t_persist) * 1000.0,
+                    message=f"状态估计 #{run_id} 落库完成：量测 {se_stats.get('meas_count', 0)}，坏数据 {se_stats.get('bad_data_count', 0)}，合格率 {se_stats.get('pass_rate', 0.0):.2%}",
+                    detail={
+                        "elapsed_seconds": time.perf_counter() - started,
+                        "kernel_seconds": kernel_seconds,
+                        "bad_data_count": se_stats.get("bad_data_count", 0),
+                        "pass_rate": se_stats.get("pass_rate", 0.0),
+                    },
+                )
+                auto_purge = getattr(repo, "se_logs_maybe_auto_purge", None)
+                if callable(auto_purge):
+                    auto_purge()
             with self._lock:
                 job.update(status="succeeded", kernel_seconds=kernel_seconds)
             self._record_log("INFO", "分析任务执行成功", task=name, run_id=run_id, execution_source=source)
@@ -141,6 +216,21 @@ class Scheduler:
                     repo.finish_run(run_id, "failed", utc_now(), time.perf_counter() - started, 1, type(exc).__name__, str(exc))
                 except Exception:
                     logger.exception("failed to persist run failure")
+            if name == "se":
+                se_log_fn = getattr(repo, "record_se_run_log", None)
+                if callable(se_log_fn):
+                    try:
+                        se_log_fn(
+                            level="ERROR",
+                            stage="error",
+                            run_id=run_id,
+                            source=source,
+                            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                            message=f"状态估计 #{run_id} 执行失败: {type(exc).__name__}: {exc}",
+                            detail={"error_type": type(exc).__name__, "error_message": str(exc)},
+                        )
+                    except Exception:
+                        logger.exception("failed to persist se run error log")
             with self._lock:
                 job.update(status="failed", error_type=type(exc).__name__, error_message=str(exc))
             self._record_log("ERROR", "分析任务执行失败", task=name, run_id=run_id, execution_source=source, error_message=str(exc))
@@ -279,16 +369,27 @@ class Scheduler:
             for name in TASK_NAMES:
                 if self._enabled(name):
                     self._set_next_due(name, time.monotonic())
+        next_log_purge_check = time.monotonic() + 60.0
         try:
             while not stop_event.is_set() and not self._daemon_stop.is_set():
+                now_mono = time.monotonic()
                 with self._lock:
                     for name in TASK_NAMES:
                         if stop_event.is_set() or self._daemon_stop.is_set():
                             break
-                        if self._enabled(name) and time.monotonic() >= self._next_due.get(name, float("inf")):
+                        if self._enabled(name) and now_mono >= self._next_due.get(name, float("inf")):
                             self._submit(name, "schedule")
                             # Coalesce missed ticks; never enqueue a backlog for a slow task.
-                            self._set_next_due(name, time.monotonic() + self.config.tasks[name].period_seconds)
+                            self._set_next_due(name, now_mono + self.config.tasks[name].period_seconds)
+                if now_mono >= next_log_purge_check:
+                    next_log_purge_check = now_mono + 60.0
+                    se_repo = self.repositories.get("se")
+                    auto_purge = getattr(se_repo, "se_logs_maybe_auto_purge", None) if se_repo is not None else None
+                    if callable(auto_purge):
+                        try:
+                            auto_purge()
+                        except Exception:
+                            logger.exception("failed to auto purge se run logs")
                 stop_event.wait(float(self.config.tick_seconds))
         finally:
             with self._lock:

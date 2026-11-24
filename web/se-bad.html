@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>坏量测管理 · 状态估计 SE · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/se-bad" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
+          <div class="nav-sub">
+            <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
+            <a href="/se-bad.html" data-route="se-bad" class="active" data-i18n="nav.se_bad">坏量测管理</a>
+            <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
+            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se_detail">状态估计明细</a>
+          </div>
+          <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.bad">坏量测管理</h1>
+            <span id="bad-run-meta" class="se-run-meta tabular">--</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section class="se-kpi-strip cols-4" aria-label="KPI">
+        <article class="se-kpi-card" id="kpi-card-cur">
+          <div class="se-kpi-head"><span data-i18n="kpi.bad_cur">坏量测</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-bad-total">0</strong></div>
+          <div class="se-kpi-sub tabular" id="kpi-bad-unacked"></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.policies">屏蔽策略</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-pol-enabled">0</strong><small id="kpi-pol-total">/ 0</small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.suspect">可疑遥信</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-suspect">0</strong></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.abnormal">预过滤 / 缺测</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-prefilter">0</strong><small id="kpi-nomeas">/ 0</small></div>
+        </article>
+      </section>
+
+      <nav class="se-view-tabs" id="bad-tabs" role="tablist">
+        <button type="button" class="se-tab active" data-view="current" role="tab" data-i18n="tab.current">当前坏量测与处置</button>
+        <button type="button" class="se-tab" data-view="policies" role="tab" data-i18n="tab.policies">屏蔽与替代策略</button>
+        <button type="button" class="se-tab" data-view="abnormal" role="tab" data-i18n="tab.abnormal">异常量测与可疑遥信</button>
+        <button type="button" class="se-tab" data-view="history" role="tab" data-i18n="tab.history">坏量测历史与热点</button>
+      </nav>
+
+      <div class="se-workspace">
+        <!-- 1. 当前坏量测 -->
+        <section class="se-panel active" data-panel="current">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <select id="cur-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <select id="cur-ack-filter" class="se-select compact" aria-label="Ack status">
+                  <option value="all" data-i18n="common.all">全部</option>
+                  <option value="unacked" data-i18n="ack.unacked">未确认</option>
+                  <option value="acked" data-i18n="ack.acked">已确认</option>
+                  <option value="suppressed" data-i18n="ack.suppressed">已屏蔽</option>
+                  <option value="replaced_pseudo" data-i18n="ack.replaced">已转伪量测</option>
+                </select>
+                <input id="cur-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/量测">
+              </div>
+            </div>
+            <div class="se-table-scroll" id="cur-table-wrap"></div>
+          </div>
+        </section>
+
+        <!-- 2. 屏蔽与替代策略 -->
+        <section class="se-panel" data-panel="policies">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <select id="pol-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <select id="pol-action-filter" class="se-select compact" aria-label="Action">
+                  <option value="" data-i18n="common.all">全部</option>
+                  <option value="suppress" data-i18n="pol.suppress">屏蔽不参与</option>
+                  <option value="replace_pseudo" data-i18n="pol.replace">转伪量测替代</option>
+                </select>
+                <input id="pol-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/量测">
+              </div>
+              <div class="se-tool-group">
+                <button type="button" class="se-btn primary" id="btn-add-policy" data-i18n="btn.add_policy">+ 新增屏蔽策略</button>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="pol-table-wrap"></div>
+          </div>
+        </section>
+
+        <!-- 3. 异常量测与可疑遥信 -->
+        <section class="se-panel" data-panel="abnormal">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <div class="se-segmented" id="abn-cat-seg">
+                  <button type="button" class="seg active" data-cat="susstat" data-i18n="cat.susstat">可疑遥信</button>
+                  <button type="button" class="seg" data-cat="filter" data-i18n="cat.filter">预过滤</button>
+                  <button type="button" class="seg" data-cat="notuse" data-i18n="cat.notuse">未参与</button>
+                  <button type="button" class="seg" data-cat="nomeas" data-i18n="cat.nomeas">缺测 / 坏质量</button>
+                </div>
+                <select id="abn-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <input id="abn-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/量测">
+              </div>
+              <div class="se-tool-group">
+                <span class="se-muted tabular" id="abn-count-meta">--</span>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="abn-table-wrap"></div>
+            <div class="se-pager" id="abn-pager"></div>
+          </div>
+        </section>
+
+        <!-- 4. 坏量测历史与热点 -->
+        <section class="se-panel" data-panel="history">
+          <div class="se-curves-grid">
+            <article class="se-card se-chart-card">
+              <div class="se-toolbar">
+                <h2 data-i18n="hist.trend_title">坏量测数量历史趋势</h2>
+                <select id="hist-limit" class="se-select compact">
+                  <option value="30">30</option>
+                  <option value="60" selected>60</option>
+                  <option value="120">120</option>
+                </select>
+              </div>
+              <div class="se-chart-host" id="bad-trend-chart"></div>
+            </article>
+            <article class="se-card se-full-card">
+              <div class="se-toolbar">
+                <h2 data-i18n="hist.hotspot_title">高频坏量测排行</h2>
+              </div>
+              <div class="se-table-scroll" id="bad-hotspot-wrap"></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 新增/编辑坏量测策略模态框 -->
+  <dialog id="policy-dialog" class="se-modal wide" aria-labelledby="policy-dlg-title">
+    <h3 id="policy-dlg-title" data-i18n="dlg.policy_title">坏量测屏蔽/替代策略</h3>
+    <form id="policy-form" class="se-form-grid">
+      <input type="hidden" name="id" value="">
+      <label class="se-field">
+        <span data-i18n="col.device_type">设备类型</span>
+        <select name="device_type" id="fp-dev-type" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.device_name">目标设备</span>
+        <select name="device_name" id="fp-dev-name" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.metric">量测指标</span>
+        <select name="metric" id="fp-metric" required></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.action">处置方式</span>
+        <select name="action" id="fp-action">
+          <option value="suppress" data-i18n="pol.suppress">屏蔽不参与</option>
+          <option value="replace_pseudo" data-i18n="pol.replace">转伪量测替代</option>
+        </select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.status">状态</span>
+        <select name="enabled" id="fp-enabled">
+          <option value="1" data-i18n="common.enabled">已启用</option>
+          <option value="0" data-i18n="common.disabled">已停用</option>
+        </select>
+      </label>
+      <label class="se-field full">
+        <span data-i18n="col.reason">原因说明</span>
+        <input type="text" name="reason" id="fp-reason" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-pol-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" data-i18n="action.save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 高危操作模态确认框 -->
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-desc" class="se-modal-desc"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="btn-confirm-cancel" autofocus data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="btn-confirm-ok" data-i18n="action.delete">删除</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/se-common.js"></script>
+  <script src="/assets/se-bad.js"></script>
+</body>
+</html>

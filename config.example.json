@@ -8,9 +8,9 @@
     "se": {
       "enabled": true,
       "period_seconds": 60,
-      "measurement_file": "sqldb/scada/devices.sqlite3",
+      "measurement_file": "sqldb/scada/scdfe_d.sqlite3",
       "parameter_file": "D:/codex/hybrid_power_kernel_acceptance_d1603be/data/se/se.para",
-      "scada_source_file": "sqldb/scada/scdfe_c.sqlite3",
+      "scada_source_file": "sqldb/fes/scdfe_c.sqlite3",
       "point_catalog_file": "sqldb/scada/point_catalog.json"
     },
     "lf": {

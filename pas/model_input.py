@@ -65,8 +65,43 @@ def read_model_tables(path: Path) -> dict[str, dict]:
         connection.close()
 
 
-def read_sqlite_model(path: Path) -> tuple[str, int, int]:
-    tables = read_model_tables(path)
+def apply_topology_overrides(
+    tables: dict[str, dict],
+    topology_overrides: dict[str, dict[int, dict[str, int]]] | None,
+) -> tuple[dict[str, dict], int]:
+    """将实时遥信（断路器位置、设备运行状态）覆盖到内存模型副本，不修改源模型库。"""
+    if not topology_overrides:
+        return tables, 0
+    updated: dict[str, dict] = {}
+    applied = 0
+    for name, block in tables.items():
+        table_overrides = topology_overrides.get(name)
+        if not table_overrides:
+            updated[name] = block
+            continue
+        fields = set(block["fields"])
+        new_rows = []
+        for row in block["rows"]:
+            row_idx = row.get("idx")
+            patch = table_overrides.get(int(row_idx)) if row_idx is not None else None
+            if not patch:
+                new_rows.append(row)
+                continue
+            cloned = dict(row)
+            changed = False
+            for key, value in patch.items():
+                if key in fields and cloned.get(key) != value:
+                    cloned[key] = value
+                    changed = True
+            if changed:
+                applied += 1
+            new_rows.append(cloned)
+        updated[name] = {"fields": block["fields"], "rows": new_rows}
+    return updated, applied
+
+
+def render_model_text(tables: dict[str, dict]) -> tuple[str, int, int]:
+    """将模型表字典渲染为内核可读取的 E 文件文本。"""
     parts, count = [], 0
     for name, block in tables.items():
         fields = block["fields"]
@@ -78,25 +113,44 @@ def read_sqlite_model(path: Path) -> tuple[str, int, int]:
     return "".join(parts), len(tables), count
 
 
+def read_sqlite_model(
+    path: Path,
+    *,
+    topology_overrides: dict[str, dict[int, dict[str, int]]] | None = None,
+) -> tuple[str, int, int]:
+    tables = read_model_tables(path)
+    tables, _ = apply_topology_overrides(tables, topology_overrides)
+    return render_model_text(tables)
+
+
 @dataclass(frozen=True)
 class ModelInput:
     path: Path
     metadata: dict
+    tables: dict[str, dict] | None = None
 
 
 @contextmanager
-def kernel_model(path):
+def kernel_model(path, *, topology_overrides: dict[str, dict[int, dict[str, int]]] | None = None):
     source = Path(path).resolve()
     if source.suffix.lower() not in SQLITE_SUFFIXES:
         yield ModelInput(source, {"source": str(source), "format": "file"})
         return
-    text, tables, rows = read_sqlite_model(source)
-    metadata = {"source": str(source), "format": "rtdb_sqlite", "snapshot_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                "table_count": tables, "row_count": rows}
+    raw_tables = read_model_tables(source)
+    patched_tables, applied = apply_topology_overrides(raw_tables, topology_overrides)
+    text, table_count, row_count = render_model_text(patched_tables)
+    metadata = {
+        "source": str(source),
+        "format": "rtdb_sqlite",
+        "snapshot_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "table_count": table_count,
+        "row_count": row_count,
+        "topology_overrides_applied": applied,
+    }
     with tempfile.TemporaryDirectory(prefix="pas_model_") as directory:
         target = Path(directory) / "model.e"
         target.write_text(text, encoding="utf-8")
-        yield ModelInput(target, metadata)
+        yield ModelInput(target, metadata, patched_tables)
 
 
 def validate_references(model_file, auxiliary_file, *, measurements=False):

@@ -19,7 +19,44 @@ from typing import Any, Iterator
 
 from .analytics import DETAILS, detail_query, hour_window, merge_trends
 from .dbdef import build_dbdef_rows, load_catalog, normalize_dbdef_row, table_names, upsert_dbdef_row
+from .input_store import SE_DEVICE_RESULT_METRICS
 from .rtdb_schema import execute_schema, schema_transaction
+from .se_bad import (
+    ack_bad_data,
+    bad_overview,
+    convert_bad_to_pseudo,
+    delete_bad_meas_policy,
+    ensure_se_bad_columns,
+    list_abnormal_measurements,
+    list_bad_meas_policies,
+    list_current_bad_data,
+    save_bad_meas_policy,
+    store_se_suspect_statuses,
+)
+from .se_log import (
+    ensure_se_log_policy,
+    export_se_logs_csv,
+    list_se_logs,
+    maybe_auto_purge_se_logs,
+    preview_purge_se_logs,
+    purge_se_logs,
+    record_se_log,
+    se_log_summary,
+    update_se_log_policy,
+)
+from .se_params import ensure_se_para_columns, sync_se_parameters_table
+from .se_pseudo import (
+    delete_pseudo_meas_define,
+    delete_pseudo_stat_define,
+    ensure_se_pseudo_columns,
+    list_pseudo_meas_defines,
+    list_pseudo_stat_defines,
+    list_se_pseudo_results,
+    pseudo_overview,
+    save_pseudo_meas_define,
+    save_pseudo_stat_define,
+    store_se_pseudo_results,
+)
 
 
 def synchronized(method):
@@ -87,9 +124,626 @@ class Repository:
             if columns and "execution_source" not in columns:
                 conn.execute("ALTER TABLE calculation_run ADD COLUMN execution_source TEXT NOT NULL DEFAULT 'schedule'")
             execute_schema(conn, Path(__file__).with_name("schema.sql").read_text(encoding="utf-8"))
+            ensure_se_para_columns(conn)
+            ensure_se_pseudo_columns(conn)
+            ensure_se_bad_columns(conn)
+            ensure_se_log_policy(conn)
             if "snapshot_version" not in {row[1] for row in conn.execute("PRAGMA table_info(pas_dbdef_run)")}:
                 conn.execute("ALTER TABLE pas_dbdef_run ADD COLUMN snapshot_version INTEGER NOT NULL DEFAULT 0")
             conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
+
+    @synchronized
+    def sync_se_parameters(
+        self,
+        para_file: str | Path | None,
+        *,
+        do_cycle: int | float = 60,
+        calc_trigger: int = 1,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """从 se.para 提取算法参数并幂等同步至 pas_se_para（不覆盖已有在线修改，除非 overwrite=True）。"""
+        conn = self._connection()
+        params = sync_se_parameters_table(
+            conn,
+            para_file,
+            do_cycle=do_cycle,
+            calc_trigger=calc_trigger,
+            overwrite=overwrite,
+        )
+        conn.commit()
+        return params
+
+    @synchronized
+    def get_se_parameters(
+        self,
+        para_file: str | Path | None = None,
+        *,
+        do_cycle: int | float = 60,
+    ) -> dict[str, Any]:
+        """读取 pas_se_para 当前生效的 SE 算法参数；若表为空则先从 para_file 初始化。"""
+        return self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+
+    @synchronized
+    def update_se_parameters(
+        self,
+        payload: dict[str, Any],
+        *,
+        para_file: str | Path | None = None,
+        do_cycle: int | float = 60,
+    ) -> dict[str, Any]:
+        """在线校验并更新 pas_se_para 中的 SE 算法参数。"""
+        import math
+
+        current = self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+        int_limits = {
+            "max_iterator": (1, 1000),
+            "badnum_max": (0, 500),
+            "badnum_step": (1, 100),
+            "do_cycle": (1, 604800),
+            "calc_trigger": (0, 10),
+            "flat_start": (0, 1),
+            "targeted_pseudo_measurement_max": (0, 100000),
+            "targeted_pseudo_measurement_step": (1, 10000),
+            "power_flow_max_iter": (1, 5000),
+        }
+        float_limits = {
+            "baderr_eps": (1e-6, 1e6),
+            "measqual_eps": (1e-14, 1.0),
+            "obj_scaling_factor": (1e-9, 1e9),
+            "tol": (1e-14, 1.0),
+            "diff_step": (1e-12, 1.0),
+            "pseudo_measurement_weight": (1e-12, 1e6),
+            "targeted_pseudo_measurement_redundancy_ratio": (0.0, 100.0),
+            "voltage_floor": (1e-4, 1.0),
+            "min_current_voltage": (1e-6, 1.0),
+            "power_flow_tol": (1e-14, 1.0),
+            "power_flow_min_voltage": (1e-6, 1.0),
+        }
+        allowed = set(int_limits) | set(float_limits)
+        unknown = set(payload) - allowed
+        if unknown:
+            raise ValueError(f"不支持的 SE 算法参数字段: {', '.join(sorted(unknown))}")
+        updated = dict(current)
+        for key, raw_val in payload.items():
+            if raw_val is None or isinstance(raw_val, bool) and key != "flat_start":
+                raise ValueError(f"参数 {key} 必须为有效数值")
+            if key in int_limits:
+                lo, hi = int_limits[key]
+                try:
+                    num = int(raw_val) if isinstance(raw_val, bool) else int(float(raw_val))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"参数 {key} 必须为整数") from exc
+                if not lo <= num <= hi:
+                    raise ValueError(f"参数 {key} 超出允许范围 [{lo}, {hi}]")
+                updated[key] = num
+            else:
+                lo, hi = float_limits[key]
+                try:
+                    num = float(raw_val)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"参数 {key} 必须为数值") from exc
+                if not math.isfinite(num) or not lo <= num <= hi:
+                    raise ValueError(f"参数 {key} 超出允许范围 [{lo}, {hi}]")
+                updated[key] = num
+        if "tol" in payload and "measqual_eps" not in payload:
+            updated["measqual_eps"] = updated["tol"]
+        elif "measqual_eps" in payload and "tol" not in payload:
+            updated["tol"] = updated["measqual_eps"]
+        updated["updated_at"] = utc_now()
+        conn = self._connection()
+        cols = [col for col in updated if col != "id"]
+        assignments = ",".join(f"[{col}]=?" for col in cols)
+        conn.execute(
+            f"UPDATE [pas_se_para] SET {assignments} WHERE id=?",
+            tuple(updated[col] for col in cols) + (updated["id"],),
+        )
+        record_se_log(
+            conn,
+            level="INFO",
+            stage="param_change",
+            source="operator",
+            message=f"更新 SE 算法参数 ({len(payload)} 项)",
+            detail={"changed": payload},
+        )
+        conn.commit()
+        return updated
+
+    @synchronized
+    def se_overview(self, para_file: str | Path | None = None, do_cycle: int | float = 60) -> dict[str, Any]:
+        """汇总在线 SE 主画面顶部 KPI、坏数据告警、设备表行数、参数及最近运行。"""
+        conn = self._connection()
+        latest_rows = self._rows("SELECT * FROM se_statistics ORDER BY run_id DESC LIMIT 1")
+        latest = latest_rows[0] if latest_rows else None
+        bad_data = self._rows(
+            "SELECT * FROM se_bad_data ORDER BY ABS(COALESCE(normalized_residual, 0)) DESC, id ASC"
+        )
+        device_counts: dict[str, int] = {}
+        for dev_type in SE_DEVICE_RESULT_METRICS:
+            table_name = f"se_dev_{dev_type}"
+            device_counts[dev_type] = int(conn.execute(f"SELECT COUNT(*) FROM [{table_name}]").fetchone()[0] or 0)
+        params = self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+        recent_runs = self._rows(
+            """SELECT r.run_id, r.status, r.started_at, r.finished_at, r.elapsed_seconds,
+                      r.execution_source, r.error_type, r.error_message,
+                      s.pass_rate, s.bad_data_count, s.total_residual, s.converged, s.observable, s.meas_count
+               FROM calculation_run r
+               LEFT JOIN se_statistics s ON s.run_id = r.run_id
+               WHERE r.task_type = 'se'
+               ORDER BY r.run_id DESC LIMIT 15"""
+        )
+        return {
+            "latest": latest,
+            "bad_data": bad_data,
+            "device_counts": device_counts,
+            "params": params,
+            "recent_runs": recent_runs,
+        }
+
+    @synchronized
+    def se_devices(self, device_type: str | None = None, *, q: str = "", bad_only: bool = False) -> dict[str, Any]:
+        """读取最新断面各类设备表 se_dev_*，并标注坏数据指标。"""
+        conn = self._connection()
+        bad_rows = self._rows("SELECT device_type, device_idx, device_name, metric FROM se_bad_data")
+        bad_by_dev: dict[tuple[str, int], set[str]] = {}
+        bad_type_devs: dict[str, set[int]] = {}
+        for row in bad_rows:
+            if row["device_idx"] is not None:
+                key = (str(row["device_type"]), int(row["device_idx"]))
+                bad_by_dev.setdefault(key, set()).add(str(row["metric"] or ""))
+                bad_type_devs.setdefault(str(row["device_type"]), set()).add(int(row["device_idx"]))
+
+        available = []
+        for dtype in SE_DEVICE_RESULT_METRICS:
+            cnt = int(conn.execute(f"SELECT COUNT(*) FROM [se_dev_{dtype}]").fetchone()[0] or 0)
+            available.append({
+                "device_type": dtype,
+                "count": cnt,
+                "bad_device_count": len(bad_type_devs.get(dtype, set())),
+            })
+
+        selected = device_type if device_type in SE_DEVICE_RESULT_METRICS else next(
+            (item["device_type"] for item in available if item["count"] > 0),
+            "ACNode",
+        )
+        metrics = list(SE_DEVICE_RESULT_METRICS[selected].keys())
+        rows = self._rows(f"SELECT * FROM [se_dev_{selected}] ORDER BY idx ASC")
+        search = str(q or "").strip().casefold()
+        result_rows = []
+        for row in rows:
+            bad_metrics = sorted(bad_by_dev.get((selected, int(row["idx"])), set()))
+            row["bad_metrics"] = bad_metrics
+            row["has_bad"] = bool(bad_metrics)
+            if bad_only and not row["has_bad"]:
+                continue
+            if search and search not in f"{row['idx']} {row['name']}".casefold():
+                continue
+            result_rows.append(row)
+        return {
+            "device_type": selected,
+            "metrics": metrics,
+            "meas_type_map": dict(SE_DEVICE_RESULT_METRICS[selected]),
+            "rows": result_rows,
+            "available_types": available,
+        }
+
+    @synchronized
+    def se_measurements_browse(
+        self,
+        *,
+        source: str = "all",
+        device_type: str = "",
+        q: str = "",
+        sort: str = "abs_residual",
+        direction: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """分页筛选最新断面 se_measurement，支持坏数据/正常/预过滤/伪量测过滤与残差排序。"""
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        direction = "asc" if str(direction).lower() == "asc" else "desc"
+        clauses: list[str] = []
+        params: list[Any] = []
+        if source == "bad_data":
+            clauses.append("(is_bad = 1 OR source = 'bad_data')")
+        elif source in {"normal", "prefiltered", "pseudo"}:
+            clauses.append("source = ?")
+            params.append(source)
+        elif source != "all":
+            raise ValueError(f"无效的量测来源筛选: {source}")
+        if device_type:
+            clauses.append("device_type = ?")
+            params.append(device_type)
+        search = str(q or "").strip()
+        if search:
+            clauses.append("(meas_name LIKE ? OR device_name LIKE ? OR device_type LIKE ? OR metric LIKE ? OR meas_type LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like, like, like])
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sort_map = {
+            "abs_residual": "ABS(residual)",
+            "abs_norm_residual": "ABS(normalized_residual)",
+            "meas_value": "meas_value",
+            "se_value": "se_value",
+            "residual": "residual",
+            "normalized_residual": "normalized_residual",
+            "meas_id": "meas_id",
+            "device_name": "device_name",
+        }
+        expr = sort_map.get(sort, "ABS(residual)")
+        order = f"{expr} IS NULL, {expr} {direction}, meas_id ASC"
+        conn = self._connection()
+        total = int(conn.execute(f"SELECT COUNT(*) FROM se_measurement{where}", tuple(params)).fetchone()[0] or 0)
+        rows = self._rows(
+            f"SELECT * FROM se_measurement{where} ORDER BY {order} LIMIT ? OFFSET ?",
+            tuple(params + [limit, offset]),
+        )
+        counts = self._rows(
+            """SELECT COUNT(*) AS total,
+                      COALESCE(SUM(is_bad = 1), 0) AS bad_data,
+                      COALESCE(SUM(source = 'normal'), 0) AS normal,
+                      COALESCE(SUM(source = 'prefiltered'), 0) AS prefiltered,
+                      COALESCE(SUM(source = 'pseudo'), 0) AS pseudo
+               FROM se_measurement"""
+        )[0]
+        return {
+            "rows": rows,
+            "counts": {k: int(v or 0) for k, v in counts.items()},
+            "meta": {"total": total, "limit": limit, "offset": offset, "source": source, "sort": sort, "direction": direction},
+        }
+
+    @synchronized
+    def se_pseudo_overview(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        data = pseudo_overview(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return data
+
+    @synchronized
+    def se_pseudo_meas_list(self, *, device_type: str = "", enabled_only: bool = False, q: str = "") -> list[dict[str, Any]]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        rows = list_pseudo_meas_defines(conn, device_type=device_type, enabled_only=enabled_only, q=q)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return rows
+
+    @synchronized
+    def se_pseudo_meas_save(self, payload: dict[str, Any], *, define_id: int | None = None, units: dict[str, Any] | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        row = save_pseudo_meas_define(conn, payload, define_id=define_id, units=units)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_pseudo_meas_delete(self, define_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_pseudo_meas_define(conn, define_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def se_pseudo_stat_list(self, *, device_type: str = "", enabled_only: bool = False) -> list[dict[str, Any]]:
+        return list_pseudo_stat_defines(self._connection(), device_type=device_type, enabled_only=enabled_only)
+
+    @synchronized
+    def se_pseudo_stat_save(self, payload: dict[str, Any], *, define_id: int | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        row = save_pseudo_stat_define(conn, payload, define_id=define_id)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_pseudo_stat_delete(self, define_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_pseudo_stat_define(conn, define_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def se_pseudo_results(self, *, origin: str = "all", device_type: str = "", q: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        return list_se_pseudo_results(self._connection(), origin=origin, device_type=device_type, q=q, limit=limit, offset=offset)
+
+    @synchronized
+    def se_bad_overview(self) -> dict[str, Any]:
+        return bad_overview(self._connection())
+
+    @synchronized
+    def se_bad_current(self, *, device_type: str = "", ack_status: str = "all", q: str = "") -> list[dict[str, Any]]:
+        return list_current_bad_data(self._connection(), device_type=device_type, ack_status=ack_status, q=q)
+
+    @synchronized
+    def se_bad_ack(self, bad_id: int, *, ack_status: str = "acked", ack_note: str = "") -> dict[str, Any]:
+        conn = self._connection()
+        row = ack_bad_data(conn, bad_id=bad_id, ack_status=ack_status, ack_note=ack_note)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_bad_policies(self, *, enabled_only: bool = False, device_type: str = "", action: str = "", q: str = "") -> list[dict[str, Any]]:
+        return list_bad_meas_policies(self._connection(), enabled_only=enabled_only, device_type=device_type, action=action, q=q)
+
+    @synchronized
+    def se_bad_policy_save(self, payload: dict[str, Any], *, policy_id: int | None = None, units: dict[str, Any] | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        row = save_bad_meas_policy(conn, payload, policy_id=policy_id, units=units)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_bad_policy_delete(self, policy_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_bad_meas_policy(conn, policy_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def se_bad_convert_pseudo(self, **kwargs) -> dict[str, Any]:
+        conn = self._connection()
+        res = convert_bad_to_pseudo(conn, **kwargs)
+        conn.commit()
+        return res
+
+    @synchronized
+    def se_bad_abnormal(self, *, category: str = "susstat", device_type: str = "", q: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        return list_abnormal_measurements(self._connection(), category=category, device_type=device_type, q=q, limit=limit, offset=offset)
+
+    @synchronized
+    def record_se_run_log(
+        self,
+        *,
+        level: str = "INFO",
+        stage: str = "system",
+        message: str = "",
+        run_id: int | None = None,
+        source: str = "system",
+        elapsed_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> int | None:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        lid = record_se_log(
+            conn,
+            level=level,
+            stage=stage,
+            message=message,
+            run_id=run_id,
+            source=source,
+            elapsed_ms=elapsed_ms,
+            detail=detail,
+        )
+        if commit and not was_in_tx:
+            conn.commit()
+        return lid
+
+    @synchronized
+    def se_logs_list(self, **kwargs) -> dict[str, Any]:
+        return list_se_logs(self._connection(), **kwargs)
+
+    @synchronized
+    def se_logs_summary(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        data = se_log_summary(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return data
+
+    @synchronized
+    def se_logs_policy_get(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        pol = ensure_se_log_policy(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return pol
+
+    @synchronized
+    def se_logs_policy_update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        conn = self._connection()
+        pol = update_se_log_policy(conn, payload)
+        record_se_log(
+            conn,
+            level="INFO",
+            stage="param_change",
+            source="operator",
+            message=f"更新 SE 日志保留策略：保留 {pol['retention_days']} 天，最大 {pol['max_rows']} 条，间隔 {pol['cleanup_interval_hours']}h",
+            detail=pol,
+        )
+        conn.commit()
+        return pol
+
+    @synchronized
+    def se_logs_purge(
+        self,
+        *,
+        dry_run: bool = False,
+        retention_days: int | None = None,
+        keep_error_days: int | None = None,
+        max_rows: int | None = None,
+        source: str = "operator",
+    ) -> dict[str, Any]:
+        conn = self._connection()
+        if dry_run:
+            return preview_purge_se_logs(
+                conn,
+                retention_days=retention_days,
+                keep_error_days=keep_error_days,
+                max_rows=max_rows,
+            )
+        res = purge_se_logs(
+            conn,
+            retention_days=retention_days,
+            keep_error_days=keep_error_days,
+            max_rows=max_rows,
+            source=source,
+        )
+        conn.commit()
+        return res
+
+    @synchronized
+    def se_logs_maybe_auto_purge(self) -> dict[str, Any] | None:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = maybe_auto_purge_se_logs(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def se_logs_export_csv(self, **kwargs) -> str:
+        return export_se_logs_csv(self._connection(), **kwargs)
+
+    @synchronized
+    def se_history_stats(self, limit: int = 100) -> list[dict[str, Any]]:
+        """返回按时间正序排列的 SE 历史统计曲线数据。"""
+        limit = max(1, min(int(limit), 500))
+        rows = self._rows(
+            """SELECT run_id, calc_time, elapsed_seconds, kernel_seconds,
+                      meas_count, valid_meas_count, good_meas_count, pass_rate,
+                      total_residual, residual_inf, objective,
+                      bad_data_count, prefiltered_count, pseudo_count,
+                      converged, observable, iterations, max_correction
+               FROM se_statistics
+               ORDER BY run_id DESC LIMIT ?""",
+            (limit,),
+        )
+        rows.reverse()
+        return rows
+
+    @synchronized
+    def se_history_points(self) -> dict[str, Any]:
+        """返回可选量测点目录（按设备类型/设备/指标组织），并附历史坏数据命中统计。"""
+        bad_counts_rows = self._rows(
+            """SELECT device_type, device_name, measurement_type, COUNT(*) AS bad_hits
+               FROM se_measurement_result
+               WHERE source = 'bad_data'
+               GROUP BY device_type, device_name, measurement_type"""
+        )
+        bad_map = {
+            (r["device_type"], r["device_name"], r["measurement_type"]): int(r["bad_hits"])
+            for r in bad_counts_rows
+        }
+        latest = self._rows(
+            """SELECT device_type, device_idx, device_name, metric, meas_type, unit,
+                      meas_name, meas_value, se_value, residual, normalized_residual, is_bad, source
+               FROM se_measurement
+               WHERE source IN ('normal', 'bad_data')
+               ORDER BY device_type, device_idx, meas_id"""
+        )
+        points = []
+        seen: set[tuple[str, str, str]] = set()
+        for row in latest:
+            key = (str(row["device_type"]), str(row["device_name"]), str(row["meas_type"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            points.append({
+                "device_type": key[0],
+                "device_idx": row["device_idx"],
+                "device_name": key[1],
+                "metric": str(row["metric"] or ""),
+                "meas_type": key[2],
+                "unit": str(row["unit"] or ""),
+                "meas_name": str(row["meas_name"] or ""),
+                "latest_meas": row["meas_value"],
+                "latest_se": row["se_value"],
+                "latest_residual": row["residual"],
+                "latest_norm_residual": row["normalized_residual"],
+                "is_bad": int(row["is_bad"] or 0),
+                "bad_hits": bad_map.get(key, 0),
+            })
+        if not points:
+            fallback = self._rows(
+                """SELECT DISTINCT device_type, device_name, measurement_type
+                   FROM se_measurement_result
+                   WHERE source IN ('normal', 'bad_data', '') AND device_name != ''
+                   ORDER BY device_type, device_name, measurement_type LIMIT 1000"""
+            )
+            for row in fallback:
+                key = (str(row["device_type"]), str(row["device_name"]), str(row["measurement_type"]))
+                points.append({
+                    "device_type": key[0],
+                    "device_idx": None,
+                    "device_name": key[1],
+                    "metric": "",
+                    "meas_type": key[2],
+                    "unit": "",
+                    "meas_name": f"{key[0]}.{key[1]}.{key[2]}",
+                    "latest_meas": None,
+                    "latest_se": None,
+                    "latest_residual": None,
+                    "latest_norm_residual": None,
+                    "is_bad": 0,
+                    "bad_hits": bad_map.get(key, 0),
+                })
+        return {"points": points}
+
+    @synchronized
+    def se_history_point_series(
+        self,
+        device_type: str,
+        device_name: str,
+        meas_type: str,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """查询单个量测点的历史实测值、估计值、残差、标准化残差与坏数据标记曲线。"""
+        limit = max(1, min(int(limit), 500))
+        rows = self._rows(
+            """SELECT m.run_id, COALESCE(s.calc_time, r.started_at) AS calc_time,
+                      m.measurement_name, m.value AS meas_value, m.estimated_value AS se_value,
+                      m.residual, m.normalized_residual, m.valid, m.source, m.reason
+               FROM se_measurement_result m
+               JOIN calculation_run r ON r.run_id = m.run_id
+               LEFT JOIN se_statistics s ON s.run_id = m.run_id
+               WHERE m.device_type = ? AND m.device_name = ? AND m.measurement_type = ?
+                 AND r.status = 'succeeded'
+               ORDER BY m.run_id DESC LIMIT ?""",
+            (str(device_type), str(device_name), str(meas_type), limit),
+        )
+        rows.reverse()
+        for row in rows:
+            row["is_bad"] = int(str(row.get("source") or "") == "bad_data" or not row.get("valid"))
+        meta_rows = self._rows(
+            "SELECT metric, unit, meas_name FROM se_measurement WHERE device_type = ? AND device_name = ? AND meas_type = ? LIMIT 1",
+            (str(device_type), str(device_name), str(meas_type)),
+        )
+        para_rows = self._rows("SELECT baderr_eps FROM pas_se_para ORDER BY id LIMIT 1")
+        return {
+            "device_type": device_type,
+            "device_name": device_name,
+            "meas_type": meas_type,
+            "metric": meta_rows[0]["metric"] if meta_rows else "",
+            "unit": meta_rows[0]["unit"] if meta_rows else "",
+            "meas_name": meta_rows[0]["meas_name"] if meta_rows else (rows[-1]["measurement_name"] if rows else ""),
+            "bad_threshold": float(para_rows[0]["baderr_eps"]) if para_rows and para_rows[0]["baderr_eps"] is not None else 3.0,
+            "points": rows,
+        }
+
+    @synchronized
+    def se_history_bad_data(self, limit: int = 100) -> dict[str, Any]:
+        """返回历史坏数据数量曲线及高频坏数据量测点统计。"""
+        series = self.se_history_stats(limit)
+        hotspots = self._rows(
+            """SELECT m.device_type, m.device_name, m.measurement_type AS meas_type,
+                      COUNT(*) AS bad_hits,
+                      MAX(ABS(COALESCE(m.normalized_residual, 0))) AS max_norm_residual,
+                      MAX(ABS(COALESCE(m.residual, 0))) AS max_abs_residual,
+                      MAX(COALESCE(s.calc_time, r.started_at)) AS last_seen_at
+               FROM se_measurement_result m
+               JOIN calculation_run r ON r.run_id = m.run_id
+               LEFT JOIN se_statistics s ON s.run_id = m.run_id
+               WHERE m.source = 'bad_data' AND r.status = 'succeeded'
+               GROUP BY m.device_type, m.device_name, m.measurement_type
+               ORDER BY bad_hits DESC, max_norm_residual DESC LIMIT 50"""
+        )
+        current_bad = self._rows(
+            "SELECT * FROM se_bad_data ORDER BY ABS(COALESCE(normalized_residual, 0)) DESC, id ASC"
+        )
+        return {"series": series, "hotspots": hotspots, "current": current_bad}
 
     @synchronized
     def get_config(self, key: str, default: Any = None) -> Any:
@@ -486,11 +1140,232 @@ class Repository:
         self._connection().execute("INSERT INTO calculation_metric(run_id, name, value_real, value_text, unit) VALUES (?, ?, ?, ?, ?)", (run_id, name, value_real, value_text, unit))
 
     @synchronized
-    def store_se_result(self, run_id: int, result: dict[str, Any]) -> None:
+    def store_se_result(
+        self,
+        run_id: int,
+        result: dict[str, Any],
+        *,
+        calc_time: str | None = None,
+        elapsed_seconds: float | None = None,
+        kernel_seconds: float | None = None,
+    ) -> None:
         stats = result.get("statistics", {})
+        se_stats = result.get("se_statistics") or {}
+        stamp = str(calc_time or utc_now())
         conn = self._connection()
-        conn.execute("INSERT INTO se_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, _bool(result.get("converged")), _bool(result.get("observable")), int(stats.get("iterations", result.get("iterations", 0))), float(stats.get("objective", result.get("objective", 0.0))), float(stats.get("max_correction", result.get("max_correction", 0.0))), float(stats.get("residual_inf", result.get("residual_inf", 0.0))), int(stats.get("rank", 0)), int(stats.get("state_count", 0)), int(stats.get("measurement_count", 0)), int(stats.get("deficiency", 0)), int(stats.get("prefiltered_measurement_count", 0)), int(stats.get("pseudo_measurement_count", 0)), int(stats.get("bad_data_count", 0)), int(stats.get("normal_measurement_count", 0)), json.dumps(result.get("state", []), ensure_ascii=False), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        conn.executemany("INSERT INTO se_measurement_result(run_id, measurement_idx, measurement_name, device_type, device_name, measurement_type, value, estimated_value, residual, normalized_residual, valid, source, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, row.get("idx", 0), row.get("name", ""), row.get("device_type", ""), row.get("device_name", ""), row.get("meas_type", ""), row.get("value"), row.get("estimated_value"), row.get("residual"), row.get("normalized_residual"), _bool(row.get("valid", True)), row.get("source", ""), row.get("reason", "")) for row in result.get("measurements", [])))
+        conn.execute(
+            "INSERT INTO se_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                _bool(result.get("converged")),
+                _bool(result.get("observable")),
+                int(stats.get("iterations", result.get("iterations", 0))),
+                float(stats.get("objective", result.get("objective", 0.0))),
+                float(stats.get("max_correction", result.get("max_correction", 0.0))),
+                float(stats.get("residual_inf", result.get("residual_inf", 0.0))),
+                int(stats.get("rank", 0)),
+                int(stats.get("state_count", 0)),
+                int(stats.get("measurement_count", 0)),
+                int(stats.get("deficiency", 0)),
+                int(stats.get("prefiltered_measurement_count", 0)),
+                int(stats.get("pseudo_measurement_count", 0)),
+                int(stats.get("bad_data_count", 0)),
+                int(stats.get("normal_measurement_count", 0)),
+                json.dumps(result.get("state", []), ensure_ascii=False),
+                json.dumps(result.get("summary", {}), ensure_ascii=False),
+            ),
+        )
+        measurements = result.get("measurements") or []
+        conn.executemany(
+            "INSERT INTO se_measurement_result(run_id, measurement_idx, measurement_name, device_type, device_name, measurement_type, value, estimated_value, residual, normalized_residual, valid, source, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                (
+                    run_id,
+                    row.get("idx", 0),
+                    row.get("name", ""),
+                    row.get("device_type", ""),
+                    row.get("device_name", ""),
+                    row.get("meas_type", ""),
+                    row.get("value"),
+                    row.get("estimated_value"),
+                    row.get("residual"),
+                    row.get("normalized_residual"),
+                    _bool(row.get("valid", True)),
+                    row.get("source", ""),
+                    row.get("reason", ""),
+                )
+                for row in measurements
+            ),
+        )
+
+        # 1. 统计表 se_statistics（按 run_id 追加保留历史）
+        meas_count = int(se_stats.get("meas_count", stats.get("measurement_count", len(measurements))))
+        bad_count = int(se_stats.get("bad_data_count", stats.get("bad_data_count", 0)))
+        valid_count = int(se_stats.get("valid_meas_count", max(0, meas_count - int(stats.get("prefiltered_measurement_count", 0)))))
+        good_count = int(se_stats.get("good_meas_count", stats.get("normal_measurement_count", max(0, valid_count - bad_count))))
+        pass_rate = float(se_stats.get("pass_rate", (good_count / valid_count) if valid_count > 0 else 0.0))
+        total_res = float(se_stats.get("total_residual", sum(abs(float(r["residual"])) for r in measurements if isinstance(r.get("residual"), (int, float)))))
+        k_sec = float(kernel_seconds if kernel_seconds is not None else result.get("elapsed_seconds", 0.0) or 0.0)
+        e_sec = float(elapsed_seconds if elapsed_seconds is not None else k_sec)
+        conn.execute(
+            """INSERT OR REPLACE INTO se_statistics(
+                   run_id, calc_time, elapsed_seconds, kernel_seconds,
+                   meas_count, valid_meas_count, good_meas_count, pass_rate,
+                   total_residual, residual_inf, objective,
+                   bad_data_count, prefiltered_count, pseudo_count,
+                   converged, observable, iterations, max_correction,
+                   model_source, meas_source
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                run_id,
+                stamp,
+                e_sec,
+                k_sec,
+                meas_count,
+                valid_count,
+                good_count,
+                pass_rate,
+                total_res,
+                float(se_stats.get("residual_inf", stats.get("residual_inf", result.get("residual_inf", 0.0)))),
+                float(se_stats.get("objective", stats.get("objective", result.get("objective", 0.0)))),
+                bad_count,
+                int(se_stats.get("prefiltered_count", stats.get("prefiltered_measurement_count", 0))),
+                int(se_stats.get("pseudo_count", stats.get("pseudo_measurement_count", 0))),
+                _bool(se_stats.get("converged", result.get("converged"))),
+                _bool(se_stats.get("observable", result.get("observable"))),
+                int(se_stats.get("iterations", stats.get("iterations", result.get("iterations", 0)))),
+                float(se_stats.get("max_correction", stats.get("max_correction", result.get("max_correction", 0.0)))),
+                str(se_stats.get("model_source", (result.get("summary") or {}).get("model_input", {}).get("source", ""))),
+                str(se_stats.get("meas_source", (result.get("summary") or {}).get("measurement_input", {}).get("source", ""))),
+            ),
+        )
+
+        # 2. 量测表 se_measurement（原子刷新为最新一次计算全量量测）
+        conn.execute("DELETE FROM se_measurement")
+        conn.executemany(
+            """INSERT INTO se_measurement(
+                   meas_id, run_id, calc_time, meas_name, device_type, device_idx, device_name,
+                   metric, meas_type, unit, meas_value, se_value, residual, normalized_residual,
+                   weight, valid, is_bad, is_good, source, reason
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                (
+                    idx_seq,
+                    run_id,
+                    stamp,
+                    str(row.get("name", "")),
+                    str(row.get("device_type", "")),
+                    row.get("device_idx"),
+                    str(row.get("device_name", "")),
+                    str(row.get("metric", "")),
+                    str(row.get("meas_type", "")),
+                    str(row.get("unit", "")),
+                    row.get("value"),
+                    row.get("estimated_value"),
+                    row.get("residual"),
+                    row.get("normalized_residual"),
+                    row.get("weight"),
+                    _bool(row.get("valid", True)),
+                    int(row.get("is_bad", str(row.get("source", "")) == "bad_data")),
+                    int(row.get("is_good", _bool(row.get("valid", True)) and str(row.get("source", "")) != "bad_data")),
+                    str(row.get("source", "")),
+                    str(row.get("reason", "")),
+                )
+                for idx_seq, row in enumerate(measurements, 1)
+            ),
+        )
+
+        # 3. 坏数据表 se_bad_data（原子刷新为最新一次计算识别出的坏数据，保留已人工确认状态）
+        ensure_se_bad_columns(conn)
+        prev_acks = {
+            (str(r["device_type"]), str(r["device_name"]), str(r["metric"])): (
+                str(r["ack_status"] or "unacked"),
+                str(r["ack_time"] or ""),
+                str(r["ack_note"] or ""),
+                r["policy_id"],
+            )
+            for r in conn.execute(
+                "SELECT device_type, device_name, metric, ack_status, ack_time, ack_note, policy_id FROM se_bad_data"
+            )
+            if str(r["ack_status"] or "unacked") != "unacked"
+        }
+        bad_rows = result.get("bad_data")
+        if bad_rows is None:
+            bad_rows = [
+                row
+                for row in measurements
+                if row.get("is_bad") or str(row.get("source", "")).lower() == "bad_data" or not row.get("valid", True)
+            ]
+        conn.execute("DELETE FROM se_bad_data")
+        conn.executemany(
+            """INSERT INTO se_bad_data(
+                   id, run_id, calc_time, meas_id, meas_name, device_type, device_idx, device_name,
+                   metric, meas_type, unit, meas_value, se_value, residual, normalized_residual,
+                   weight, reason, ack_status, ack_time, ack_note, policy_id
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                (
+                    seq,
+                    run_id,
+                    stamp,
+                    int(row.get("idx", seq)),
+                    str(row.get("name", "")),
+                    str(row.get("device_type", "")),
+                    row.get("device_idx"),
+                    str(row.get("device_name", "")),
+                    str(row.get("metric", "")),
+                    str(row.get("meas_type", "")),
+                    str(row.get("unit", "")),
+                    row.get("value"),
+                    row.get("estimated_value"),
+                    row.get("residual"),
+                    row.get("normalized_residual"),
+                    row.get("weight"),
+                    str(row.get("reason") or "bad_data"),
+                    *prev_acks.get(
+                        (str(row.get("device_type", "")), str(row.get("device_name", "")), str(row.get("metric", ""))),
+                        ("unacked", "", "", None),
+                    ),
+                )
+                for seq, row in enumerate(bad_rows, 1)
+            ),
+        )
+
+        # 3.1 伪量测结果表 se_pseudo_result（原子刷新为最新一次计算伪量测集合）
+        store_se_pseudo_results(conn, run_id, stamp, measurements)
+
+        # 3.2 可疑遥信表 se_suspect_status 与兼容表 pas_se_susstat
+        store_se_suspect_statuses(conn, run_id, stamp, result.get("suspect_statuses") or [])
+
+        # 4. 各类设备表 se_dev_*（按模型设备类原子刷新为最新断面，含 <metric>_meas 与 <metric>_se）
+        device_tables = result.get("device_tables") or {}
+        for dev_type, metric_map in SE_DEVICE_RESULT_METRICS.items():
+            rows_for_dev = device_tables.get(dev_type)
+            if rows_for_dev is None:
+                continue
+            table_name = f"se_dev_{dev_type}"
+            metric_cols: list[str] = []
+            for metric in metric_map:
+                metric_cols.extend((f"{metric}_meas", f"{metric}_se"))
+            all_cols = ["idx", "name", "run_id", "calc_time", *metric_cols]
+            quoted = ",".join(f"[{col}]" for col in all_cols)
+            placeholders = ",".join("?" for _ in all_cols)
+            conn.execute(f"DELETE FROM [{table_name}]")
+            conn.executemany(
+                f"INSERT INTO [{table_name}] ({quoted}) VALUES ({placeholders})",
+                (
+                    tuple(
+                        [
+                            int(rec["idx"]),
+                            str(rec["name"]),
+                            run_id,
+                            stamp,
+                            *[rec.get(col) for col in metric_cols],
+                        ]
+                    )
+                    for rec in rows_for_dev
+                ),
+            )
 
     @synchronized
     def store_lf_result(self, run_id: int, result: dict[str, Any]) -> None:
@@ -505,9 +1380,24 @@ class Repository:
         conn.executemany("INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, str(row.get("contingency", "N-0")), str(row.get("risk_source", "")), str(row.get("risk_dist", "")), str(row.get("risk_type", "")), row.get("risk_value") if isinstance(row.get("risk_value"), (int, float)) else None, None if isinstance(row.get("risk_value"), (int, float)) else str(row.get("risk_value") or ""), str(row.get("risk_info", "")), utc_now()) for row in result.get("risks", [])))
 
     @synchronized
-    def store_result(self, task_type: str, run_id: int, result: dict[str, Any]) -> None:
+    def store_result(
+        self,
+        task_type: str,
+        run_id: int,
+        result: dict[str, Any],
+        *,
+        calc_time: str | None = None,
+        elapsed_seconds: float | None = None,
+        kernel_seconds: float | None = None,
+    ) -> None:
         if task_type == "se":
-            self.store_se_result(run_id, result)
+            self.store_se_result(
+                run_id,
+                result,
+                calc_time=calc_time,
+                elapsed_seconds=elapsed_seconds,
+                kernel_seconds=kernel_seconds,
+            )
         elif task_type == "lf":
             self.store_lf_result(run_id, result)
         elif task_type == "ca":
@@ -649,6 +1539,108 @@ class RepositoryHub:
 
     def count_logs(self) -> int:
         return self.control.count_logs() if self.control is not None else 0
+
+    def sync_se_parameters(self, para_file=None, *, do_cycle=60, calc_trigger=1, overwrite=False):
+        return self.for_task("se").sync_se_parameters(para_file, do_cycle=do_cycle, calc_trigger=calc_trigger, overwrite=overwrite)
+
+    def get_se_parameters(self, para_file=None, *, do_cycle=60):
+        return self.for_task("se").get_se_parameters(para_file, do_cycle=do_cycle)
+
+    def update_se_parameters(self, payload, *, para_file=None, do_cycle=60):
+        return self.for_task("se").update_se_parameters(payload, para_file=para_file, do_cycle=do_cycle)
+
+    def se_overview(self, para_file=None, do_cycle=60):
+        return self.for_task("se").se_overview(para_file, do_cycle)
+
+    def se_devices(self, device_type=None, *, q="", bad_only=False):
+        return self.for_task("se").se_devices(device_type, q=q, bad_only=bad_only)
+
+    def se_measurements_browse(self, **kwargs):
+        return self.for_task("se").se_measurements_browse(**kwargs)
+
+    def se_history_stats(self, limit=100):
+        return self.for_task("se").se_history_stats(limit)
+
+    def se_history_points(self):
+        return self.for_task("se").se_history_points()
+
+    def se_history_point_series(self, device_type, device_name, meas_type, limit=100):
+        return self.for_task("se").se_history_point_series(device_type, device_name, meas_type, limit)
+
+    def se_history_bad_data(self, limit=100):
+        return self.for_task("se").se_history_bad_data(limit)
+
+    def se_pseudo_overview(self):
+        return self.for_task("se").se_pseudo_overview()
+
+    def se_pseudo_meas_list(self, **kwargs):
+        return self.for_task("se").se_pseudo_meas_list(**kwargs)
+
+    def se_pseudo_meas_save(self, payload, **kwargs):
+        return self.for_task("se").se_pseudo_meas_save(payload, **kwargs)
+
+    def se_pseudo_meas_delete(self, define_id):
+        return self.for_task("se").se_pseudo_meas_delete(define_id)
+
+    def se_pseudo_stat_list(self, **kwargs):
+        return self.for_task("se").se_pseudo_stat_list(**kwargs)
+
+    def se_pseudo_stat_save(self, payload, **kwargs):
+        return self.for_task("se").se_pseudo_stat_save(payload, **kwargs)
+
+    def se_pseudo_stat_delete(self, define_id):
+        return self.for_task("se").se_pseudo_stat_delete(define_id)
+
+    def se_pseudo_results(self, **kwargs):
+        return self.for_task("se").se_pseudo_results(**kwargs)
+
+    def se_bad_overview(self):
+        return self.for_task("se").se_bad_overview()
+
+    def se_bad_current(self, **kwargs):
+        return self.for_task("se").se_bad_current(**kwargs)
+
+    def se_bad_ack(self, bad_id, **kwargs):
+        return self.for_task("se").se_bad_ack(bad_id, **kwargs)
+
+    def se_bad_policies(self, **kwargs):
+        return self.for_task("se").se_bad_policies(**kwargs)
+
+    def se_bad_policy_save(self, payload, **kwargs):
+        return self.for_task("se").se_bad_policy_save(payload, **kwargs)
+
+    def se_bad_policy_delete(self, policy_id):
+        return self.for_task("se").se_bad_policy_delete(policy_id)
+
+    def se_bad_convert_pseudo(self, **kwargs):
+        return self.for_task("se").se_bad_convert_pseudo(**kwargs)
+
+    def se_bad_abnormal(self, **kwargs):
+        return self.for_task("se").se_bad_abnormal(**kwargs)
+
+    def record_se_run_log(self, **kwargs):
+        return self.for_task("se").record_se_run_log(**kwargs)
+
+    def se_logs_list(self, **kwargs):
+        return self.for_task("se").se_logs_list(**kwargs)
+
+    def se_logs_summary(self):
+        return self.for_task("se").se_logs_summary()
+
+    def se_logs_policy_get(self):
+        return self.for_task("se").se_logs_policy_get()
+
+    def se_logs_policy_update(self, payload):
+        return self.for_task("se").se_logs_policy_update(payload)
+
+    def se_logs_purge(self, **kwargs):
+        return self.for_task("se").se_logs_purge(**kwargs)
+
+    def se_logs_maybe_auto_purge(self):
+        return self.for_task("se").se_logs_maybe_auto_purge()
+
+    def se_logs_export_csv(self, **kwargs):
+        return self.for_task("se").se_logs_export_csv(**kwargs)
 
     def close(self) -> None:
         if self.control is not None:

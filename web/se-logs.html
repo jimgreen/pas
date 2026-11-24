@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>运行日志 · 状态估计 SE · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/se-logs" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
+          <div class="nav-sub">
+            <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
+            <a href="/se-bad.html" data-route="se-bad" data-i18n="nav.se_bad">坏量测管理</a>
+            <a href="/se-logs.html" data-route="se-logs" class="active" data-i18n="nav.se_logs">运行日志</a>
+            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se_detail">状态估计明细</a>
+          </div>
+          <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.logs">状态估计运行日志</h1>
+            <span id="logs-range-meta" class="se-run-meta tabular">--</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section class="se-kpi-strip cols-4" aria-label="KPI">
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.total">日志总数</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-log-total">0</strong></div>
+          <div class="se-kpi-sub tabular" id="kpi-log-24h"></div>
+        </article>
+        <article class="se-kpi-card" id="kpi-card-err">
+          <div class="se-kpi-head"><span data-i18n="kpi.err24">24h ERR/WARN</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-err-24h">0</strong><small id="kpi-warn-24h">/ 0</small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.retention">保留策略</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-ret-days">30</strong><small data-i18n="unit.days">天</small></div>
+          <div class="se-kpi-sub tabular" id="kpi-ret-sub"></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.cleanup">上次清理</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-last-del">0</strong><small data-i18n="unit.rows">条</small></div>
+          <div class="se-kpi-sub tabular" id="kpi-last-time"></div>
+        </article>
+      </section>
+
+      <nav class="se-view-tabs" id="logs-tabs" role="tablist">
+        <button type="button" class="se-tab active" data-view="stream" role="tab" data-i18n="tab.stream">日志明细与检索</button>
+        <button type="button" class="se-tab" data-view="policy" role="tab" data-i18n="tab.policy">定期删除与存储策略</button>
+      </nav>
+
+      <div class="se-workspace">
+        <!-- 1. 日志明细与检索 -->
+        <section class="se-panel active" data-panel="stream">
+          <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group wrap">
+                <select id="log-level-filter" class="se-select compact" aria-label="Level">
+                  <option value="" data-i18n="filter.level_all">全部级别</option>
+                  <option value="ERROR">ERROR</option>
+                  <option value="WARN">WARN</option>
+                  <option value="INFO">INFO</option>
+                  <option value="DEBUG">DEBUG</option>
+                </select>
+                <select id="log-stage-filter" class="se-select compact" aria-label="Stage">
+                  <option value="all" data-i18n="filter.stage_all">全部阶段</option>
+                  <option value="trigger">trigger</option>
+                  <option value="input_load">input_load</option>
+                  <option value="policy_apply">policy_apply</option>
+                  <option value="solve">solve</option>
+                  <option value="bad_detect">bad_detect</option>
+                  <option value="persist">persist</option>
+                  <option value="param_change">param_change</option>
+                  <option value="pseudo_change">pseudo_change</option>
+                  <option value="bad_change">bad_change</option>
+                  <option value="cleanup">cleanup</option>
+                  <option value="error">error</option>
+                </select>
+                <select id="log-source-filter" class="se-select compact" aria-label="Source">
+                  <option value="all" data-i18n="filter.source_all">全部来源</option>
+                  <option value="schedule">schedule</option>
+                  <option value="manual">manual</option>
+                  <option value="operator">operator</option>
+                  <option value="system">system</option>
+                </select>
+                <select id="log-window-filter" class="se-select compact" aria-label="Time window">
+                  <option value="all" data-i18n="win.all">全部时间</option>
+                  <option value="1h" data-i18n="win.1h">近 1 小时</option>
+                  <option value="24h" data-i18n="win.24h">近 24 小时</option>
+                  <option value="7d" data-i18n="win.7d">近 7 天</option>
+                  <option value="30d" data-i18n="win.30d">近 30 天</option>
+                </select>
+                <input id="log-runid-input" class="se-input compact" type="number" min="1" style="width:96px" data-i18n-placeholder="ph.run_id" placeholder="Run ID">
+                <input id="log-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="搜索日志内容">
+              </div>
+              <div class="se-tool-group">
+                <span class="se-muted tabular" id="log-count-meta">--</span>
+                <button type="button" class="se-btn mini" id="btn-export-logs" data-i18n="action.export_csv">导出 CSV</button>
+              </div>
+            </div>
+            <div class="se-table-scroll" id="log-table-wrap"></div>
+            <div class="se-pager" id="log-pager"></div>
+          </div>
+        </section>
+
+        <!-- 2. 定期删除与存储策略 -->
+        <section class="se-panel" data-panel="policy">
+          <div class="se-split-grid">
+            <section class="se-card se-full-card">
+              <div class="se-toolbar">
+                <h2 data-i18n="pol.title">定期删除与存储策略 (se_log_policy)</h2>
+                <div class="se-tool-group">
+                  <span class="se-muted tabular" id="pol-pending-meta">--</span>
+                </div>
+              </div>
+              <form id="log-policy-form" class="se-form-grid">
+                <label class="se-field">
+                  <span data-i18n="pol.enabled">自动定期清理</span>
+                  <select name="enabled" id="lp-enabled">
+                    <option value="1" data-i18n="common.enabled">已启用</option>
+                    <option value="0" data-i18n="common.disabled">已停用</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="pol.min_level">最低入库级别</span>
+                  <select name="min_level" id="lp-min-level">
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="pol.retention">常规日志保留天数</span>
+                  <select name="retention_days" id="lp-retention">
+                    <option value="7">7 天</option>
+                    <option value="15">15 天</option>
+                    <option value="30">30 天</option>
+                    <option value="60">60 天</option>
+                    <option value="90">90 天</option>
+                    <option value="180">180 天</option>
+                    <option value="365">365 天</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="pol.keep_err">ERROR 日志保留天数</span>
+                  <select name="keep_error_days" id="lp-keep-err">
+                    <option value="30">30 天</option>
+                    <option value="60">60 天</option>
+                    <option value="90">90 天</option>
+                    <option value="180">180 天</option>
+                    <option value="365">365 天</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="pol.max_rows">最大保留条数</span>
+                  <select name="max_rows" id="lp-max-rows">
+                    <option value="5000">5,000</option>
+                    <option value="20000">20,000</option>
+                    <option value="50000">50,000</option>
+                    <option value="100000">100,000</option>
+                    <option value="500000">500,000</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="pol.interval">清理执行周期</span>
+                  <select name="cleanup_interval_hours" id="lp-interval">
+                    <option value="1">1 h</option>
+                    <option value="6">6 h</option>
+                    <option value="12">12 h</option>
+                    <option value="24">24 h</option>
+                    <option value="168">7 d (168 h)</option>
+                  </select>
+                </label>
+                <div class="se-tool-group full" style="margin-top:6px">
+                  <button type="submit" class="se-btn primary" data-i18n="pol.save">保存策略</button>
+                  <button type="button" class="se-btn ghost" id="btn-preview-purge" data-i18n="pol.preview">预估待清理</button>
+                  <button type="button" class="se-btn danger-ghost" id="btn-run-purge" data-i18n="pol.purge_now">立即按策略清理</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="se-card se-full-card">
+              <div class="se-toolbar">
+                <h2 data-i18n="dist.title">阶段分布统计</h2>
+              </div>
+              <div class="se-stage-bars" id="log-stage-bars"></div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 高危清理模态确认框 -->
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-desc" class="se-modal-desc"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="btn-confirm-cancel" autofocus data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="btn-confirm-ok" data-i18n="action.confirm">确认</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/se-common.js"></script>
+  <script src="/assets/se-logs.js"></script>
+</body>
+</html>

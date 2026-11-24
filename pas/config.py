@@ -235,7 +235,11 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                         raise ConfigError("model path must stay inside workspace directory")
                     return model
                 defaults = {"measurement_file": "sqldb/scada/devices.sqlite3", "parameter_file": f"config/{name}.para", "limit_file": "sqldb/pas/ca.sqlite3",
-                            "scada_source_file": "sqldb/scada/scdfe_c.sqlite3", "point_catalog_file": "sqldb/scada/point_catalog.json"}
+                            "scada_source_file": "sqldb/fes/scdfe_c.sqlite3", "point_catalog_file": "sqldb/scada/point_catalog.json"}
+                if field == "measurement_file" and field not in values and (workspace / "sqldb/scada/scdfe_d.sqlite3").is_file():
+                    return (workspace / "sqldb/scada/scdfe_d.sqlite3").resolve()
+                if field == "scada_source_file" and field not in values and not (workspace / "sqldb/fes/scdfe_c.sqlite3").is_file() and (workspace / "sqldb/scada/scdfe_c.sqlite3").is_file():
+                    return (workspace / "sqldb/scada/scdfe_c.sqlite3").resolve()
                 return _path(values.get(field, defaults[field]), workspace)
             return _relocated_path(values.get(field), base, configured_kernel_root or kernel_root, kernel_root)
 
@@ -270,13 +274,16 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                      workspace_root, runtime, scenario, workspace)
 
 
-def validate_task_inputs(task: TaskConfig) -> None:
+def validate_task_inputs(task: TaskConfig, *, scada_snapshot: bool = False) -> None:
     required = {"se": ("model_file", "measurement_file", "parameter_file"),
                 "lf": ("model_file", "parameter_file"), "ca": ("model_file", "limit_file")}
     for field in required[task.name]:
         value = getattr(task, field, None)
         if value is None or not Path(value).is_file():
             raise ConfigError(f"tasks.{task.name}.{field} does not exist: {value}")
-    if task.name == 'se' and task.measurement_file.suffix.lower() in {'.sqlite3','.sqlite','.db'}:
+    if task.name == 'se' and not scada_snapshot and task.measurement_file.suffix.lower() in {'.sqlite3','.sqlite','.db'}:
+        from .input_store import is_scdfe_d_wide_db
+        if is_scdfe_d_wide_db(task.measurement_file):
+            return
         if task.scada_source_file is None or not task.scada_source_file.is_file():
             raise ConfigError(f"tasks.se.scada_source_file does not exist: {task.scada_source_file}")
