@@ -18,6 +18,8 @@
       'runs.title': 'SE 运行记录',
       'runs.open_detail': '明细与 dbdef →',
       'runs.view_log': '看日志',
+      'runs.replay_flow': '潮流图',
+      'runs.replay_meas': '量测',
       'col.pass_rate': '合格率',
       'col.bad_count': '坏数据',
       'col.status': '状态',
@@ -83,6 +85,8 @@
       'runs.title': 'SE Run History',
       'runs.open_detail': 'Details & dbdef →',
       'runs.view_log': 'Logs',
+      'runs.replay_flow': 'Flow Map',
+      'runs.replay_meas': 'Meas',
       'col.pass_rate': 'Pass Rate',
       'col.bad_count': 'Bad',
       'col.status': 'Status',
@@ -148,6 +152,8 @@
       'runs.title': 'Запуски SE',
       'runs.open_detail': 'Детали и dbdef →',
       'runs.view_log': 'Лог',
+      'runs.replay_flow': 'Схема',
+      'runs.replay_meas': 'Изм.',
       'col.pass_rate': 'Годные',
       'col.bad_count': 'Плохие',
       'col.status': 'Статус',
@@ -410,7 +416,13 @@
               <td class="tabular">${r.pass_rate != null ? (Number(r.pass_rate) * 100).toFixed(2) + '%' : '—'}</td>
               <td class="tabular">${r.bad_data_count ?? '—'}</td>
               <td class="tabular">${r.elapsed_seconds != null ? Number(r.elapsed_seconds).toFixed(3) : '—'}</td>
-              <td><button type="button" class="se-btn mini" data-filter-run="${r.run_id}">${esc(t('runs.view_log'))}</button></td>
+              <td>
+                <div class="se-row-actions">
+                  <button type="button" class="se-btn mini" data-filter-run="${r.run_id}">${esc(t('runs.view_log'))}</button>
+                  ${r.status === 'succeeded' ? `<a class="se-btn mini se-link-btn" href="/se-flow.html?run_id=${r.run_id}">${esc(t('runs.replay_flow'))}</a>` : ''}
+                  ${r.status === 'succeeded' ? `<a class="se-btn mini se-link-btn" href="/se-measurements.html?run_id=${r.run_id}">${esc(t('runs.replay_meas'))}</a>` : ''}
+                </div>
+              </td>
             </tr>
           `).join('')}
         </tbody>

@@ -27,7 +27,6 @@
             <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">主画面</a>
             <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
             <a href="/se-curves.html" data-route="se-curves" class="active" data-i18n="nav.se_curves">历史曲线</a>
-            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
             <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">全量测分析</a>
             <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
             <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测</a>
@@ -121,12 +120,14 @@
                   <select id="pt-meas-select" class="se-select compact" aria-label="Measurement"></select>
                   <select id="pt-bad-hotspot" class="se-select compact" aria-label="Bad hotspots"></select>
                 </div>
-                <div class="se-tool-group">
+                <div class="se-tool-group wrap">
                   <div class="se-segmented" id="point-curve-mode">
                     <button type="button" class="seg active" data-pmode="value" data-i18n="curves.meas_vs_se">Meas vs SE</button>
                     <button type="button" class="seg" data-pmode="residual" data-i18n="curves.point_residual">残差 Δ</button>
                     <button type="button" class="seg" data-pmode="norm" data-i18n="curves.norm_residual">标准化残差</button>
                   </div>
+                  <div class="se-tool-group" id="pt-curve-actions"></div>
+                  <button type="button" class="se-btn mini" id="btn-pt-export-csv" data-i18n="action.export_csv">导出 CSV</button>
                 </div>
               </div>
               <div class="se-chart-legend" id="point-chart-legend"></div>
@@ -137,6 +138,47 @@
       </div>
     </main>
   </div>
+
+  <!-- 量测点曲线就地处置模态框（屏蔽 / 预过滤 / 伪量测 / 权重） -->
+  <dialog id="quick-action-dialog" class="se-modal wide" aria-labelledby="qa-title">
+    <h3 id="qa-title">—</h3>
+    <form id="qa-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" name="mode" id="qa-mode">
+      <input type="hidden" name="device_type" id="qa-dev-type">
+      <input type="hidden" name="device_idx" id="qa-dev-idx">
+      <input type="hidden" name="device_name" id="qa-dev-name">
+      <input type="hidden" name="metric" id="qa-metric">
+      <input type="hidden" name="unit" id="qa-unit">
+      <div class="se-field full">
+        <span data-i18n="qa.target">目标量测</span>
+        <input id="qa-target-display" class="tabular" type="text" readonly>
+      </div>
+      <label class="se-field" id="qa-f-min" hidden>
+        <span data-i18n="qa.min_val">下限 min</span>
+        <input id="qa-min" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-max" hidden>
+        <span data-i18n="qa.max_val">上限 max</span>
+        <input id="qa-max" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-val" hidden>
+        <span data-i18n="qa.pseudo_val">伪量测值</span>
+        <input id="qa-val" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-weight" hidden>
+        <span data-i18n="qa.weight">权重</span>
+        <input id="qa-weight" class="tabular" type="number" step="any" min="1e-9" max="1e9">
+      </label>
+      <label class="se-field full">
+        <span data-i18n="qa.note">备注 / 原因</span>
+        <input id="qa-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-qa-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" id="btn-qa-save" data-i18n="qa.submit">保存并生效</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/assets/se-dashboard.js"></script>
 </body>

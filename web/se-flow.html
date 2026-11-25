@@ -27,7 +27,6 @@
             <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">主画面</a>
             <a href="/se-flow.html" data-route="se-flow" class="active" data-i18n="nav.se_flow">潮流图</a>
             <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
-            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
             <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">全量测分析</a>
             <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
             <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测</a>
@@ -123,6 +122,7 @@
                     <option value="residual" data-i18n="topo.mode_residual">Δ (Meas-SE)</option>
                   </select>
                   <select id="svg-device-jump" class="se-select compact" aria-label="Locate device"></select>
+                  <button type="button" class="se-chip-btn warn" id="btn-topo-imb-overlay" data-i18n="topo.imb_overlay">不平衡母线</button>
                 </div>
                 <div class="se-tool-group">
                   <div class="se-legend-inline">
@@ -145,10 +145,13 @@
             <aside class="se-topo-inspector">
               <section class="se-side-card se-bad-card">
                 <div class="se-side-head">
-                  <h2 data-i18n="topo.bad_panel">坏数据</h2>
+                  <div class="se-tool-group" id="topo-side-seg" role="tablist">
+                    <button type="button" class="se-chip-btn seg active" data-tside="bad" data-i18n="topo.bad_panel">坏数据</button>
+                    <button type="button" class="se-chip-btn seg warn" data-tside="imb" data-i18n="topo.imb_panel">不平衡</button>
+                  </div>
                   <div class="se-tool-group">
                     <span class="se-pill ok tabular" id="topo-bad-count">0</span>
-                    <a href="/se-bad.html" class="se-btn mini se-link-btn" data-i18n="link.manage_bad">处置 →</a>
+                    <a href="/se-bad.html" class="se-btn mini se-link-btn" id="topo-side-more" data-i18n="link.manage_bad">处置 →</a>
                   </div>
                 </div>
                 <div class="se-bad-list" id="topo-bad-list"></div>

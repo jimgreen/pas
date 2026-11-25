@@ -55,7 +55,9 @@
       'act.suppress': '屏蔽',
       'act.to_pseudo': '转伪量测',
       'act.locate': '定位潮流图',
+      'act.apply_stat': '按推算置位',
       'msg.saved': '操作成功',
+      'msg.stat_applied': '已按推算状态写入伪状态覆盖',
       'msg.converted': '已屏蔽原坏量测并生成伪量测定义',
       'msg.deleted': '策略已删除',
       'unacked_tpl': '未确认告警: ',
@@ -114,7 +116,9 @@
       'act.suppress': 'Suppress',
       'act.to_pseudo': 'To Pseudo',
       'act.locate': 'Locate SVG',
+      'act.apply_stat': 'Apply Inferred',
       'msg.saved': 'Saved',
+      'msg.stat_applied': 'Pseudo status override saved',
       'msg.converted': 'Suppressed and converted to pseudo measurement',
       'msg.deleted': 'Policy deleted',
       'unacked_tpl': 'Unacked: ',
@@ -173,7 +177,9 @@
       'act.suppress': 'Блок.',
       'act.to_pseudo': 'В псевдо',
       'act.locate': 'На схему',
+      'act.apply_stat': 'Применить ТС',
       'msg.saved': 'Выполнено',
+      'msg.stat_applied': 'Псевдостатус сохранён',
       'msg.converted': 'Заблокировано и переведено в псевдоизмерение',
       'msg.deleted': 'Политика удалена',
       'unacked_tpl': 'Не квитир.: ',
@@ -372,6 +378,7 @@
               <th>${esc(t('col.inferred_stat'))}</th>
               <th>${esc(t('col.evidence'))}</th>
               <th>${esc(t('col.reason'))}</th>
+              <th>${esc(t('col.ops'))}</th>
             </tr>
           </thead>
           <tbody>
@@ -385,6 +392,12 @@
                 <td class="tabular">${r.se_inferred_status ?? '--'}</td>
                 <td class="tabular">${esc(r.evidence || '--')}</td>
                 <td>${esc(r.reason || '--')}</td>
+                <td>
+                  <div class="se-row-actions">
+                    <a class="se-btn mini se-link-btn" href="/se-flow.html?device_type=${encodeURIComponent(r.device_type)}&device_name=${encodeURIComponent(r.device_name)}">${esc(t('act.locate'))}</a>
+                    ${r.se_inferred_status != null ? `<button type="button" class="se-btn mini" data-abn-act="apply-stat" data-abn-id="${r.id}">${esc(t('act.apply_stat'))} (${r.se_inferred_status})</button>` : ''}
+                  </div>
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -399,18 +412,36 @@
               <th>${esc(t('col.metric'))}</th>
               <th>${esc(t('col.meas'))}</th>
               <th>${esc(t('col.reason'))}</th>
+              <th>${esc(t('col.ops'))}</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map((r) => `
+            ${rows.map((r) => {
+              const parts = String(r.meas_name || '').split('.');
+              const pType = parts.length >= 3 ? parts[0] : '';
+              const pMetric = parts.length >= 3 ? parts[parts.length - 1] : '';
+              const devName = r.dev_name || '';
+              const pseudoHref = pType && devName && pMetric
+                ? `/se-pseudo.html?prefill_type=${encodeURIComponent(pType)}&prefill_name=${encodeURIComponent(devName)}&prefill_metric=${encodeURIComponent(pMetric)}`
+                : '/se-pseudo.html';
+              const flowHref = pType && devName
+                ? `/se-flow.html?device_type=${encodeURIComponent(pType)}&device_name=${encodeURIComponent(devName)}`
+                : '';
+              return `
               <tr>
                 <td class="tabular">${r.id}</td>
-                <td><strong>${esc(r.dev_name)}</strong></td>
+                <td><strong>${esc(devName)}</strong></td>
                 <td class="tabular">${esc(r.meas_name)}</td>
                 <td class="tabular">${fmtNum(r.meas_value, 3)}</td>
                 <td>${esc(r.filter_reason || '--')}</td>
-              </tr>
-            `).join('')}
+                <td>
+                  <div class="se-row-actions">
+                    ${flowHref ? `<a class="se-btn mini se-link-btn" href="${flowHref}">${esc(t('act.locate'))}</a>` : ''}
+                    <a class="se-btn mini se-link-btn" href="${pseudoHref}">${esc(t('act.to_pseudo'))}</a>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>`;
     } else {
@@ -425,6 +456,7 @@
               <th>${esc(t('col.meas'))}</th>
               <th>${esc(t('col.se'))}</th>
               <th>${esc(t('col.reason'))}</th>
+              <th>${esc(t('col.ops'))}</th>
             </tr>
           </thead>
           <tbody>
@@ -437,6 +469,11 @@
                 <td class="tabular">${fmtNum(r.meas_value, 3)} ${esc(r.unit || '')}</td>
                 <td class="tabular">${fmtNum(r.se_value, 3)} ${esc(r.unit || '')}</td>
                 <td>${esc(r.reason || r.source || '--')}</td>
+                <td>
+                  <div class="se-row-actions">
+                    <a class="se-btn mini se-link-btn" href="/se-flow.html?device_type=${encodeURIComponent(r.device_type)}&device_name=${encodeURIComponent(r.device_name)}">${esc(t('act.locate'))}</a>
+                  </div>
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -700,6 +737,32 @@
             }
           },
         });
+      }
+    });
+
+    // 异常量测/可疑遥信就地处置：一键按 SE 推算状态写入伪状态覆盖
+    document.getElementById('abn-table-wrap').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-abn-act="apply-stat"]');
+      if (!btn) return;
+      const id = Number(btn.dataset.abnId);
+      const row = (state.abnormal.rows || []).find((r) => Number(r.id) === id);
+      if (!row || row.se_inferred_status == null) return;
+      try {
+        await api('/api/se/pseudo/stat', {
+          method: 'POST',
+          body: JSON.stringify({
+            device_type: row.device_type,
+            device_idx: row.device_idx ?? null,
+            device_name: row.device_name,
+            stat_value: Number(row.se_inferred_status),
+            enabled: 1,
+            note: `suspect_override: ${row.evidence || ''}`.slice(0, 200),
+          }),
+        });
+        notify(t('msg.stat_applied'));
+        await Promise.all([loadOverview(), loadAbnormal()]);
+      } catch (err) {
+        notify(err.message, true);
       }
     });
   }

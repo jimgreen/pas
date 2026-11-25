@@ -1900,6 +1900,29 @@ body.se-splitting-h {
   font-weight: 600;
 }
 
+.se-imb-ring {
+  fill: rgba(245, 158, 11, 0.14);
+  stroke: var(--sem-warn);
+  stroke-width: 3.5;
+  stroke-dasharray: 8 4;
+  pointer-events: none;
+}
+
+.se-imb-item {
+  border: 1px solid rgba(245, 158, 11, 0.36);
+  border-left: 4px solid var(--sem-warn);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.se-imb-item:hover { border-color: var(--sem-warn); }
+.se-imb-item .top { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; gap: 6px; }
+.se-imb-item .vals { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
 @media (max-width: 1160px) {
   .se-home-grid { --col1: 220px; --col2: 220px; }
 }

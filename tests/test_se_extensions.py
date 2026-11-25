@@ -399,7 +399,6 @@ def test_se_extensions_web_api_and_static_pages(tmp_path: Path) -> None:
             "se-main.html",
             "se-flow.html",
             "se-curves.html",
-            "se-devices.html",
             "se-measurements.html",
             "se-params.html",
             "se-prefilter.html",
@@ -414,7 +413,6 @@ def test_se_extensions_web_api_and_static_pages(tmp_path: Path) -> None:
             for sub_link in (
                 "/se-flow.html",
                 "/se-curves.html",
-                "/se-devices.html",
                 "/se-measurements.html",
                 "/se-params.html",
                 "/se-prefilter.html",
@@ -424,6 +422,7 @@ def test_se_extensions_web_api_and_static_pages(tmp_path: Path) -> None:
             ):
                 assert sub_link in text
             assert "/analysis/se.html" not in text
+            assert "/se-devices.html" not in text
         # 新主画面为三栏总控布局，潮流图独立于 /se-flow.html
         main_html = app.static_path("/se-main.html").read_text(encoding="utf-8")
         assert 'class="se-home-grid"' in main_html
@@ -748,6 +747,12 @@ def test_se_interactive_enhancements_weights_balance_batch_and_replay(tmp_path: 
         assert hist_topo["ok"] is True
         assert hist_topo["data"]["run_id"] == run1
         assert hist_topo["data"]["is_history"] is True
+
+        hist_dev = app.api_get(f"/api/se/devices?type=ACNode&run_id={run1}")
+        assert hist_dev["ok"] is True
+        assert hist_dev["data"]["is_history"] is True
+        assert hist_dev["data"]["run_id"] == run1
+        assert hist_dev["data"]["rows"][0]["uab_meas"] == 381.0
 
         bal = app.api_get("/api/se/balance")
         assert bal["ok"] is True

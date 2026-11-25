@@ -551,17 +551,53 @@ class Repository:
         }
 
     @synchronized
-    def se_devices(self, device_type: str | None = None, *, q: str = "", bad_only: bool = False) -> dict[str, Any]:
-        """读取最新断面各类设备表 se_dev_*，并标注坏数据指标。"""
+    def se_devices(
+        self,
+        device_type: str | None = None,
+        *,
+        q: str = "",
+        bad_only: bool = False,
+        run_id: int | None = None,
+    ) -> dict[str, Any]:
+        """读取最新断面（或指定历史 run_id 断面）各类设备表 se_dev_*，并标注坏数据指标。"""
         conn = self._connection()
-        bad_rows = self._rows("SELECT device_type, device_idx, device_name, metric FROM se_bad_data")
+        latest_row = conn.execute("SELECT MAX(run_id) FROM se_measurement").fetchone()
+        latest_rid = int(latest_row[0]) if latest_row and latest_row[0] is not None else None
+        is_history = run_id is not None and (latest_rid is None or int(run_id) != latest_rid)
+
+        hist_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+        bad_by_name: dict[tuple[str, str], set[str]] = {}
         bad_by_dev: dict[tuple[str, int], set[str]] = {}
-        bad_type_devs: dict[str, set[int]] = {}
-        for row in bad_rows:
-            if row["device_idx"] is not None:
-                key = (str(row["device_type"]), int(row["device_idx"]))
-                bad_by_dev.setdefault(key, set()).add(str(row["metric"] or ""))
-                bad_type_devs.setdefault(str(row["device_type"]), set()).add(int(row["device_idx"]))
+        bad_type_devs: dict[str, set[Any]] = {}
+
+        if is_history:
+            hist_rows = self._rows(
+                """SELECT device_type, device_name, measurement_type, value, estimated_value, source
+                   FROM se_measurement_result WHERE run_id = ?""",
+                (int(run_id),),
+            )
+            # 反向查 (device_type, measurement_type) -> metric 列表
+            code_to_metric: dict[tuple[str, str], str] = {
+                (dt, code): mk
+                for dt, mmap in SE_DEVICE_RESULT_METRICS.items()
+                for mk, code in mmap.items()
+            }
+            for hrow in hist_rows:
+                dt = str(hrow.get("device_type") or "")
+                dn = str(hrow.get("device_name") or "")
+                mt = str(hrow.get("measurement_type") or "")
+                hist_map[(dt, dn, mt)] = hrow
+                if str(hrow.get("source") or "") == "bad_data":
+                    mk = code_to_metric.get((dt, mt), mt)
+                    bad_by_name.setdefault((dt, dn), set()).add(mk)
+                    bad_type_devs.setdefault(dt, set()).add(dn)
+        else:
+            bad_rows = self._rows("SELECT device_type, device_idx, device_name, metric FROM se_bad_data")
+            for row in bad_rows:
+                if row["device_idx"] is not None:
+                    key = (str(row["device_type"]), int(row["device_idx"]))
+                    bad_by_dev.setdefault(key, set()).add(str(row["metric"] or ""))
+                    bad_type_devs.setdefault(str(row["device_type"]), set()).add(int(row["device_idx"]))
 
         available = []
         for dtype in SE_DEVICE_RESULT_METRICS:
@@ -576,12 +612,23 @@ class Repository:
             (item["device_type"] for item in available if item["count"] > 0),
             "ACNode",
         )
-        metrics = list(SE_DEVICE_RESULT_METRICS[selected].keys())
+        metric_map = SE_DEVICE_RESULT_METRICS[selected]
+        metrics = list(metric_map.keys())
         rows = self._rows(f"SELECT * FROM [se_dev_{selected}] ORDER BY idx ASC")
         search = str(q or "").strip().casefold()
         result_rows = []
         for row in rows:
-            bad_metrics = sorted(bad_by_dev.get((selected, int(row["idx"])), set()))
+            if is_history:
+                dname = str(row.get("name", ""))
+                item_row: dict[str, Any] = {"idx": row["idx"], "name": dname}
+                for mk, se_code in metric_map.items():
+                    hrow = hist_map.get((selected, dname, se_code))
+                    item_row[f"{mk}_meas"] = hrow.get("value") if hrow else None
+                    item_row[f"{mk}_se"] = hrow.get("estimated_value") if hrow else None
+                bad_metrics = sorted(bad_by_name.get((selected, dname), set()))
+                row = item_row
+            else:
+                bad_metrics = sorted(bad_by_dev.get((selected, int(row["idx"])), set()))
             row["bad_metrics"] = bad_metrics
             row["has_bad"] = bool(bad_metrics)
             if bad_only and not row["has_bad"]:
@@ -592,9 +639,11 @@ class Repository:
         return {
             "device_type": selected,
             "metrics": metrics,
-            "meas_type_map": dict(SE_DEVICE_RESULT_METRICS[selected]),
+            "meas_type_map": dict(metric_map),
             "rows": result_rows,
             "available_types": available,
+            "run_id": int(run_id) if is_history else latest_rid,
+            "is_history": is_history,
         }
 
     @synchronized
@@ -2124,8 +2173,8 @@ class RepositoryHub:
     def se_home_summary(self, para_file=None, do_cycle=60):
         return self.for_task("se").se_home_summary(para_file, do_cycle)
 
-    def se_devices(self, device_type=None, *, q="", bad_only=False):
-        return self.for_task("se").se_devices(device_type, q=q, bad_only=bad_only)
+    def se_devices(self, device_type=None, *, q="", bad_only=False, run_id=None):
+        return self.for_task("se").se_devices(device_type, q=q, bad_only=bad_only, run_id=run_id)
 
     def se_measurements_browse(self, **kwargs):
         return self.for_task("se").se_measurements_browse(**kwargs)

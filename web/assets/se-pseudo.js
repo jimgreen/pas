@@ -53,6 +53,8 @@
       'confirm.del_stat_desc': '确认删除该伪状态？',
       'action.enable': '启用',
       'action.disable': '停用',
+      'act.locate': '定位潮流图',
+      'act.promote_manual': '固化为人工',
     },
     'en-US': {
       'title.pseudo': 'Pseudo Measurements',
@@ -104,6 +106,8 @@
       'confirm.del_stat_desc': 'Live SCADA status will be used on the next SE run.',
       'action.enable': 'Enable',
       'action.disable': 'Disable',
+      'act.locate': 'Locate SVG',
+      'act.promote_manual': 'Pin as Manual',
     },
     'ru-RU': {
       'title.pseudo': 'Псевдоизмерения',
@@ -155,6 +159,8 @@
       'confirm.del_stat_desc': 'Вернётся использование телесигналов SCADA.',
       'action.enable': 'Вкл',
       'action.disable': 'Выкл',
+      'act.locate': 'На схеме',
+      'act.promote_manual': 'Закрепить',
     },
   };
 
@@ -351,10 +357,11 @@
             <th>${esc(t('col.residual'))}</th>
             <th>${esc(t('col.weight'))}</th>
             <th>${esc(t('col.note'))}</th>
+            <th>${esc(t('col.ops'))}</th>
           </tr>
         </thead>
         <tbody>
-          ${rows.map((r) => `
+          ${rows.map((r, idx) => `
             <tr>
               <td class="tabular">${r.meas_id}</td>
               <td><span class="se-pill ${r.origin === 'user_defined' ? 'info' : 'neutral'}">${esc(r.origin === 'user_defined' ? t('origin.user') : t('origin.auto'))}</span></td>
@@ -366,6 +373,12 @@
               <td class="tabular">${fmtNum(r.residual, 4)}</td>
               <td class="tabular">${r.weight != null ? Number(r.weight).toExponential(1) : '--'}</td>
               <td>${esc(r.reason || '--')}</td>
+              <td>
+                <div class="se-row-actions">
+                  <a class="se-btn mini se-link-btn" href="/se-flow.html?device_type=${encodeURIComponent(r.device_type)}&device_name=${encodeURIComponent(r.device_name)}">${esc(t('act.locate'))}</a>
+                  ${r.origin !== 'user_defined' && r.metric ? `<button type="button" class="se-btn mini" data-res-promote="${idx}">${esc(t('act.promote_manual'))}</button>` : ''}
+                </div>
+              </td>
             </tr>
           `).join('')}
         </tbody>
@@ -614,6 +627,26 @@
       }
     });
 
+    // 本次伪量测结果：内核补充点一键固化为人工伪量测
+    document.getElementById('res-table-wrap').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-res-promote]');
+      if (!btn) return;
+      const row = (state.results.rows || [])[Number(btn.dataset.resPromote)];
+      if (!row) return;
+      const val = row.se_value != null ? Number(row.se_value) : (row.pseudo_value != null ? Number(row.pseudo_value) : 0);
+      openMeasDialog({
+        id: '',
+        device_type: row.device_type,
+        dev_name: row.device_name,
+        metric: row.metric,
+        source_mode: 'manual',
+        meas_value: Number.isFinite(val) ? Number(val.toFixed(4)) : 0,
+        meas_weight: row.weight || 1e-4,
+        meas_useflag: 1,
+        note: 'pinned from kernel_auto',
+      });
+    });
+
     document.getElementById('stat-table-wrap').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act]');
       if (!btn) return;
@@ -643,5 +676,23 @@
 
   common.initShell({ onRefresh: refreshAll, afterRunSE: refreshAll });
   bindEvents();
-  refreshAll();
+  refreshAll().then(() => {
+    const qp = new URLSearchParams(window.location.search);
+    const pType = qp.get('prefill_type');
+    const pName = qp.get('prefill_name');
+    const pMetric = qp.get('prefill_metric');
+    if (pType && pName && pMetric) {
+      openMeasDialog({
+        id: '',
+        device_type: pType,
+        dev_name: pName,
+        metric: pMetric,
+        source_mode: 'manual',
+        meas_value: 0,
+        meas_weight: 1e-4,
+        meas_useflag: 1,
+        note: '',
+      });
+    }
+  });
 })();

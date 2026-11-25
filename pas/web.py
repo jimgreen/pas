@@ -593,12 +593,15 @@ class PasWebApp:
                     }
                     return {"ok": True, "data": summary}
                 if parsed.path == "/api/se/devices":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
                     return {
                         "ok": True,
                         "data": se_repo.se_devices(
                             query.get("type", [None])[0] or None,
                             q=query.get("q", [""])[0],
                             bad_only=query.get("bad_only", ["0"])[0] in {"1", "true"},
+                            run_id=rid_val,
                         ),
                     }
                 if parsed.path == "/api/se/measurements":

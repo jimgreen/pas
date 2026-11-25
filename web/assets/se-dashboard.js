@@ -61,7 +61,12 @@
       'action.delete': '删除',
       'meas.high_res': '仅大残差',
       'meas.tab_list': '全量测明细',
+      'meas.tab_devices': '设备对比',
       'meas.tab_balance': '母线平衡与可观测',
+      'dev.mode_compare': 'Meas / SE',
+      'dev.mode_delta': '残差 Δ',
+      'topo.imb_overlay': '不平衡母线',
+      'topo.imb_panel': '不平衡',
       'bal.only_imb': '仅不平衡',
       'ph.search_bus': '搜索母线',
       'bal.bus': '母线',
@@ -318,7 +323,12 @@
       'action.delete': 'Delete',
       'meas.high_res': 'High Res',
       'meas.tab_list': 'Measurements',
+      'meas.tab_devices': 'Device Compare',
       'meas.tab_balance': 'Bus Balance & Obs',
+      'dev.mode_compare': 'Meas / SE',
+      'dev.mode_delta': 'Residual Δ',
+      'topo.imb_overlay': 'Imb. Buses',
+      'topo.imb_panel': 'Imbalance',
       'bal.only_imb': 'Imbalanced Only',
       'ph.search_bus': 'Search bus',
       'bal.bus': 'Bus',
@@ -574,7 +584,12 @@
       'action.delete': 'Удал.',
       'meas.high_res': 'Выс. невязка',
       'meas.tab_list': 'Все измерения',
+      'meas.tab_devices': 'Оборудование',
       'meas.tab_balance': 'Баланс узлов',
+      'dev.mode_compare': 'Meas / SE',
+      'dev.mode_delta': 'Невязка Δ',
+      'topo.imb_overlay': 'Небаланс узлов',
+      'topo.imb_panel': 'Небаланс',
       'bal.only_imb': 'Небаланс',
       'ph.search_bus': 'Поиск узла',
       'bal.bus': 'Узел',
@@ -824,6 +839,8 @@
     topology: null,
     svgLoaded: false,
     svgDisplayMode: 'compare',
+    topoImbOverlay: false,
+    topoSideTab: 'bad',
     selectedDevId: null,
     svgTransform: { scale: 1, tx: 0, ty: 0, vbW: 2518, vbH: 2143 },
     curves: {
@@ -836,7 +853,7 @@
       selectedPoint: null,
       pointSeries: null,
     },
-    devices: { type: 'ACNode', q: '', badOnly: false, data: null },
+    devices: { type: 'ACNode', q: '', badOnly: false, mode: 'compare', data: null },
     meas: { source: 'all', devType: '', sort: 'abs_residual', direction: 'desc', highResOnly: false, q: '', page: 0, size: 30, data: null, reqSeq: 0, subTab: 'list', selected: new Map() },
     balance: { domain: 'all', onlyImb: false, q: '', data: null },
     paramsSubTab: 'para',
@@ -1232,7 +1249,7 @@
     const colorMuted = cssVar('--text-secondary') || '#64748B';
 
     // 清理上一轮动态叠加层与闪烁类
-    svg.querySelectorAll('.se-bad-ring').forEach((n) => n.remove());
+    svg.querySelectorAll('.se-bad-ring,.se-imb-ring').forEach((n) => n.remove());
     svg.querySelectorAll('.se-bad-device').forEach((n) => n.classList.remove('se-bad-device'));
     svg.querySelectorAll('.se-bad-meas-text').forEach((n) => n.classList.remove('se-bad-meas-text'));
 
@@ -1340,6 +1357,43 @@
       });
     });
 
+    // 2b. 不平衡母线高亮叠加（映射 ACNode/DCNode 及其关联实母线 ACRealBs/DCRealBs）
+    const imbBtn = document.getElementById('btn-topo-imb-overlay');
+    const imbRows = (appState.balance.data?.rows || []).filter((r) => r.imbalanced);
+    if (imbBtn) {
+      imbBtn.classList.toggle('active', appState.topoImbOverlay);
+      imbBtn.innerHTML = `${esc(t('topo.imb_overlay'))}<span class="cnt tabular">${imbRows.length}</span>`;
+    }
+    if (appState.topoImbOverlay && imbRows.length) {
+      const imbNodeSet = new Set(imbRows.map((r) => r.dev_id));
+      const targetSvgIds = new Set(imbNodeSet);
+      Object.values(devices).forEach((dev) => {
+        if (dev.linked_node) {
+          const nid = `${dev.linked_node.device_type}-${dev.linked_node.idx}`;
+          if (imbNodeSet.has(nid)) targetSvgIds.add(dev.dev_id);
+        }
+      });
+      targetSvgIds.forEach((devId) => {
+        svg.querySelectorAll(`[dev-id="${CSS.escape(devId)}"]`).forEach((el) => {
+          if ((el.id || '').startsWith('label_')) return;
+          try {
+            const bb = el.getBBox();
+            if (bb.width > 0 && bb.height > 0 && el.parentNode) {
+              const ring = document.createElementNS(SVG_NS, 'rect');
+              ring.setAttribute('class', 'se-imb-ring');
+              ring.setAttribute('x', String(bb.x - 8));
+              ring.setAttribute('y', String(bb.y - 8));
+              ring.setAttribute('width', String(bb.width + 16));
+              ring.setAttribute('height', String(bb.height + 16));
+              ring.setAttribute('rx', '8');
+              if (el.getAttribute('transform')) ring.setAttribute('transform', el.getAttribute('transform'));
+              el.parentNode.insertBefore(ring, el);
+            }
+          } catch (_) { /* ignore */ }
+        });
+      });
+    }
+
     // 3. 恢复当前选中设备高亮
     svg.querySelectorAll('.se-dev-selected').forEach((n) => n.classList.remove('se-dev-selected'));
     if (appState.selectedDevId) {
@@ -1351,10 +1405,46 @@
 
   function renderTopoBadPanel() {
     const badList = appState.topology?.bad_data || [];
+    const imbList = (appState.balance.data?.rows || []).filter((r) => r.imbalanced);
+    const isImb = appState.topoSideTab === 'imb';
     const pill = document.getElementById('topo-bad-count');
+    const host = document.getElementById('topo-bad-list');
+    const moreLink = document.getElementById('topo-side-more');
+    document.querySelectorAll('#topo-side-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.tside === appState.topoSideTab));
+    if (moreLink) {
+      moreLink.href = isImb ? '/se-measurements.html?sub=balance' : '/se-bad.html';
+    }
+    if (isImb) {
+      pill.textContent = String(imbList.length);
+      pill.className = `se-pill tabular ${imbList.length ? 'warn' : 'ok'}`;
+      if (!imbList.length) {
+        host.innerHTML = `<div class="se-empty">${esc(t('topo.no_bad_empty'))}</div>`;
+        return;
+      }
+      const pu = appState.balance.data?.units?.p_unit || 'kW';
+      const devices = appState.topology?.devices || {};
+      const nodeToBusId = {};
+      Object.values(devices).forEach((d) => {
+        if (d.linked_node) nodeToBusId[`${d.linked_node.device_type}-${d.linked_node.idx}`] = d.dev_id;
+      });
+      host.innerHTML = imbList.map((r) => {
+        const focusId = nodeToBusId[r.dev_id] || r.dev_id;
+        return `
+          <button type="button" class="se-imb-item" data-focus-dev="${esc(focusId)}">
+            <div class="top">
+              <span>${esc(r.name)} <small class="se-muted">${esc(r.domain)}</small></span>
+              <span class="tabular">ΔP=${fmtNum(r.dp_meas, 2)} ${esc(pu)}</span>
+            </div>
+            <div class="vals tabular">
+              In: ${fmtNum(r.p_in_meas, 1)} / Out: ${fmtNum(r.p_out_meas, 1)} · SE ΔP: ${fmtNum(r.dp_se, 3)}
+            </div>
+          </button>`;
+      }).join('');
+      return;
+    }
+
     pill.textContent = String(badList.length);
     pill.className = `se-pill tabular ${badList.length ? 'bad bad-pulse' : 'ok'}`;
-    const host = document.getElementById('topo-bad-list');
     if (!badList.length) {
       host.innerHTML = `<div class="se-empty">${esc(t('topo.no_bad_empty'))}</div>`;
       return;
@@ -1599,12 +1689,20 @@
     const svgEl = container.querySelector('svg');
     const cross = container.querySelector('.se-crosshair');
     const tip = container.querySelector('.se-chart-tip');
+    let lastIdx = -1;
+    if (typeof config.onPointClick === 'function') {
+      svgEl.style.cursor = 'pointer';
+      svgEl.addEventListener('click', () => {
+        if (lastIdx >= 0) config.onPointClick(lastIdx);
+      });
+    }
 
     svgEl.addEventListener('mousemove', (e) => {
       const box = svgEl.getBoundingClientRect();
       const relX = ((e.clientX - box.left) / box.width) * width;
       const clamped = Math.max(pad.left, Math.min(width - pad.right, relX));
       const idx = n === 1 ? 0 : Math.round(((clamped - pad.left) / plotW) * (n - 1));
+      lastIdx = idx;
       const cx = xAt(idx);
       cross.setAttribute('x1', String(cx));
       cross.setAttribute('x2', String(cx));
@@ -1626,6 +1724,7 @@
     });
 
     svgEl.addEventListener('mouseleave', () => {
+      lastIdx = -1;
       cross.setAttribute('visibility', 'hidden');
       tip.hidden = true;
     });
@@ -1673,6 +1772,10 @@
         ],
       };
     }
+    cfg.onPointClick = (idx) => {
+      const r = rows[idx];
+      if (r?.run_id) window.location.href = `/se-flow.html?run_id=${r.run_id}`;
+    };
 
     legendEl.innerHTML = cfg.series.map((s) => `<span><i class="${s.dashed ? 'dashed' : ''}" style="background:${s.color};border-color:${s.color}"></i>${esc(s.name)}</span>`).join('');
     renderLineChart(hostEl, cfg);
@@ -1779,6 +1882,37 @@
     legendEl.innerHTML = `<strong>${esc(data.device_name)} · ${esc(data.metric || data.meas_type)}</strong>`
       + cfg.series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')
       + extraLegend;
+
+    // 同步单点快捷处置栏（定位潮流图 + 屏蔽 / 预过滤 / 权重）
+    const actsEl = document.getElementById('pt-curve-actions');
+    if (actsEl) {
+      const catItem = (appState.curves.pointsCatalog || []).find(
+        (p) => p.device_type === data.device_type && p.device_name === data.device_name && p.meas_type === data.meas_type,
+      );
+      const lastPt = pts[pts.length - 1] || {};
+      const metric = data.metric || catItem?.metric || '';
+      const qaPayload = esc(JSON.stringify({
+        device_type: data.device_type,
+        device_idx: catItem?.device_idx ?? null,
+        device_name: data.device_name,
+        metric,
+        unit: data.unit || '',
+        meas_value: lastPt.meas_value,
+        se_value: lastPt.se_value,
+      }));
+      const flowHref = `/se-flow.html?device_type=${encodeURIComponent(data.device_type)}&device_name=${encodeURIComponent(data.device_name)}`;
+      actsEl.innerHTML = `
+        <a class="se-btn mini se-link-btn" href="${flowHref}">${esc(t('action.locate'))}</a>
+        ${metric ? `<button type="button" class="se-btn mini" data-qa-mode="suppress" data-qa="${qaPayload}">${esc(t('action.suppress'))}</button>` : ''}
+        ${metric ? `<button type="button" class="se-btn mini" data-qa-mode="prefilter" data-qa="${qaPayload}">${esc(t('action.prefilter'))}</button>` : ''}
+        ${metric ? `<button type="button" class="se-btn mini" data-qa-mode="weight" data-qa="${qaPayload}">${esc(t('action.weight'))}</button>` : ''}
+      `;
+    }
+
+    cfg.onPointClick = (idx) => {
+      const p = pts[idx];
+      if (p?.run_id) window.location.href = `/se-flow.html?run_id=${p.run_id}`;
+    };
     renderLineChart(hostEl, cfg);
   }
 
@@ -1797,42 +1931,62 @@
     await loadSelectedPointSeries();
   }
 
-  /* ==================== 3. 设备对比宽表 ==================== */
+  /* ==================== 3. 设备对比宽表（支持历史断面与残差视角） ==================== */
   async function loadDevicesTab() {
     const qs = new URLSearchParams({
       type: appState.devices.type || '',
       q: appState.devices.q || '',
       bad_only: appState.devices.badOnly ? '1' : '0',
     });
+    if (appState.selectedRunId) qs.set('run_id', appState.selectedRunId);
     const data = await api(`/api/se/devices?${qs}`);
     appState.devices.data = data;
     appState.devices.type = data.device_type;
 
     const sel = document.getElementById('dev-type-select');
-    sel.innerHTML = (data.available_types || []).map((item) => {
-      const warn = item.bad_device_count ? ` ⚠${item.bad_device_count}` : '';
-      return `<option value="${esc(item.device_type)}">${esc(devTypeLabel(item.device_type))} (${item.count})${warn}</option>`;
-    }).join('');
-    sel.value = data.device_type;
+    if (sel) {
+      sel.innerHTML = (data.available_types || []).map((item) => {
+        const warn = item.bad_device_count ? ` ⚠${item.bad_device_count}` : '';
+        return `<option value="${esc(item.device_type)}">${esc(devTypeLabel(item.device_type))} (${item.count})${warn}</option>`;
+      }).join('');
+      sel.value = data.device_type;
+    }
+    document.querySelectorAll('#dev-mode-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.dmode === appState.devices.mode));
 
-    document.getElementById('dev-count-summary').textContent = t('devices.summary', { n: data.rows.length });
+    const cntEl = document.getElementById('dev-count-summary');
+    if (cntEl) cntEl.textContent = t('devices.summary', { n: data.rows.length });
 
     const metrics = data.metrics || [];
     const measMap = data.meas_type_map || {};
     const wrap = document.getElementById('dev-table-wrap');
+    if (!wrap) return;
     if (!data.rows.length) {
       wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
       return;
     }
 
-    const headCols = metrics.map((m) => `<th class="num">${esc(m)} Meas</th><th class="num">${esc(m)} SE</th>`).join('');
+    const isDelta = appState.devices.mode === 'delta';
+    const headCols = isDelta
+      ? metrics.map((m) => `<th class="num">${esc(m)} Δ</th>`).join('')
+      : metrics.map((m) => `<th class="num">${esc(m)} Meas</th><th class="num">${esc(m)} SE</th>`).join('');
     const bodyRows = data.rows.map((row) => {
       const badSet = new Set(row.bad_metrics || []);
       const cells = metrics.map((m) => {
         const isBad = badSet.has(m);
-        const cls = isBad ? 'num tabular cell-bad se-clickable-cell' : 'num tabular se-clickable-cell';
         const mtype = measMap[m] || '';
-        return `<td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(row[`${m}_meas`])}</td><td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(row[`${m}_se`])}</td>`;
+        const mv = row[`${m}_meas`];
+        const sv = row[`${m}_se`];
+        if (isDelta) {
+          const d = (mv != null && sv != null && Number.isFinite(Number(mv)) && Number.isFinite(Number(sv)))
+            ? (Number(mv) - Number(sv))
+            : null;
+          const cls = isBad ? 'num tabular cell-bad se-clickable-cell' : 'num tabular se-clickable-cell';
+          const tip = `M: ${fmtNum(mv, 3)} / SE: ${fmtNum(sv, 3)}`;
+          const txt = d == null ? '—' : `${d >= 0 ? '+' : ''}${fmtNum(d, 3)}`;
+          return `<td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(tip)}">${txt}</td>`;
+        }
+        const cls = isBad ? 'num tabular cell-bad se-clickable-cell' : 'num tabular se-clickable-cell';
+        return `<td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(mv)}</td><td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(sv)}</td>`;
       }).join('');
       const devId = `${data.device_type}-${row.idx}`;
       return `<tr class="${row.has_bad ? 'row-bad' : ''}">
@@ -1851,7 +2005,7 @@
     `;
   }
 
-  /* ==================== 4. 量测与坏数据明细 + 母线平衡与可观测 ==================== */
+  /* ==================== 4. 量测与坏数据明细 + 设备对比 + 母线平衡与可观测 ==================== */
   function syncMeasBatchBar() {
     const bar = document.getElementById('meas-batch-bar');
     const cntEl = document.getElementById('meas-batch-cnt');
@@ -1863,21 +2017,31 @@
 
   async function loadMeasurementsTab() {
     const m = appState.meas;
+    const isList = m.subTab === 'list';
+    const isDevices = m.subTab === 'devices';
     const isBalance = m.subTab === 'balance';
     const listCtrl = document.getElementById('meas-list-controls');
+    const devCtrl = document.getElementById('meas-devices-controls');
     const balCtrl = document.getElementById('meas-balance-controls');
     const measWrap = document.getElementById('meas-table-wrap');
     const measPager = document.getElementById('meas-pager');
+    const devWrap = document.getElementById('dev-table-wrap');
     const balWrap = document.getElementById('bal-table-wrap');
     const exportBtn = document.getElementById('btn-export-meas');
-    if (listCtrl) listCtrl.hidden = isBalance;
+    if (listCtrl) listCtrl.hidden = !isList;
+    if (devCtrl) devCtrl.hidden = !isDevices;
     if (balCtrl) balCtrl.hidden = !isBalance;
-    if (measWrap) measWrap.hidden = isBalance;
-    if (measPager) measPager.hidden = isBalance;
+    if (measWrap) measWrap.hidden = !isList;
+    if (measPager) measPager.hidden = !isList;
+    if (devWrap) devWrap.hidden = !isDevices;
     if (balWrap) balWrap.hidden = !isBalance;
-    if (exportBtn) exportBtn.hidden = isBalance;
+    if (exportBtn) exportBtn.hidden = !isList;
     document.querySelectorAll('#meas-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.msub === m.subTab));
     syncMeasBatchBar();
+    if (isDevices) {
+      await loadDevicesTab();
+      return;
+    }
     if (isBalance) {
       await loadBalanceTab();
       return;
@@ -2425,8 +2589,9 @@
       const qp = new URLSearchParams(window.location.search);
       if (!appState._urlInitDone) {
         appState._urlInitDone = true;
-        if (appState.view === 'measurements' && qp.get('sub') === 'balance') {
-          appState.meas.subTab = 'balance';
+        const qSub = qp.get('sub');
+        if (appState.view === 'measurements' && (qSub === 'balance' || qSub === 'devices')) {
+          appState.meas.subTab = qSub;
         }
         if ((appState.view === 'topology' || appState.view === 'measurements') && qp.get('run_id')) {
           appState.selectedRunId = qp.get('run_id');
@@ -2436,12 +2601,14 @@
       const topoUrl = appState.selectedRunId
         ? `/api/se/topology-values?run_id=${encodeURIComponent(appState.selectedRunId)}`
         : '/api/se/topology-values';
-      const [overview, topology, converged] = await Promise.all([
+      const [overview, topology, converged, balData] = await Promise.all([
         api('/api/se/overview'),
         appState.view === 'topology' ? api(topoUrl) : Promise.resolve(null),
         needRuns ? api('/api/se/runs/converged?limit=30').catch(() => []) : Promise.resolve(null),
+        appState.view === 'topology' ? api('/api/se/balance').catch(() => null) : Promise.resolve(null),
       ]);
       appState.overview = overview;
+      if (balData) appState.balance.data = balData;
       if (Array.isArray(converged)) {
         appState.convergedRuns = converged;
         populateRunSelect();
@@ -2594,6 +2761,20 @@
     on('svg-device-jump', 'change', (e) => {
       if (e.target.value) focusSvgDevice(e.target.value);
     });
+    on('btn-topo-imb-overlay', 'click', () => {
+      appState.topoImbOverlay = !appState.topoImbOverlay;
+      renderSvgBindings();
+    });
+    on('topo-side-seg', 'click', (e) => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      appState.topoSideTab = btn.dataset.tside || 'bad';
+      if (appState.topoSideTab === 'imb' && !appState.topoImbOverlay) {
+        appState.topoImbOverlay = true;
+        renderSvgBindings();
+      }
+      renderTopoBadPanel();
+    });
     on('btn-svg-zoom-in', 'click', () => zoomSvgAt(1.25));
     on('btn-svg-zoom-out', 'click', () => zoomSvgAt(0.8));
     on('btn-svg-fit', 'click', fitSvgToViewport);
@@ -2646,10 +2827,26 @@
       document.querySelectorAll('#point-curve-mode .seg').forEach((b) => b.classList.toggle('active', b === btn));
       renderPointCurve();
     });
+    on('btn-pt-export-csv', 'click', () => {
+      const d = appState.curves.pointSeries;
+      if (!d?.points?.length) return;
+      const cols = ['run_id', 'calc_time', 'meas_value', 'se_value', 'residual', 'normalized_residual', 'is_bad'];
+      exportCsv(
+        `se-point-${d.device_type}-${d.device_name}-${d.metric || d.meas_type}.csv`,
+        cols,
+        d.points.map((p) => cols.map((c) => p[c] ?? '')),
+      );
+    });
 
     // 设备对比控件
     on('dev-type-select', 'change', (e) => {
       appState.devices.type = e.target.value;
+      loadDevicesTab();
+    });
+    on('dev-mode-seg', 'click', (e) => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      appState.devices.mode = btn.dataset.dmode || 'compare';
       loadDevicesTab();
     });
     let devSearchTimer;

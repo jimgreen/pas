@@ -27,7 +27,6 @@
             <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">主画面</a>
             <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
             <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
-            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
             <a href="/se-measurements.html" data-route="se-measurements" class="active" data-i18n="nav.se_measurements">全量测分析</a>
             <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
             <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测</a>
@@ -93,6 +92,7 @@
               <div class="se-tool-group wrap">
                 <div class="se-tool-group" id="meas-subtab-seg" role="tablist">
                   <button type="button" class="se-chip-btn seg active" data-msub="list" data-i18n="meas.tab_list">全量测明细</button>
+                  <button type="button" class="se-chip-btn seg" data-msub="devices" data-i18n="meas.tab_devices">设备对比</button>
                   <button type="button" class="se-chip-btn seg" data-msub="balance" data-i18n="meas.tab_balance">母线平衡与可观测</button>
                 </div>
                 <div class="se-tool-group wrap" id="meas-list-controls">
@@ -115,6 +115,20 @@
                   </select>
                   <button type="button" class="se-btn mini tabular" id="btn-meas-dir" title="Toggle sort order">↓</button>
                   <input id="meas-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_meas" placeholder="搜索设备/量测 ( / )">
+                </div>
+                <div class="se-tool-group wrap" id="meas-devices-controls" hidden>
+                  <select id="dev-type-select" class="se-select compact" aria-label="Device table"></select>
+                  <div class="se-segmented" id="dev-mode-seg" role="group" aria-label="Display mode">
+                    <button type="button" class="seg active" data-dmode="compare" data-i18n="dev.mode_compare">Meas / SE</button>
+                    <button type="button" class="seg" data-dmode="delta" data-i18n="dev.mode_delta">残差 Δ</button>
+                  </div>
+                  <input id="dev-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_device" placeholder="筛选设备编号或名称">
+                  <label class="se-check-inline">
+                    <input type="checkbox" id="dev-bad-only">
+                    <span data-i18n="devices.bad_only">仅坏数据设备</span>
+                  </label>
+                  <span class="se-muted tabular" id="dev-count-summary">—</span>
+                  <button type="button" class="se-btn mini" id="btn-export-devices" data-i18n="action.export_csv">导出 CSV</button>
                 </div>
                 <div class="se-tool-group wrap" id="meas-balance-controls" hidden>
                   <select id="bal-domain-filter" class="se-select compact" aria-label="Domain">
@@ -139,6 +153,7 @@
             </div>
             <div class="se-table-scroll" id="meas-table-wrap"></div>
             <div class="se-pager" id="meas-pager"></div>
+            <div class="se-table-scroll" id="dev-table-wrap" hidden></div>
             <div class="se-table-scroll" id="bal-table-wrap" hidden></div>
           </div>
         </section>
