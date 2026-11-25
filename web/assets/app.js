@@ -1,8 +1,9 @@
 const TASKS = ['se', 'lf', 'ca'];
 const LABELS = {se:'状态估计 SE', lf:'潮流分析 LF', ca:'静态安全 CA'};
-const PAGE_URLS = {overview:'/overview.html', se:'/analysis/se.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html', workspace:'/workspace.html', measurements:'/measurements.html', limits:'/limits.html'};
+const PAGE_URLS = {overview:'/overview.html', se:'/se-main.html', lf:'/analysis/lf.html', ca:'/analysis/ca.html', runs:'/runs.html', settings:'/settings.html', workspace:'/workspace.html', measurements:'/measurements.html', limits:'/limits.html'};
 const pageUrl = (route, query='') => {
   const key = route === '/overview' ? 'overview' : route === '/runs' ? 'runs' : route === '/settings' ? 'settings' : route === '/workspace' ? 'workspace' : route === '/measurements' ? 'measurements' : route === '/limits' ? 'limits' : route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
+  if (key === 'se' && query && /^\?run=\d+/.test(query)) return `/se-logs.html?run_id=${query.slice(5)}`;
   return `${PAGE_URLS[key] || PAGE_URLS.overview}${query}`;
 };
 const initialPage = document.body.dataset.page || location.hash.split('?')[0].slice(1) || '/overview';

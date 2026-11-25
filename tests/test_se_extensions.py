@@ -423,6 +423,7 @@ def test_se_extensions_web_api_and_static_pages(tmp_path: Path) -> None:
                 "/se-logs.html",
             ):
                 assert sub_link in text
+            assert "/analysis/se.html" not in text
         # 新主画面为三栏总控布局，潮流图独立于 /se-flow.html
         main_html = app.static_path("/se-main.html").read_text(encoding="utf-8")
         assert 'class="se-home-grid"' in main_html

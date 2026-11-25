@@ -4,14 +4,14 @@
 
   const I18N = {
     'zh-CN': {
-      'title.bad': '坏量测管理',
+      'title.bad': '坏量测',
       'kpi.bad_cur': '当前坏量测',
       'kpi.policies': '屏蔽与替代策略',
       'kpi.policies_sub': '已生效 / 总策略',
       'kpi.suspect': '可疑遥信',
       'kpi.suspect_sub': '拓扑与潮流矛盾点',
       'kpi.abnormal': '未参与 / 缺测',
-      'link.prefilter': '预过滤管理 →',
+      'link.prefilter': '预过滤量测 →',
       'kpi.abnormal_sub': '预过滤 / 缺测与坏质量',
       'tab.current': '当前坏量测与处置',
       'tab.policies': '屏蔽与替代策略',

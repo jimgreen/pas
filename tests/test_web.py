@@ -80,7 +80,6 @@ def test_static_web_is_split_into_real_pages():
     pages = {
         "index.html": "/overview",
         "overview.html": "/overview",
-        "analysis/se.html": "/analysis/se",
         "analysis/lf.html": "/analysis/lf",
         "analysis/ca.html": "/analysis/ca",
         "runs.html": "/runs",
@@ -90,7 +89,8 @@ def test_static_web_is_split_into_real_pages():
         html = (web_root / relative).read_text(encoding="utf-8")
         assert f'<body data-page="{route}">' in html
         assert "href=\"#/" not in html
-    assert (web_root / "analysis" / "se.html").is_file()
+    assert (web_root / "se-main.html").is_file()
+    assert not (web_root / "analysis" / "se.html").exists()
     assert (web_root / "analysis" / "lf.html").is_file()
     assert (web_root / "analysis" / "ca.html").is_file()
 

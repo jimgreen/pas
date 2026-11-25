@@ -4,7 +4,7 @@
 
   const I18N = {
     'zh-CN': {
-      'title.prefilter': '预过滤量测管理',
+      'title.prefilter': '预过滤量测',
       'kpi.total': '预过滤量测',
       'kpi.rule_hit': '规则命中',
       'kpi.kernel': '内核预过滤',

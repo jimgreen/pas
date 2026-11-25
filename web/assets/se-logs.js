@@ -404,7 +404,7 @@
         <tbody>
           ${rows.map((r) => `
             <tr>
-              <td class="tabular"><a href="/analysis/se.html?run=${r.run_id}">#${r.run_id}</a></td>
+              <td class="tabular"><button type="button" class="se-btn mini" data-filter-run="${r.run_id}">#${r.run_id}</button></td>
               <td><span class="se-pill ${r.status === 'succeeded' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(t(`status.${r.status}`))}</span></td>
               <td class="tabular">${esc(fmtTime(r.started_at))}</td>
               <td class="tabular">${r.pass_rate != null ? (Number(r.pass_rate) * 100).toFixed(2) + '%' : '—'}</td>

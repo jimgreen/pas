@@ -4,7 +4,7 @@
 
   const I18N = {
     'zh-CN': {
-      'title.pseudo': '伪量测管理',
+      'title.pseudo': '伪量测',
       'kpi.defined': '伪量测定义',
       'kpi.defined_sub': '启用 / 总定义',
       'kpi.stat': '伪状态定义',

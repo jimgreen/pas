@@ -58,7 +58,7 @@ def test_se_main_page_and_assets_exist():
     assert (web_root / "assets" / "se-home.js").is_file()
     assert (web_root / "assets" / "se-dashboard.js").is_file()
     # 验证侧边栏入口存在于主页面
-    for name in ("overview.html", "analysis/se.html", "runs.html", "settings.html"):
+    for name in ("overview.html", "se-flow.html", "runs.html", "settings.html"):
         assert 'href="/se-main.html"' in (web_root / name).read_text(encoding="utf-8")
 
 

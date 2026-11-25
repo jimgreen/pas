@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>坏量测管理 · 状态估计 SE · PAS</title>
+  <title>坏量测 · 状态估计 SE · PAS</title>
   <link rel="stylesheet" href="/assets/app.css">
   <link rel="stylesheet" href="/assets/se-dashboard.css">
   <link rel="icon" href="data:,">
@@ -28,13 +28,12 @@
             <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
             <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
             <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
-            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">有效实测明细</a>
+            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">全量测分析</a>
             <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
-            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测管理</a>
-            <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
-            <a href="/se-bad.html" data-route="se-bad" class="active" data-i18n="nav.se_bad">坏量测管理</a>
+            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测</a>
+            <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测</a>
+            <a href="/se-bad.html" data-route="se-bad" class="active" data-i18n="nav.se_bad">坏量测</a>
             <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
-            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se_detail">状态估计明细</a>
           </div>
           <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
           <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
@@ -58,7 +57,7 @@
       <header class="se-topbar">
         <div class="se-title-group">
           <div class="se-title-row">
-            <h1 data-i18n="title.bad">坏量测管理</h1>
+            <h1 data-i18n="title.bad">坏量测</h1>
             <span id="bad-run-meta" class="se-run-meta tabular">--</span>
           </div>
         </div>
@@ -168,7 +167,7 @@
                 <input id="abn-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/量测">
               </div>
               <div class="se-tool-group">
-                <a class="se-btn mini se-link-btn" href="/se-prefilter.html" data-i18n="link.prefilter">预过滤管理 →</a>
+                <a class="se-btn mini se-link-btn" href="/se-prefilter.html" data-i18n="link.prefilter">预过滤量测 →</a>
                 <span class="se-muted tabular" id="abn-count-meta">--</span>
               </div>
             </div>
