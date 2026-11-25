@@ -66,6 +66,7 @@ from .se_pseudo import (
     save_pseudo_stat_define,
     store_se_pseudo_results,
 )
+from .se_weight import delete_weight_rule, list_weight_rules, save_weight_rule
 
 
 def synchronized(method):
@@ -325,6 +326,37 @@ class Repository:
         }
 
     @synchronized
+    def se_converged_runs(self, limit: int = 30) -> list[dict[str, Any]]:
+        """返回最近 N 次收敛/成功的历史 SE 断面摘要，供潮流图、全量测分析等页历史回放选择。"""
+        limit = max(1, min(int(limit), 200))
+        return self._rows(
+            """SELECT s.run_id, s.calc_time, s.pass_rate, s.bad_data_count, s.meas_count,
+                      s.valid_meas_count, s.good_meas_count, s.elapsed_seconds,
+                      s.iterations, s.objective, s.converged, s.observable
+               FROM se_statistics s
+               ORDER BY s.run_id DESC LIMIT ?""",
+            (limit,),
+        )
+
+    @synchronized
+    def se_run_measurements_raw(self, run_id: int) -> dict[str, Any]:
+        """读取指定历史 run_id 的统计摘要与完整 se_measurement_result，用于历史断面潮流图回放。"""
+        rid = int(run_id)
+        stat_rows = self._rows("SELECT * FROM se_statistics WHERE run_id = ? LIMIT 1", (rid,))
+        stat = stat_rows[0] if stat_rows else None
+        rows = self._rows(
+            """SELECT result_id AS meas_id, run_id, measurement_name AS meas_name,
+                      device_type, device_name, measurement_type AS meas_type,
+                      value AS meas_value, estimated_value AS se_value,
+                      residual, normalized_residual, valid, source, reason
+               FROM se_measurement_result
+               WHERE run_id = ?
+               ORDER BY result_id ASC""",
+            (rid,),
+        )
+        return {"stat": stat, "rows": rows}
+
+    @synchronized
     def se_home_summary(self, para_file: str | Path | None = None, do_cycle: int | float = 60) -> dict[str, Any]:
         """聚合新版三栏状态估计主画面所需的全量真实指标、今日/昨日合格率曲线、参数与最新运行日志。"""
         conn = self._connection()
@@ -575,13 +607,32 @@ class Repository:
         sort: str = "abs_residual",
         direction: str = "desc",
         high_residual_only: bool = False,
+        run_id: int | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
-        """分页筛选最新断面 se_measurement，支持坏数据/正常/预过滤/伪量测、大残差过滤与多字段排序。"""
+        """分页筛选最新断面（或指定历史 run_id 断面）量测，支持来源过滤、大残差过滤与多字段排序。"""
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
         direction = "asc" if str(direction).lower() == "asc" else "desc"
+        conn = self._connection()
+        latest_row = conn.execute("SELECT MAX(run_id) FROM se_measurement").fetchone()
+        latest_rid = int(latest_row[0]) if latest_row and latest_row[0] is not None else None
+        use_history = run_id is not None and (latest_rid is None or int(run_id) != latest_rid)
+
+        if use_history:
+            return self._se_history_measurements_browse(
+                run_id=int(run_id),
+                source=source,
+                device_type=device_type,
+                q=q,
+                sort=sort,
+                direction=direction,
+                high_residual_only=high_residual_only,
+                limit=limit,
+                offset=offset,
+            )
+
         clauses: list[str] = []
         params: list[Any] = []
         if source == "bad_data":
@@ -614,7 +665,6 @@ class Repository:
         }
         expr = sort_map.get(sort, "ABS(residual)")
         order = f"{expr} IS NULL, {expr} {direction}, meas_id ASC"
-        conn = self._connection()
         total = int(conn.execute(f"SELECT COUNT(*) FROM se_measurement{where}", tuple(params)).fetchone()[0] or 0)
         rows = self._rows(
             f"SELECT * FROM se_measurement{where} ORDER BY {order} LIMIT ? OFFSET ?",
@@ -640,6 +690,110 @@ class Repository:
                 "sort": sort,
                 "direction": direction,
                 "high_residual_only": bool(high_residual_only),
+                "run_id": latest_rid,
+                "is_history": False,
+            },
+        }
+
+    def _se_history_measurements_browse(
+        self,
+        *,
+        run_id: int,
+        source: str,
+        device_type: str,
+        q: str,
+        sort: str,
+        direction: str,
+        high_residual_only: bool,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        """从历史表 se_measurement_result 分页查询指定历史 run_id 的量测明细。"""
+        conn = self._connection()
+        clauses: list[str] = ["run_id = ?"]
+        params: list[Any] = [int(run_id)]
+        if source == "bad_data":
+            clauses.append("(source = 'bad_data' OR valid = 0)")
+        elif source in {"normal", "prefiltered", "pseudo"}:
+            clauses.append("source = ?")
+            params.append(source)
+        elif source != "all":
+            raise ValueError(f"无效的量测来源筛选: {source}")
+        if device_type:
+            clauses.append("device_type = ?")
+            params.append(device_type)
+        if high_residual_only:
+            clauses.append("(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR source = 'bad_data')")
+        search = str(q or "").strip()
+        if search:
+            clauses.append("(measurement_name LIKE ? OR device_name LIKE ? OR device_type LIKE ? OR measurement_type LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like, like])
+        where = " WHERE " + " AND ".join(clauses)
+        sort_map = {
+            "abs_residual": "ABS(residual)",
+            "abs_norm_residual": "ABS(normalized_residual)",
+            "meas_value": "value",
+            "se_value": "estimated_value",
+            "residual": "residual",
+            "normalized_residual": "normalized_residual",
+            "meas_id": "result_id",
+            "device_name": "device_name",
+        }
+        expr = sort_map.get(sort, "ABS(residual)")
+        order = f"{expr} IS NULL, {expr} {direction}, result_id ASC"
+        total = int(conn.execute(f"SELECT COUNT(*) FROM se_measurement_result{where}", tuple(params)).fetchone()[0] or 0)
+        stat_row = conn.execute("SELECT calc_time FROM se_statistics WHERE run_id = ? LIMIT 1", (int(run_id),)).fetchone()
+        calc_time = str(stat_row[0]) if stat_row else ""
+        # 反查最新 se_measurement 映射 (device_type, device_name, meas_type) -> (device_idx, metric, unit, weight)
+        meta_rows = self._rows("SELECT device_type, device_name, meas_type, device_idx, metric, unit, weight FROM se_measurement")
+        meta_map = {
+            (str(r["device_type"]), str(r["device_name"]), str(r["meas_type"])): (r["device_idx"], r["metric"], r["unit"], r["weight"])
+            for r in meta_rows
+        }
+        raw_rows = self._rows(
+            f"""SELECT result_id AS meas_id, run_id, measurement_name AS meas_name,
+                       device_type, device_name, measurement_type AS meas_type,
+                       value AS meas_value, estimated_value AS se_value,
+                       residual, normalized_residual, valid, source, reason
+                FROM se_measurement_result{where}
+                ORDER BY {order} LIMIT ? OFFSET ?""",
+            tuple(params + [limit, offset]),
+        )
+        rows = []
+        for r in raw_rows:
+            d_idx, metric, unit, weight = meta_map.get((str(r["device_type"]), str(r["device_name"]), str(r["meas_type"])), (None, "", "", None))
+            r["device_idx"] = d_idx
+            r["metric"] = metric
+            r["unit"] = unit
+            r["weight"] = weight
+            r["calc_time"] = calc_time
+            r["is_bad"] = int(str(r.get("source") or "") == "bad_data")
+            rows.append(r)
+        counts = self._rows(
+            """SELECT COUNT(*) AS total,
+                      COALESCE(SUM(source = 'bad_data'), 0) AS bad_data,
+                      COALESCE(SUM(source = 'normal'), 0) AS normal,
+                      COALESCE(SUM(source = 'prefiltered'), 0) AS prefiltered,
+                      COALESCE(SUM(source = 'pseudo'), 0) AS pseudo,
+                      COALESCE(SUM(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR source = 'bad_data'), 0) AS high_residual
+               FROM se_measurement_result WHERE run_id = ?""",
+            (int(run_id),),
+        )[0]
+        return {
+            "rows": rows,
+            "counts": {k: int(v or 0) for k, v in counts.items()},
+            "meta": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "source": source,
+                "sort": sort,
+                "direction": direction,
+                "high_residual_only": bool(high_residual_only),
+                "run_id": int(run_id),
+                "calc_time": calc_time,
+                "is_history": True,
             },
         }
 
@@ -653,42 +807,39 @@ class Repository:
         sort: str = "abs_residual",
         direction: str = "desc",
         high_residual_only: bool = False,
+        run_id: int | None = None,
     ) -> bytes:
-        """导出当前筛选条件下的全量匹配 se_measurement 为 UTF-8 BOM CSV。"""
-        direction = "asc" if str(direction).lower() == "asc" else "desc"
-        clauses: list[str] = []
-        params: list[Any] = []
-        if source == "bad_data":
-            clauses.append("(is_bad = 1 OR source = 'bad_data')")
-        elif source in {"normal", "prefiltered", "pseudo"}:
-            clauses.append("source = ?")
-            params.append(source)
-        elif source != "all":
-            raise ValueError(f"无效的量测来源筛选: {source}")
-        if device_type:
-            clauses.append("device_type = ?")
-            params.append(device_type)
-        if high_residual_only:
-            clauses.append("(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR is_bad = 1)")
-        search = str(q or "").strip()
-        if search:
-            clauses.append("(meas_name LIKE ? OR device_name LIKE ? OR device_type LIKE ? OR metric LIKE ? OR meas_type LIKE ?)")
-            like = f"%{search}%"
-            params.extend([like, like, like, like, like])
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        sort_map = {
-            "abs_residual": "ABS(residual)",
-            "abs_norm_residual": "ABS(normalized_residual)",
-            "meas_value": "meas_value",
-            "se_value": "se_value",
-            "residual": "residual",
-            "normalized_residual": "normalized_residual",
-            "meas_id": "meas_id",
-            "device_name": "device_name",
-        }
-        expr = sort_map.get(sort, "ABS(residual)")
-        order = f"{expr} IS NULL, {expr} {direction}, meas_id ASC"
-        rows = self._rows(f"SELECT * FROM se_measurement{where} ORDER BY {order} LIMIT 20000", tuple(params))
+        """导出当前筛选条件下的全量匹配量测（支持最新或历史 run_id 断面）为 UTF-8 BOM CSV。"""
+        page = self.se_measurements_browse(
+            source=source,
+            device_type=device_type,
+            q=q,
+            sort=sort,
+            direction=direction,
+            high_residual_only=high_residual_only,
+            run_id=run_id,
+            limit=500,
+            offset=0,
+        )
+        rows = list(page["rows"])
+        total = int(page["meta"]["total"])
+        offset = len(rows)
+        while offset < min(total, 20000):
+            nxt = self.se_measurements_browse(
+                source=source,
+                device_type=device_type,
+                q=q,
+                sort=sort,
+                direction=direction,
+                high_residual_only=high_residual_only,
+                run_id=run_id,
+                limit=500,
+                offset=offset,
+            )
+            if not nxt["rows"]:
+                break
+            rows.extend(nxt["rows"])
+            offset += len(nxt["rows"])
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow([
@@ -784,6 +935,42 @@ class Repository:
         row = save_bad_meas_policy(conn, payload, policy_id=policy_id, units=units)
         conn.commit()
         return row
+
+    @synchronized
+    def se_bad_policy_batch_save(self, items: list[dict[str, Any]], *, units: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if not items or not isinstance(items, list):
+            raise ValueError("items 必须为非空列表")
+        conn = self._connection()
+        saved = [save_bad_meas_policy(conn, item, units=units) for item in items]
+        conn.commit()
+        return saved
+
+    @synchronized
+    def se_prefilter_rule_batch_save(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items or not isinstance(items, list):
+            raise ValueError("items 必须为非空列表")
+        conn = self._connection()
+        saved = [save_prefilter_rule(conn, item) for item in items]
+        conn.commit()
+        return saved
+
+    @synchronized
+    def se_weight_rules(self, *, enabled_only: bool = False, device_type: str = "", q: str = "") -> list[dict[str, Any]]:
+        return list_weight_rules(self._connection(), enabled_only=enabled_only, device_type=device_type, q=q)
+
+    @synchronized
+    def se_weight_rule_save(self, payload: dict[str, Any], *, rule_id: int | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        row = save_weight_rule(conn, payload, rule_id=rule_id)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_weight_rule_delete(self, rule_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_weight_rule(conn, rule_id)
+        conn.commit()
+        return ok
 
     @synchronized
     def se_bad_policy_delete(self, policy_id: int) -> bool:
@@ -1912,6 +2099,27 @@ class RepositoryHub:
 
     def se_topology_snapshot(self):
         return self.for_task("se").se_topology_snapshot()
+
+    def se_converged_runs(self, limit=30):
+        return self.for_task("se").se_converged_runs(limit)
+
+    def se_run_measurements_raw(self, run_id):
+        return self.for_task("se").se_run_measurements_raw(run_id)
+
+    def se_bad_policy_batch_save(self, items, **kwargs):
+        return self.for_task("se").se_bad_policy_batch_save(items, **kwargs)
+
+    def se_prefilter_rule_batch_save(self, items):
+        return self.for_task("se").se_prefilter_rule_batch_save(items)
+
+    def se_weight_rules(self, **kwargs):
+        return self.for_task("se").se_weight_rules(**kwargs)
+
+    def se_weight_rule_save(self, payload, **kwargs):
+        return self.for_task("se").se_weight_rule_save(payload, **kwargs)
+
+    def se_weight_rule_delete(self, rule_id):
+        return self.for_task("se").se_weight_rule_delete(rule_id)
 
     def se_home_summary(self, para_file=None, do_cycle=60):
         return self.for_task("se").se_home_summary(para_file, do_cycle)

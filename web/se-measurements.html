@@ -59,7 +59,8 @@
           <div class="se-title-row">
             <h1 data-i18n="title.measurements">全量测分析</h1>
             <span id="se-conv-pill" class="se-pill neutral">—</span>
-            <span id="se-run-meta" class="se-run-meta tabular">—</span>
+            <select id="se-run-select" class="se-select compact tabular" aria-label="Snapshot"></select>
+            <span id="se-run-meta" class="se-run-meta tabular" hidden>—</span>
           </div>
         </div>
         <div class="se-top-actions">
@@ -88,39 +89,103 @@
       <div class="se-workspace" id="se-workspace">
         <section class="se-panel active" data-panel="measurements">
           <div class="se-card se-full-card">
-            <div class="se-toolbar">
+            <div class="se-toolbar" id="meas-sub-tabs-bar">
               <div class="se-tool-group wrap">
-                <div class="se-tool-group" id="meas-source-seg" role="group" aria-label="Source filter">
-                  <button type="button" class="se-chip-btn seg active" data-msrc="all" data-i18n="meas.all">全部</button>
-                  <button type="button" class="se-chip-btn seg" data-msrc="normal" data-i18n="meas.normal">正常</button>
-                  <button type="button" class="se-chip-btn seg warn" data-msrc="bad_data" data-i18n="meas.bad">坏数据</button>
-                  <button type="button" class="se-chip-btn seg" data-msrc="prefiltered" data-i18n="meas.prefiltered">预过滤</button>
-                  <button type="button" class="se-chip-btn seg" data-msrc="pseudo" data-i18n="meas.pseudo">伪量测</button>
+                <div class="se-tool-group" id="meas-subtab-seg" role="tablist">
+                  <button type="button" class="se-chip-btn seg active" data-msub="list" data-i18n="meas.tab_list">全量测明细</button>
+                  <button type="button" class="se-chip-btn seg" data-msub="balance" data-i18n="meas.tab_balance">母线平衡与可观测</button>
                 </div>
-                <button type="button" class="se-chip-btn warn" id="btn-meas-high-res" data-i18n="meas.high_res">仅大残差</button>
-                <select id="meas-devtype-select" class="se-select compact" aria-label="Device type"></select>
-                <select id="meas-sort-select" class="se-select compact" aria-label="Sort">
-                  <option value="abs_residual" data-i18n="sort.abs_res">残差绝对值</option>
-                  <option value="abs_norm_residual" data-i18n="sort.abs_norm">标准化残差</option>
-                  <option value="meas_value" data-i18n="col.meas">实测值</option>
-                  <option value="se_value" data-i18n="col.se">估计值</option>
-                  <option value="meas_id" data-i18n="sort.id">量测序号</option>
-                  <option value="device_name" data-i18n="sort.dev">设备名称</option>
-                </select>
-                <button type="button" class="se-btn mini tabular" id="btn-meas-dir" title="Toggle sort order">↓</button>
-                <input id="meas-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_meas" placeholder="搜索设备/量测 ( / )">
+                <div class="se-tool-group wrap" id="meas-list-controls">
+                  <div class="se-tool-group" id="meas-source-seg" role="group" aria-label="Source filter">
+                    <button type="button" class="se-chip-btn seg active" data-msrc="all" data-i18n="meas.all">全部</button>
+                    <button type="button" class="se-chip-btn seg" data-msrc="normal" data-i18n="meas.normal">正常</button>
+                    <button type="button" class="se-chip-btn seg warn" data-msrc="bad_data" data-i18n="meas.bad">坏数据</button>
+                    <button type="button" class="se-chip-btn seg" data-msrc="prefiltered" data-i18n="meas.prefiltered">预过滤</button>
+                    <button type="button" class="se-chip-btn seg" data-msrc="pseudo" data-i18n="meas.pseudo">伪量测</button>
+                  </div>
+                  <button type="button" class="se-chip-btn warn" id="btn-meas-high-res" data-i18n="meas.high_res">仅大残差</button>
+                  <select id="meas-devtype-select" class="se-select compact" aria-label="Device type"></select>
+                  <select id="meas-sort-select" class="se-select compact" aria-label="Sort">
+                    <option value="abs_residual" data-i18n="sort.abs_res">残差绝对值</option>
+                    <option value="abs_norm_residual" data-i18n="sort.abs_norm">标准化残差</option>
+                    <option value="meas_value" data-i18n="col.meas">实测值</option>
+                    <option value="se_value" data-i18n="col.se">估计值</option>
+                    <option value="meas_id" data-i18n="sort.id">量测序号</option>
+                    <option value="device_name" data-i18n="sort.dev">设备名称</option>
+                  </select>
+                  <button type="button" class="se-btn mini tabular" id="btn-meas-dir" title="Toggle sort order">↓</button>
+                  <input id="meas-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_meas" placeholder="搜索设备/量测 ( / )">
+                </div>
+                <div class="se-tool-group wrap" id="meas-balance-controls" hidden>
+                  <select id="bal-domain-filter" class="se-select compact" aria-label="Domain">
+                    <option value="all" data-i18n="meas.all">全部</option>
+                    <option value="AC">AC</option>
+                    <option value="DC">DC</option>
+                  </select>
+                  <button type="button" class="se-chip-btn warn" id="btn-bal-only-imb" data-i18n="bal.only_imb">仅不平衡</button>
+                  <input id="bal-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_bus" placeholder="搜索母线">
+                  <span class="se-muted tabular" id="bal-summary-meta">—</span>
+                </div>
               </div>
               <div class="se-tool-group">
+                <div class="se-batch-bar" id="meas-batch-bar" hidden>
+                  <span class="tabular" id="meas-batch-cnt">0</span>
+                  <button type="button" class="se-btn mini danger-ghost" id="btn-batch-suppress" data-i18n="batch.suppress">批量屏蔽</button>
+                  <button type="button" class="se-btn mini" id="btn-batch-prefilter" data-i18n="batch.prefilter">批量预过滤</button>
+                  <button type="button" class="se-btn mini" id="btn-batch-clear" data-i18n="batch.clear">清空</button>
+                </div>
                 <button type="button" class="se-btn mini" id="btn-export-meas" data-i18n="action.export_csv">导出 CSV</button>
               </div>
             </div>
             <div class="se-table-scroll" id="meas-table-wrap"></div>
             <div class="se-pager" id="meas-pager"></div>
+            <div class="se-table-scroll" id="bal-table-wrap" hidden></div>
           </div>
         </section>
       </div>
     </main>
   </div>
+
+  <!-- 页内就地处置模态框（屏蔽 / 预过滤 / 伪量测 / 权重） -->
+  <dialog id="quick-action-dialog" class="se-modal wide" aria-labelledby="qa-title">
+    <h3 id="qa-title">—</h3>
+    <form id="qa-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" name="mode" id="qa-mode">
+      <input type="hidden" name="device_type" id="qa-dev-type">
+      <input type="hidden" name="device_idx" id="qa-dev-idx">
+      <input type="hidden" name="device_name" id="qa-dev-name">
+      <input type="hidden" name="metric" id="qa-metric">
+      <input type="hidden" name="unit" id="qa-unit">
+      <div class="se-field full">
+        <span data-i18n="qa.target">目标量测</span>
+        <input id="qa-target-display" class="tabular" type="text" readonly>
+      </div>
+      <label class="se-field" id="qa-f-min" hidden>
+        <span data-i18n="qa.min_val">下限 min</span>
+        <input id="qa-min" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-max" hidden>
+        <span data-i18n="qa.max_val">上限 max</span>
+        <input id="qa-max" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-val" hidden>
+        <span data-i18n="qa.pseudo_val">伪量测值</span>
+        <input id="qa-val" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-weight" hidden>
+        <span data-i18n="qa.weight">权重</span>
+        <input id="qa-weight" class="tabular" type="number" step="any" min="1e-9" max="1e9">
+      </label>
+      <label class="se-field full">
+        <span data-i18n="qa.note">备注 / 原因</span>
+        <input id="qa-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-qa-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" id="btn-qa-save" data-i18n="qa.submit">保存并生效</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/assets/se-dashboard.js"></script>
 </body>

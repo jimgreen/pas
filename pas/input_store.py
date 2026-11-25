@@ -564,6 +564,7 @@ def measurement_input(
     scada_snapshot=False,
     bad_policies: list[dict] | None = None,
     prefilter_rules: list[dict] | None = None,
+    weight_rules: list[dict] | None = None,
     pseudo_meas_defines: list[dict] | None = None,
     pseudo_stat_defines: list[dict] | None = None,
 ):
@@ -646,6 +647,8 @@ def measurement_input(
     rule_prefiltered_count = 0
 
     from .se_prefilter import evaluate_prefilter_rule
+    from .se_weight import resolve_measurement_weight
+    active_weights = [r for r in (weight_rules or ()) if int(r.get("enabled", 1))]
 
     for row in selected:
         mid = int(row['measurement_id'])
@@ -673,7 +676,14 @@ def measurement_input(
             policy_suppressed_count += 1
         elif rule_hit is not None:
             rule_prefiltered_count += 1
-        cols = (mid, mname, row['model_table'], row['device_name'], row['se_type'], row['weight'], valid_flag, value)
+        eff_weight = resolve_measurement_weight(
+            active_weights,
+            device_type=str(row['model_table']),
+            device_name=str(row['device_name']),
+            metric=str(row.get('metric') or ''),
+            default_weight=float(row['weight']),
+        )
+        cols = (mid, mname, row['model_table'], row['device_name'], row['se_type'], eff_weight, valid_flag, value)
         if use_status_col:
             cols = (*cols, status_flag)
         parts.append('# ' + ' '.join(_cell(v) for v in cols) + '\n')
@@ -687,7 +697,7 @@ def measurement_input(
             "se_type": str(row["se_type"]),
             "unit": target,
             "value": float(value),
-            "weight": float(row["weight"]),
+            "weight": float(eff_weight),
             "source_time_ms": row.get("source_time_ms"),
             "policy_suppressed": bool(pol is not None),
             "policy_id": pol.get("id") if pol is not None else None,

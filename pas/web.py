@@ -179,7 +179,7 @@ class PasWebApp:
             "stat_types": {k: {"metric": v[0], "label": v[1]} for k, v in PSEUDO_STAT_DEVICE_FIELDS.items()},
         }
 
-    def _build_se_topology_values(self) -> dict[str, Any]:
+    def _build_se_topology_values(self, *, run_id: int | None = None) -> dict[str, Any]:
         repo = self._se_repo()
         se_task = getattr(self.config, "tasks", {}).get("se")
         model_file = getattr(se_task, "model_file", None)
@@ -228,16 +228,39 @@ class PasWebApp:
 
         # 单次锁内聚合最新断面全部设备表、全部量测与坏数据（消除 N+1 查询与 500 条截断）
         snap = repo.se_topology_snapshot()
+        latest_stat = snap.get("latest")
+        latest_rid = int(latest_stat["run_id"]) if latest_stat and latest_stat.get("run_id") is not None else None
+        is_history = run_id is not None and (latest_rid is None or int(run_id) != latest_rid)
+
         bad_list = snap.get("bad_data") or []
         bad_lookup: dict[tuple[str, int, str], dict[str, Any]] = {}
-        for item in bad_list:
-            if item.get("device_idx") is not None:
-                bad_lookup[(str(item["device_type"]), int(item["device_idx"]), str(item.get("metric") or ""))] = item
-
         meas_ext: dict[tuple[str, int, str], dict[str, Any]] = {}
-        for item in snap.get("measurements") or ():
-            if item.get("device_idx") is not None and item.get("metric"):
-                meas_ext[(str(item["device_type"]), int(item["device_idx"]), str(item["metric"]))] = item
+        hist_by_name_code: dict[tuple[str, str, str], dict[str, Any]] = {}
+        if is_history:
+            hist_pack = repo.se_run_measurements_raw(int(run_id))
+            if hist_pack.get("stat"):
+                latest_stat = hist_pack["stat"]
+            bad_list = []
+            for hrow in hist_pack.get("rows") or ():
+                key = (str(hrow.get("device_type") or ""), str(hrow.get("device_name") or ""), str(hrow.get("meas_type") or ""))
+                hist_by_name_code[key] = hrow
+                if str(hrow.get("source") or "") == "bad_data":
+                    bad_list.append({
+                        "device_type": hrow.get("device_type"),
+                        "device_name": hrow.get("device_name"),
+                        "meas_type": hrow.get("meas_type"),
+                        "meas_value": hrow.get("meas_value"),
+                        "se_value": hrow.get("se_value"),
+                        "residual": hrow.get("residual"),
+                        "normalized_residual": hrow.get("normalized_residual"),
+                    })
+        else:
+            for item in bad_list:
+                if item.get("device_idx") is not None:
+                    bad_lookup[(str(item["device_type"]), int(item["device_idx"]), str(item.get("metric") or ""))] = item
+            for item in snap.get("measurements") or ():
+                if item.get("device_idx") is not None and item.get("metric"):
+                    meas_ext[(str(item["device_type"]), int(item["device_idx"]), str(item["metric"]))] = item
 
         slot_rules: dict[str, dict[str, tuple[str, ...]]] = {
             "ACGenerator": {"activePower": ("p",), "reactivePower": ("q",), "voltage": ("uab",), "current": ("ia",)},
@@ -263,11 +286,19 @@ class PasWebApp:
                 metrics_dict: dict[str, dict[str, Any]] = {}
                 bad_metrics: list[str] = []
                 for metric, se_code in metric_map.items():
-                    meas_v = row.get(f"{metric}_meas")
-                    se_v = row.get(f"{metric}_se")
-                    ext = meas_ext.get((dev_type, idx, metric)) or {}
-                    bad_hit = bad_lookup.get((dev_type, idx, metric))
-                    is_bad = bad_hit is not None or bool(ext.get("is_bad"))
+                    if is_history:
+                        hrow = hist_by_name_code.get((dev_type, str(row.get("name", "")), se_code))
+                        meas_v = hrow.get("meas_value") if hrow else None
+                        se_v = hrow.get("se_value") if hrow else None
+                        ext = hrow or {}
+                        is_bad = bool(hrow and str(hrow.get("source") or "") == "bad_data")
+                        bad_hit = hrow if is_bad else None
+                    else:
+                        meas_v = row.get(f"{metric}_meas")
+                        se_v = row.get(f"{metric}_se")
+                        ext = meas_ext.get((dev_type, idx, metric)) or {}
+                        bad_hit = bad_lookup.get((dev_type, idx, metric))
+                        is_bad = bad_hit is not None or bool(ext.get("is_bad"))
                     if is_bad:
                         bad_metrics.append(metric)
                     residual = (meas_v - se_v) if (meas_v is not None and se_v is not None) else ext.get("residual")
@@ -332,12 +363,209 @@ class PasWebApp:
                 }
 
         return {
-            "latest": snap.get("latest"),
+            "latest": latest_stat,
+            "run_id": int(run_id) if is_history else (latest_stat.get("run_id") if latest_stat else None),
+            "is_history": is_history,
             "units": units,
             "svg_available": self._se_svg_path() is not None,
             "bad_data": bad_list,
             "bad_dev_ids": sorted(dev_id for dev_id, item in devices_out.items() if item["has_bad"]),
             "devices": devices_out,
+        }
+
+    def _build_se_balance(self) -> dict[str, Any]:
+        """计算全网交流/直流母线 KCL 功率平衡（实测与估计）及量测覆盖/可观测诊断。"""
+        repo = self._se_repo()
+        se_task = getattr(self.config, "tasks", {}).get("se")
+        model_file = getattr(se_task, "model_file", None)
+        snap = repo.se_topology_snapshot()
+        devices_by_type = snap.get("devices_by_type") or {}
+        units = {"u_unit": "V", "p_unit": "kW", "i_unit": "A", "q_unit": "kvar"}
+        model_tables: dict[str, dict] = {}
+        if model_file and Path(model_file).is_file() and Path(model_file).suffix.lower() in SQLITE_SUFFIXES:
+            try:
+                model_tables = read_model_tables(Path(model_file))
+                mrows = (model_tables.get("Model") or model_tables.get("PowerBase") or {}).get("rows") or []
+                if mrows:
+                    mrow = mrows[0]
+                    p_u = str(mrow.get("p_unit") or "kW")
+                    units = {
+                        "u_unit": str(mrow.get("u_unit") or "V"),
+                        "p_unit": p_u,
+                        "i_unit": str(mrow.get("i_unit") or "A"),
+                        "q_unit": {"W": "var", "kW": "kvar", "MW": "Mvar"}.get(p_u, "kvar"),
+                    }
+            except (ValueError, OSError, input_store.sqlite3.Error):
+                pass
+
+        # 构造母线容器
+        buses: dict[tuple[str, int], dict[str, Any]] = {}
+        for node_tbl, domain, v_key in (("ACNode", "AC", "uab"), ("DCNode", "DC", "u")):
+            for row in devices_by_type.get(node_tbl) or ():
+                idx = int(row["idx"])
+                buses[(node_tbl, idx)] = {
+                    "dev_id": f"{node_tbl}-{idx}",
+                    "device_type": node_tbl,
+                    "domain": domain,
+                    "idx": idx,
+                    "name": str(row.get("name", "")),
+                    "v_meas": row.get(f"{v_key}_meas"),
+                    "v_se": row.get(f"{v_key}_se"),
+                    "p_in_meas": 0.0,
+                    "p_out_meas": 0.0,
+                    "p_in_se": 0.0,
+                    "p_out_se": 0.0,
+                    "q_in_meas": 0.0,
+                    "q_out_meas": 0.0,
+                    "q_in_se": 0.0,
+                    "q_out_se": 0.0,
+                    "p_meas_cnt": 0,
+                    "q_meas_cnt": 0,
+                    "meas_cnt": 1 if row.get(f"{v_key}_meas") is not None else 0,
+                    "branch_cnt": 0,
+                    "bad_cnt": 0,
+                }
+
+        # 建立设备 idx -> 最新 se_dev_* 记录索引
+        dev_se_map: dict[tuple[str, int], dict[str, Any]] = {
+            (dt, int(r["idx"])): r
+            for dt, rlist in devices_by_type.items()
+            for r in rlist
+            if r.get("idx") is not None
+        }
+        bad_dev_set = {
+            (str(b.get("device_type") or ""), int(b["device_idx"]))
+            for b in (snap.get("bad_data") or ())
+            if b.get("device_idx") is not None
+        }
+        for key, b in buses.items():
+            if key in bad_dev_set:
+                b["bad_cnt"] += 1
+
+        def _add_flow(node_tbl: str, node_idx: Any, *, sign: float, p_m: Any, p_s: Any, q_m: Any = None, q_s: Any = None, is_branch: bool = False, has_bad: bool = False):
+            if node_idx is None:
+                return
+            bus = buses.get((node_tbl, int(node_idx)))
+            if bus is None:
+                return
+            if is_branch:
+                bus["branch_cnt"] += 1
+            if has_bad:
+                bus["bad_cnt"] += 1
+            if isinstance(p_m, (int, float)) and math.isfinite(p_m):
+                bus["p_meas_cnt"] += 1
+                bus["meas_cnt"] += 1
+                if sign > 0:
+                    bus["p_in_meas"] += float(p_m)
+                else:
+                    bus["p_out_meas"] += float(p_m)
+            if isinstance(p_s, (int, float)) and math.isfinite(p_s):
+                if sign > 0:
+                    bus["p_in_se"] += float(p_s)
+                else:
+                    bus["p_out_se"] += float(p_s)
+            if isinstance(q_m, (int, float)) and math.isfinite(q_m):
+                bus["q_meas_cnt"] += 1
+                bus["meas_cnt"] += 1
+                if sign > 0:
+                    bus["q_in_meas"] += float(q_m)
+                else:
+                    bus["q_out_meas"] += float(q_m)
+            if isinstance(q_s, (int, float)) and math.isfinite(q_s):
+                if sign > 0:
+                    bus["q_in_se"] += float(q_s)
+                else:
+                    bus["q_out_se"] += float(q_s)
+
+        # 汇总电源（注入 +1）与负荷（汇出 -1）
+        for dev_tbl, node_tbl, sign, has_q in (
+            ("ACGenerator", "ACNode", +1.0, True),
+            ("DCGenerator", "DCNode", +1.0, False),
+            ("ACLoad", "ACNode", -1.0, True),
+            ("DCLoad", "DCNode", -1.0, False),
+        ):
+            for mrow in (model_tables.get(dev_tbl) or {}).get("rows") or ():
+                d_idx = mrow.get("idx")
+                if d_idx is None:
+                    continue
+                rec = dev_se_map.get((dev_tbl, int(d_idx))) or {}
+                _add_flow(
+                    node_tbl,
+                    mrow.get("node"),
+                    sign=sign,
+                    p_m=rec.get("p_meas"),
+                    p_s=rec.get("p_se"),
+                    q_m=rec.get("q_meas") if has_q else None,
+                    q_s=rec.get("q_se") if has_q else None,
+                    has_bad=(dev_tbl, int(d_idx)) in bad_dev_set,
+                )
+
+        # 汇总支路与 DC/DC 换流器（离开母线为汇出 -1）
+        for dev_tbl, node_tbl, has_q in (
+            ("ACBranch", "ACNode", True),
+            ("ACZeroBranch", "ACNode", True),
+            ("DCBranch", "DCNode", False),
+            ("DCDCConverter", "DCNode", False),
+        ):
+            for mrow in (model_tables.get(dev_tbl) or {}).get("rows") or ():
+                d_idx = mrow.get("idx")
+                if d_idx is None:
+                    continue
+                rec = dev_se_map.get((dev_tbl, int(d_idx))) or {}
+                hb = (dev_tbl, int(d_idx)) in bad_dev_set
+                _add_flow(node_tbl, mrow.get("i_node"), sign=-1.0, p_m=rec.get("i_p_meas"), p_s=rec.get("i_p_se"), q_m=rec.get("i_q_meas") if has_q else None, q_s=rec.get("i_q_se") if has_q else None, is_branch=True, has_bad=hb)
+                _add_flow(node_tbl, mrow.get("j_node"), sign=-1.0, p_m=rec.get("j_p_meas"), p_s=rec.get("j_p_se"), q_m=rec.get("j_q_meas") if has_q else None, q_s=rec.get("j_q_se") if has_q else None, is_branch=True, has_bad=hb)
+
+        # 汇总交直流换流器 DCACConverter
+        for mrow in (model_tables.get("DCACConverter") or {}).get("rows") or ():
+            d_idx = mrow.get("idx")
+            if d_idx is None:
+                continue
+            rec = dev_se_map.get(("DCACConverter", int(d_idx))) or {}
+            hb = ("DCACConverter", int(d_idx)) in bad_dev_set
+            _add_flow("ACNode", mrow.get("ac_node"), sign=-1.0, p_m=rec.get("ac_p_meas"), p_s=rec.get("ac_p_se"), q_m=rec.get("ac_q_meas"), q_s=rec.get("ac_q_se"), is_branch=True, has_bad=hb)
+            _add_flow("DCNode", mrow.get("dc_node"), sign=-1.0, p_m=rec.get("dc_p_meas"), p_s=rec.get("dc_p_se"), is_branch=True, has_bad=hb)
+
+        p_thresh = {"W": 5000.0, "kW": 5.0, "MW": 0.005}.get(units["p_unit"], 5.0)
+        out_rows = []
+        imbalanced_cnt = 0
+        low_obs_cnt = 0
+        max_dp_meas = 0.0
+        for b in buses.values():
+            dp_meas = (b["p_in_meas"] - b["p_out_meas"]) if b["p_meas_cnt"] > 0 else None
+            dp_se = b["p_in_se"] - b["p_out_se"]
+            dq_meas = (b["q_in_meas"] - b["q_out_meas"]) if (b["domain"] == "AC" and b["q_meas_cnt"] > 0) else None
+            dq_se = (b["q_in_se"] - b["q_out_se"]) if b["domain"] == "AC" else None
+            scale = max(abs(b["p_in_meas"]), abs(b["p_out_meas"]), abs(b["p_in_se"]), abs(b["p_out_se"]), 1.0)
+            is_imb = dp_meas is not None and abs(dp_meas) > max(p_thresh, 0.08 * scale)
+            low_obs = b["meas_cnt"] == 0
+            if is_imb:
+                imbalanced_cnt += 1
+            if low_obs:
+                low_obs_cnt += 1
+            if dp_meas is not None and abs(dp_meas) > max_dp_meas:
+                max_dp_meas = abs(dp_meas)
+            out_rows.append({
+                **b,
+                "dp_meas": dp_meas,
+                "dp_se": dp_se,
+                "dq_meas": dq_meas,
+                "dq_se": dq_se,
+                "imbalanced": is_imb,
+                "low_obs": low_obs,
+            })
+        out_rows.sort(key=lambda r: (0 if r["imbalanced"] else 1, -(abs(r["dp_meas"]) if r["dp_meas"] is not None else -1.0), r["device_type"], r["idx"]))
+        return {
+            "latest": snap.get("latest"),
+            "units": units,
+            "summary": {
+                "bus_total": len(out_rows),
+                "imbalanced_count": imbalanced_cnt,
+                "low_obs_count": low_obs_cnt,
+                "max_dp_meas": round(max_dp_meas, 3),
+                "p_threshold": p_thresh,
+            },
+            "rows": out_rows,
         }
 
     def api_get(self, path: str) -> dict[str, Any]:
@@ -374,6 +602,8 @@ class PasWebApp:
                         ),
                     }
                 if parsed.path == "/api/se/measurements":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
                     return {
                         "ok": True,
                         "data": se_repo.se_measurements_browse(
@@ -383,8 +613,22 @@ class PasWebApp:
                             sort=query.get("sort", ["abs_residual"])[0],
                             direction=query.get("direction", ["desc"])[0],
                             high_residual_only=query.get("high_residual_only", ["0"])[0] in {"1", "true"},
+                            run_id=rid_val,
                             limit=_int_query(query, "limit", 50, 1, 500),
                             offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/se/runs/converged":
+                    return {"ok": True, "data": se_repo.se_converged_runs(_int_query(query, "limit", 30, 1, 200))}
+                if parsed.path == "/api/se/balance":
+                    return {"ok": True, "data": self._build_se_balance()}
+                if parsed.path == "/api/se/weights":
+                    return {
+                        "ok": True,
+                        "data": se_repo.se_weight_rules(
+                            enabled_only=query.get("enabled_only", ["0"])[0] in {"1", "true"},
+                            device_type=query.get("device_type", [""])[0],
+                            q=query.get("q", [""])[0],
                         ),
                     }
                 if parsed.path == "/api/se/history/stats":
@@ -406,7 +650,9 @@ class PasWebApp:
                 if parsed.path == "/api/se/history/bad-data":
                     return {"ok": True, "data": se_repo.se_history_bad_data(_int_query(query, "limit", 100, 1, 500))}
                 if parsed.path == "/api/se/topology-values":
-                    return {"ok": True, "data": self._build_se_topology_values()}
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {"ok": True, "data": self._build_se_topology_values(run_id=rid_val)}
                 if parsed.path == "/api/se/params":
                     return {"ok": True, "data": se_repo.get_se_parameters(para_file, do_cycle=period)}
                 if parsed.path == "/api/se/model-catalog":
@@ -782,6 +1028,19 @@ class PasWebApp:
                     }
                 if path == "/api/se/bad/policies":
                     return {"ok": True, "data": se_repo.se_bad_policy_save(payload)}
+                if path == "/api/se/bad/policies/batch":
+                    items = payload.get("items") or []
+                    return {"ok": True, "data": se_repo.se_bad_policy_batch_save(items)}
+                if path == "/api/se/prefilter/rules/batch":
+                    items = payload.get("items") or []
+                    return {"ok": True, "data": se_repo.se_prefilter_rule_batch_save(items)}
+                if path == "/api/se/weights":
+                    return {"ok": True, "data": se_repo.se_weight_rule_save(payload)}
+                if len(parts) == 5 and parts[:3] == ["api", "se", "weights"] and parts[4] == "delete":
+                    wid = _int_path(parts[3])
+                    if wid is None:
+                        return {"ok": False, "error": "invalid_id"}
+                    return {"ok": True, "data": {"deleted": se_repo.se_weight_rule_delete(wid), "id": wid}}
                 if len(parts) == 6 and parts[:4] == ["api", "se", "bad", "policies"] and parts[5] == "delete":
                     pid = _int_path(parts[4])
                     if pid is None:
@@ -932,6 +1191,11 @@ class PasWebApp:
                 if rid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": se_repo.se_prefilter_rule_save(payload, rule_id=rid)}
+            if len(parts) == 4 and parts[:3] == ["api", "se", "weights"]:
+                wid = _int_path(parts[3])
+                if wid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": se_repo.se_weight_rule_save(payload, rule_id=wid)}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}
@@ -961,6 +1225,11 @@ class PasWebApp:
                 if rid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": {"deleted": se_repo.se_prefilter_rule_delete(rid), "id": rid}}
+            if len(parts) == 4 and parts[:3] == ["api", "se", "weights"]:
+                wid = _int_path(parts[3])
+                if wid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": {"deleted": se_repo.se_weight_rule_delete(wid), "id": wid}}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}
@@ -1024,6 +1293,8 @@ class PasWebApp:
                     return
                 if parsed_get.path == "/api/se/measurements/export":
                     query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
                     body = app._se_repo().se_measurements_export_csv(
                         source=query.get("source", ["all"])[0],
                         device_type=query.get("device_type", [""])[0],
@@ -1031,6 +1302,7 @@ class PasWebApp:
                         sort=query.get("sort", ["abs_residual"])[0],
                         direction=query.get("direction", ["desc"])[0],
                         high_residual_only=query.get("high_residual_only", ["0"])[0] in {"1", "true"},
+                        run_id=rid_val,
                     )
                     self.send_response(200)
                     self.send_header("Content-Type", "text/csv; charset=utf-8")

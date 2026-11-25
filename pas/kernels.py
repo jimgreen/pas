@@ -781,6 +781,7 @@ def run_se(
     se_params: dict[str, Any] | None = None,
     bad_policies: list[dict[str, Any]] | None = None,
     prefilter_rules: list[dict[str, Any]] | None = None,
+    weight_rules: list[dict[str, Any]] | None = None,
     pseudo_meas_defines: list[dict[str, Any]] | None = None,
     pseudo_stat_defines: list[dict[str, Any]] | None = None,
     stage_logger: Any = None,
@@ -807,6 +808,7 @@ def run_se(
             scada_snapshot=True,
             bad_policies=bad_policies,
             prefilter_rules=prefilter_rules,
+            weight_rules=weight_rules,
             pseudo_meas_defines=pseudo_meas_defines,
             pseudo_stat_defines=pseudo_stat_defines,
         ) as (meas_file, measurement_metadata):
@@ -886,6 +888,7 @@ def run_se(
             scada_snapshot=scada_snapshot,
             bad_policies=bad_policies,
             prefilter_rules=prefilter_rules,
+            weight_rules=weight_rules,
             pseudo_meas_defines=pseudo_meas_defines,
             pseudo_stat_defines=pseudo_stat_defines,
         ) as (meas_file, measurement_metadata):

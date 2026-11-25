@@ -53,7 +53,72 @@
       'action.curve': '曲线',
       'action.prefilter': '+预过滤',
       'action.suppress': '屏蔽',
+      'action.pseudo': '伪量测',
+      'action.weight': '权重',
+      'action.force_close': '强制合位',
+      'action.force_open': '强制分位',
+      'action.edit': '编辑',
+      'action.delete': '删除',
       'meas.high_res': '仅大残差',
+      'meas.tab_list': '全量测明细',
+      'meas.tab_balance': '母线平衡与可观测',
+      'bal.only_imb': '仅不平衡',
+      'ph.search_bus': '搜索母线',
+      'bal.bus': '母线',
+      'bal.domain': '域',
+      'bal.v_meas_se': '电压 (Meas/SE)',
+      'bal.p_in': '注入 P',
+      'bal.p_out': '汇出 P',
+      'bal.dp_meas': '实测 ΔP',
+      'bal.dp_se': '估计 ΔP',
+      'bal.dq_meas': '实测 ΔQ',
+      'bal.meas_cnt': '量测数',
+      'bal.status': '状态',
+      'bal.st_imb': '不平衡',
+      'bal.st_lowobs': '低可观测',
+      'bal.st_ok': '平衡',
+      'bal.summary': '母线 {total} · 不平衡 {imb} · 低可观测 {low} · 最大 |ΔP| {max}',
+      'batch.suppress': '批量屏蔽',
+      'batch.prefilter': '批量预过滤',
+      'batch.clear': '清空',
+      'batch.done': '批量保存 {n} 项成功',
+      'qa.target': '目标量测',
+      'qa.min_val': '下限 min',
+      'qa.max_val': '上限 max',
+      'qa.pseudo_val': '伪量测值',
+      'qa.weight': '权重',
+      'qa.note': '备注 / 原因',
+      'qa.submit': '保存并生效',
+      'qa.title_suppress': '就地屏蔽坏量测',
+      'qa.title_prefilter': '就地新增预过滤规则',
+      'qa.title_pseudo': '就地设为伪量测',
+      'qa.title_weight': '就地设置量测权重',
+      'qa.saved': '处置已生效',
+      'snap.latest': '最新断面',
+      'snap.history': '历史回放',
+      'params.trial': '保存并试算对比',
+      'params.trial_running': '保存参数并执行试算…',
+      'params.tab_para': '算法参数',
+      'params.tab_weights': '量测权重',
+      'ph.search_wt': '搜索权重规则',
+      'wt.add': '+ 新增权重',
+      'wt.dlg_title': '量测权重规则',
+      'wt.scope': '作用范围',
+      'wt.scope_type': '按设备类',
+      'wt.scope_dev': '按单设备',
+      'wt.dev_type': '设备类型',
+      'wt.dev_name': '目标设备',
+      'wt.metric': '指标',
+      'wt.status': '状态',
+      'wt.saved': '权重规则已保存',
+      'wt.deleted': '权重规则已删除',
+      'wt.del_confirm': '确认删除该量测权重规则？',
+      'trial.title': '试算对比',
+      'trial.iters': '迭代',
+      'trial.pass': '合格率',
+      'trial.bad': '坏数据',
+      'trial.obj': '目标 J(x)',
+      'trial.elapsed': '耗时',
       'empty.no_match': '无匹配记录',
       'bool.off': '关闭',
       'bool.on': '开启',
@@ -245,7 +310,72 @@
       'action.curve': 'Trend',
       'action.prefilter': '+Prefilter',
       'action.suppress': 'Suppress',
+      'action.pseudo': 'Pseudo',
+      'action.weight': 'Weight',
+      'action.force_close': 'Force Close',
+      'action.force_open': 'Force Open',
+      'action.edit': 'Edit',
+      'action.delete': 'Delete',
       'meas.high_res': 'High Res',
+      'meas.tab_list': 'Measurements',
+      'meas.tab_balance': 'Bus Balance & Obs',
+      'bal.only_imb': 'Imbalanced Only',
+      'ph.search_bus': 'Search bus',
+      'bal.bus': 'Bus',
+      'bal.domain': 'Domain',
+      'bal.v_meas_se': 'V (Meas/SE)',
+      'bal.p_in': 'P In',
+      'bal.p_out': 'P Out',
+      'bal.dp_meas': 'Meas ΔP',
+      'bal.dp_se': 'SE ΔP',
+      'bal.dq_meas': 'Meas ΔQ',
+      'bal.meas_cnt': 'Meas',
+      'bal.status': 'Status',
+      'bal.st_imb': 'Imbalanced',
+      'bal.st_lowobs': 'Low Obs',
+      'bal.st_ok': 'Balanced',
+      'bal.summary': 'Buses {total} · Imb {imb} · LowObs {low} · Max |ΔP| {max}',
+      'batch.suppress': 'Batch Suppress',
+      'batch.prefilter': 'Batch Prefilter',
+      'batch.clear': 'Clear',
+      'batch.done': 'Saved {n} items',
+      'qa.target': 'Target Measurement',
+      'qa.min_val': 'Min Limit',
+      'qa.max_val': 'Max Limit',
+      'qa.pseudo_val': 'Pseudo Value',
+      'qa.weight': 'Weight',
+      'qa.note': 'Note / Reason',
+      'qa.submit': 'Save & Apply',
+      'qa.title_suppress': 'Suppress Measurement',
+      'qa.title_prefilter': 'Add Prefilter Rule',
+      'qa.title_pseudo': 'Set Pseudo Measurement',
+      'qa.title_weight': 'Set Measurement Weight',
+      'qa.saved': 'Saved and applied',
+      'snap.latest': 'Latest',
+      'snap.history': 'Replay',
+      'params.trial': 'Save & Trial Run',
+      'params.trial_running': 'Saving params & running trial SE…',
+      'params.tab_para': 'Parameters',
+      'params.tab_weights': 'Weights',
+      'ph.search_wt': 'Search weight rules',
+      'wt.add': '+ Add Weight',
+      'wt.dlg_title': 'Measurement Weight Rule',
+      'wt.scope': 'Scope',
+      'wt.scope_type': 'Device Type',
+      'wt.scope_dev': 'Single Device',
+      'wt.dev_type': 'Device Type',
+      'wt.dev_name': 'Device',
+      'wt.metric': 'Metric',
+      'wt.status': 'Status',
+      'wt.saved': 'Weight rule saved',
+      'wt.deleted': 'Weight rule deleted',
+      'wt.del_confirm': 'Delete this weight rule?',
+      'trial.title': 'Trial Diff',
+      'trial.iters': 'Iter',
+      'trial.pass': 'Pass',
+      'trial.bad': 'Bad',
+      'trial.obj': 'J(x)',
+      'trial.elapsed': 'Time',
       'empty.no_match': 'No matching records',
       'bool.off': 'Off',
       'bool.on': 'On',
@@ -436,7 +566,72 @@
       'action.curve': 'График',
       'action.prefilter': '+Фильтр',
       'action.suppress': 'Блок.',
+      'action.pseudo': 'Псевдо',
+      'action.weight': 'Вес',
+      'action.force_close': 'Вкл (1)',
+      'action.force_open': 'Откл (0)',
+      'action.edit': 'Изм.',
+      'action.delete': 'Удал.',
       'meas.high_res': 'Выс. невязка',
+      'meas.tab_list': 'Все измерения',
+      'meas.tab_balance': 'Баланс узлов',
+      'bal.only_imb': 'Небаланс',
+      'ph.search_bus': 'Поиск узла',
+      'bal.bus': 'Узел',
+      'bal.domain': 'Тип',
+      'bal.v_meas_se': 'U (Изм/SE)',
+      'bal.p_in': 'P прит.',
+      'bal.p_out': 'P отт.',
+      'bal.dp_meas': 'ΔP изм.',
+      'bal.dp_se': 'ΔP SE',
+      'bal.dq_meas': 'ΔQ изм.',
+      'bal.meas_cnt': 'ТИ',
+      'bal.status': 'Статус',
+      'bal.st_imb': 'Небаланс',
+      'bal.st_lowobs': 'Мало ТИ',
+      'bal.st_ok': 'Норма',
+      'bal.summary': 'Узлов {total} · Небаланс {imb} · Мало ТИ {low} · Макс |ΔP| {max}',
+      'batch.suppress': 'Пакет. блок.',
+      'batch.prefilter': 'Пакет. фильтр',
+      'batch.clear': 'Сброс',
+      'batch.done': 'Сохранено: {n}',
+      'qa.target': 'Измерение',
+      'qa.min_val': 'Мин.',
+      'qa.max_val': 'Макс.',
+      'qa.pseudo_val': 'Значение',
+      'qa.weight': 'Вес',
+      'qa.note': 'Примечание',
+      'qa.submit': 'Сохранить',
+      'qa.title_suppress': 'Блокировать ТИ',
+      'qa.title_prefilter': 'Правило предфильтра',
+      'qa.title_pseudo': 'Задать псевдо-ТИ',
+      'qa.title_weight': 'Задать вес ТИ',
+      'qa.saved': 'Сохранено',
+      'snap.latest': 'Последний',
+      'snap.history': 'Архив',
+      'params.trial': 'Сохранить и тест SE',
+      'params.trial_running': 'Пробный расчёт SE…',
+      'params.tab_para': 'Параметры',
+      'params.tab_weights': 'Веса ТИ',
+      'ph.search_wt': 'Поиск правил веса',
+      'wt.add': '+ Вес',
+      'wt.dlg_title': 'Правило веса измерения',
+      'wt.scope': 'Область',
+      'wt.scope_type': 'Тип оборуд.',
+      'wt.scope_dev': 'Устройство',
+      'wt.dev_type': 'Тип',
+      'wt.dev_name': 'Устройство',
+      'wt.metric': 'Параметр',
+      'wt.status': 'Статус',
+      'wt.saved': 'Правило веса сохранено',
+      'wt.deleted': 'Правило веса удалено',
+      'wt.del_confirm': 'Удалить правило веса?',
+      'trial.title': 'Сравнение',
+      'trial.iters': 'Итер.',
+      'trial.pass': 'Годн.',
+      'trial.bad': 'Сбои',
+      'trial.obj': 'J(x)',
+      'trial.elapsed': 'Время',
       'empty.no_match': 'Нет совпадений',
       'bool.off': 'Выкл',
       'bool.on': 'Вкл',
@@ -642,7 +837,13 @@
       pointSeries: null,
     },
     devices: { type: 'ACNode', q: '', badOnly: false, data: null },
-    meas: { source: 'all', devType: '', sort: 'abs_residual', direction: 'desc', highResOnly: false, q: '', page: 0, size: 30, data: null, reqSeq: 0 },
+    meas: { source: 'all', devType: '', sort: 'abs_residual', direction: 'desc', highResOnly: false, q: '', page: 0, size: 30, data: null, reqSeq: 0, subTab: 'list', selected: new Map() },
+    balance: { domain: 'all', onlyImb: false, q: '', data: null },
+    paramsSubTab: 'para',
+    weights: { type: '', q: '', rows: [] },
+    catalog: null,
+    convergedRuns: [],
+    selectedRunId: '',
     params: null,
     schedule: null,
     watchingJobId: null,
@@ -708,15 +909,22 @@
     appState.noticeTimer = setTimeout(() => { box.hidden = true; }, 5500);
   }
 
-  async function api(url, body) {
-    const res = await fetch(url, body === undefined ? {} : {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const payload = await res.json();
+  async function api(url, body, method) {
+    const opts = method
+      ? {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        }
+      : (body === undefined ? {} : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+    const res = await fetch(url, opts);
+    const payload = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
     if (!res.ok || !payload.ok) {
-      throw new Error(payload.error || `HTTP ${res.status}`);
+      throw new Error(payload.error || (payload.data && payload.data.error_message) || `HTTP ${res.status}`);
     }
     return payload.data;
   }
@@ -1188,18 +1396,42 @@
     titleEl.textContent = dev.name;
     typeEl.textContent = `${dev.device_type} #${dev.idx}`;
     const targetType = dev.linked_node?.device_type || dev.device_type;
+    const targetIdx = dev.linked_node?.idx ?? dev.idx;
     const targetName = dev.linked_node?.name || dev.name;
+    const canForceStatus = ['ACBreak', 'DCBreak', 'ACGenerator', 'DCGenerator', 'ACLoad', 'DCLoad', 'ACBranch', 'DCBranch', 'DCDCConverter', 'DCACConverter'].includes(targetType);
 
-    const rows = Object.values(dev.metrics || {}).map((m) => `
-      <tr class="clickable ${m.is_bad ? 'is-bad' : ''}" data-open-curve="${esc(targetType)}|${esc(targetName)}|${esc(m.meas_type)}">
-        <td>${esc(m.metric)} <small class="se-muted">${esc(m.unit)}</small></td>
+    const statusBar = canForceStatus ? `
+      <div class="se-insp-actions">
+        <button type="button" class="se-btn mini" data-force-stat="${esc(targetType)}|${esc(targetIdx)}|${esc(targetName)}|1">${esc(t('action.force_close'))}</button>
+        <button type="button" class="se-btn mini danger-ghost" data-force-stat="${esc(targetType)}|${esc(targetIdx)}|${esc(targetName)}|0">${esc(t('action.force_open'))}</button>
+      </div>` : '';
+
+    const rows = Object.values(dev.metrics || {}).map((m) => {
+      const qaPayload = esc(JSON.stringify({
+        device_type: targetType,
+        device_idx: targetIdx,
+        device_name: targetName,
+        metric: m.metric,
+        unit: m.unit || '',
+        meas_value: m.meas,
+        se_value: m.se,
+      }));
+      return `
+      <tr class="${m.is_bad ? 'is-bad' : ''}">
+        <td class="clickable" data-open-curve="${esc(targetType)}|${esc(targetName)}|${esc(m.meas_type)}" title="${esc(t('action.curve'))}">${esc(m.metric)} <small class="se-muted">${esc(m.unit)}</small></td>
         <td class="num tabular">${fmtNum(m.meas)}</td>
         <td class="num tabular">${fmtNum(m.se)}</td>
         <td class="num tabular">${fmtNum(m.residual)}</td>
-      </tr>
-    `).join('');
+        <td class="se-insp-ops">
+          <button type="button" class="se-btn mini" data-qa-mode="suppress" data-qa="${qaPayload}">${esc(t('action.suppress'))}</button>
+          <button type="button" class="se-btn mini" data-qa-mode="pseudo" data-qa="${qaPayload}">${esc(t('action.pseudo'))}</button>
+          <button type="button" class="se-btn mini" data-qa-mode="weight" data-qa="${qaPayload}">${esc(t('action.weight'))}</button>
+        </td>
+      </tr>`;
+    }).join('');
 
     bodyEl.innerHTML = `
+      ${statusBar}
       <table class="se-insp-table">
         <thead>
           <tr>
@@ -1207,11 +1439,52 @@
             <th class="num">${esc(t('col.meas'))}</th>
             <th class="num">${esc(t('col.se'))}</th>
             <th class="num">${esc(t('col.residual'))}</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     `;
+  }
+
+  /* ==================== 页内就地处置模态框（屏蔽 / 预过滤 / 伪量测 / 权重） ==================== */
+  function openQuickActionDialog(mode, item) {
+    const dlg = document.getElementById('quick-action-dialog');
+    if (!dlg || !item) return;
+    const titles = {
+      suppress: t('qa.title_suppress'),
+      prefilter: t('qa.title_prefilter'),
+      pseudo: t('qa.title_pseudo'),
+      weight: t('qa.title_weight'),
+    };
+    document.getElementById('qa-title').textContent = titles[mode] || mode;
+    document.getElementById('qa-mode').value = mode;
+    document.getElementById('qa-dev-type').value = item.device_type || '';
+    document.getElementById('qa-dev-idx').value = item.device_idx != null ? String(item.device_idx) : '';
+    document.getElementById('qa-dev-name').value = item.device_name || '';
+    document.getElementById('qa-metric').value = item.metric || '';
+    document.getElementById('qa-unit').value = item.unit || '';
+    document.getElementById('qa-target-display').value = `${item.device_type}.${item.device_name}.${item.metric}${item.unit ? ` (${item.unit})` : ''}`;
+
+    const showMinMax = mode === 'prefilter';
+    const showVal = mode === 'pseudo';
+    const showWeight = mode === 'pseudo' || mode === 'weight';
+    document.getElementById('qa-f-min').hidden = !showMinMax;
+    document.getElementById('qa-f-max').hidden = !showMinMax;
+    document.getElementById('qa-f-val').hidden = !showVal;
+    document.getElementById('qa-f-weight').hidden = !showWeight;
+
+    const refVal = item.se_value ?? item.meas_value ?? 0;
+    const minEl = document.getElementById('qa-min');
+    const maxEl = document.getElementById('qa-max');
+    const valEl = document.getElementById('qa-val');
+    const wtEl = document.getElementById('qa-weight');
+    minEl.value = '';
+    maxEl.value = '';
+    valEl.value = Number.isFinite(Number(refVal)) ? String(Number(refVal).toFixed(3)) : '0';
+    wtEl.value = mode === 'pseudo' ? '0.0001' : (item.weight != null ? String(item.weight) : '1');
+    document.getElementById('qa-note').value = '';
+    dlg.showModal();
   }
 
   /* ==================== 2. 交互式原生 SVG 历史曲线 ==================== */
@@ -1578,9 +1851,38 @@
     `;
   }
 
-  /* ==================== 4. 量测与坏数据明细 ==================== */
+  /* ==================== 4. 量测与坏数据明细 + 母线平衡与可观测 ==================== */
+  function syncMeasBatchBar() {
+    const bar = document.getElementById('meas-batch-bar');
+    const cntEl = document.getElementById('meas-batch-cnt');
+    if (!bar || !cntEl) return;
+    const n = appState.meas.selected.size;
+    bar.hidden = n === 0 || appState.meas.subTab !== 'list';
+    cntEl.textContent = `${n}`;
+  }
+
   async function loadMeasurementsTab() {
     const m = appState.meas;
+    const isBalance = m.subTab === 'balance';
+    const listCtrl = document.getElementById('meas-list-controls');
+    const balCtrl = document.getElementById('meas-balance-controls');
+    const measWrap = document.getElementById('meas-table-wrap');
+    const measPager = document.getElementById('meas-pager');
+    const balWrap = document.getElementById('bal-table-wrap');
+    const exportBtn = document.getElementById('btn-export-meas');
+    if (listCtrl) listCtrl.hidden = isBalance;
+    if (balCtrl) balCtrl.hidden = !isBalance;
+    if (measWrap) measWrap.hidden = isBalance;
+    if (measPager) measPager.hidden = isBalance;
+    if (balWrap) balWrap.hidden = !isBalance;
+    if (exportBtn) exportBtn.hidden = isBalance;
+    document.querySelectorAll('#meas-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.msub === m.subTab));
+    syncMeasBatchBar();
+    if (isBalance) {
+      await loadBalanceTab();
+      return;
+    }
+
     const reqId = ++m.reqSeq;
     const qs = new URLSearchParams({
       source: m.source,
@@ -1592,6 +1894,7 @@
       limit: String(m.size),
       offset: String(m.page * m.size),
     });
+    if (appState.selectedRunId) qs.set('run_id', appState.selectedRunId);
     const data = await api(`/api/se/measurements?${qs}`);
     if (reqId !== m.reqSeq) return; // 丢弃过期的并发搜索响应
     const total = data.meta?.total || 0;
@@ -1642,10 +1945,13 @@
     if (!data.rows.length) {
       wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
     } else {
+      const selectableRows = data.rows.filter((r) => r.metric);
+      const allChecked = selectableRows.length > 0 && selectableRows.every((r) => m.selected.has(`${r.device_type}|${r.device_name}|${r.metric}`));
       wrap.innerHTML = `
         <table class="se-data-table">
           <thead>
             <tr>
+              <th style="width:28px;text-align:center"><input type="checkbox" id="meas-check-all" ${allChecked ? 'checked' : ''} aria-label="Select all"></th>
               ${thSort('meas_id', 'col.idx')}
               ${thSort('device_name', 'col.device')}
               <th>${esc(t('col.metric'))}</th>
@@ -1662,13 +1968,21 @@
               const devId = r.device_idx != null ? `${r.device_type}-${r.device_idx}` : '';
               const srcKey = r.is_bad ? 'meas.bad' : (r.source === 'normal' ? 'meas.normal' : r.source === 'prefiltered' ? 'meas.prefiltered' : 'meas.pseudo');
               const pillCls = r.is_bad ? 'bad' : r.source === 'normal' ? 'ok' : 'neutral';
-              const prefillQs = new URLSearchParams({
-                prefill_type: r.device_type || '',
-                prefill_name: r.device_name || '',
-                prefill_metric: r.metric || '',
-              }).toString();
+              const rowKey = `${r.device_type}|${r.device_name}|${r.metric}`;
+              const checked = r.metric && m.selected.has(rowKey);
+              const qaPayload = esc(JSON.stringify({
+                device_type: r.device_type || '',
+                device_idx: r.device_idx,
+                device_name: r.device_name || '',
+                metric: r.metric || '',
+                unit: r.unit || '',
+                meas_value: r.meas_value,
+                se_value: r.se_value,
+                weight: r.weight,
+              }));
               const normWarn = r.is_bad || (r.normalized_residual != null && Math.abs(Number(r.normalized_residual)) >= 2.0);
               return `<tr class="${r.is_bad ? 'row-bad' : ''}">
+                <td style="text-align:center">${r.metric ? `<input type="checkbox" class="meas-row-chk" data-row-key="${esc(rowKey)}" data-qa="${qaPayload}" ${checked ? 'checked' : ''}>` : ''}</td>
                 <td class="tabular">${r.meas_id}</td>
                 <td class="se-cell-ellipsis" title="${esc(r.device_name)} (${esc(r.device_type)})"><strong>${esc(r.device_name)}</strong> <small class="se-muted">${esc(r.device_type)}</small></td>
                 <td>${esc(r.metric || r.meas_type)} <small class="se-muted">${esc(r.unit || '')}</small></td>
@@ -1680,8 +1994,10 @@
                 <td class="se-sticky-right">
                   ${devId ? `<button type="button" class="se-btn mini" data-locate-dev="${esc(devId)}">${esc(t('action.locate'))}</button>` : ''}
                   <button type="button" class="se-btn mini" data-open-curve="${esc(r.device_type)}|${esc(r.device_name)}|${esc(r.meas_type)}">${esc(t('action.curve'))}</button>
-                  ${r.metric ? `<a class="se-btn mini se-link-btn" href="/se-prefilter.html?${prefillQs}">${esc(t('action.prefilter'))}</a>` : ''}
-                  ${r.metric ? `<a class="se-btn mini se-link-btn" href="/se-bad.html?${prefillQs}">${esc(t('action.suppress'))}</a>` : ''}
+                  ${r.metric ? `<button type="button" class="se-btn mini" data-qa-mode="prefilter" data-qa="${qaPayload}">${esc(t('action.prefilter'))}</button>` : ''}
+                  ${r.metric ? `<button type="button" class="se-btn mini" data-qa-mode="suppress" data-qa="${qaPayload}">${esc(t('action.suppress'))}</button>` : ''}
+                  ${r.metric ? `<button type="button" class="se-btn mini" data-qa-mode="pseudo" data-qa="${qaPayload}">${esc(t('action.pseudo'))}</button>` : ''}
+                  ${r.metric ? `<button type="button" class="se-btn mini" data-qa-mode="weight" data-qa="${qaPayload}">${esc(t('action.weight'))}</button>` : ''}
                 </td>
               </tr>`;
             }).join('')}
@@ -1697,12 +2013,110 @@
     `;
   }
 
-  /* ==================== 5. 算法参数 (pas_se_para) ==================== */
+  async function loadBalanceTab() {
+    const data = await api('/api/se/balance');
+    appState.balance.data = data;
+    renderBalanceTable();
+  }
+
+  function renderBalanceTable() {
+    const data = appState.balance.data;
+    const wrap = document.getElementById('bal-table-wrap');
+    const meta = document.getElementById('bal-summary-meta');
+    if (!data || !wrap) return;
+    const s = data.summary || {};
+    const pu = data.units?.p_unit || 'kW';
+    const qu = data.units?.q_unit || 'kvar';
+    if (meta) {
+      meta.textContent = t('bal.summary', {
+        total: s.bus_total ?? 0,
+        imb: s.imbalanced_count ?? 0,
+        low: s.low_obs_count ?? 0,
+        max: `${fmtNum(s.max_dp_meas, 2)} ${pu}`,
+      });
+    }
+    const q = (appState.balance.q || '').trim().toLowerCase();
+    const rows = (data.rows || []).filter((r) => {
+      if (appState.balance.domain !== 'all' && r.domain !== appState.balance.domain) return false;
+      if (appState.balance.onlyImb && !r.imbalanced) return false;
+      if (q && !`${r.idx} ${r.name} ${r.device_type}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="se-data-table">
+        <thead>
+          <tr>
+            <th>${esc(t('bal.bus'))}</th>
+            <th>${esc(t('bal.domain'))}</th>
+            <th class="num">${esc(t('bal.v_meas_se'))}</th>
+            <th class="num">${esc(t('bal.p_in'))} (${esc(pu)})</th>
+            <th class="num">${esc(t('bal.p_out'))} (${esc(pu)})</th>
+            <th class="num">${esc(t('bal.dp_meas'))} (${esc(pu)})</th>
+            <th class="num">${esc(t('bal.dp_se'))} (${esc(pu)})</th>
+            <th class="num">${esc(t('bal.dq_meas'))} (${esc(qu)})</th>
+            <th class="num">${esc(t('bal.meas_cnt'))}</th>
+            <th>${esc(t('bal.status'))}</th>
+            <th class="se-sticky-right">${esc(t('col.actions'))}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r) => {
+            const stCls = r.imbalanced ? 'bad' : r.low_obs ? 'warn' : 'ok';
+            const stLbl = r.imbalanced ? t('bal.st_imb') : r.low_obs ? t('bal.st_lowobs') : t('bal.st_ok');
+            const vMetric = r.domain === 'AC' ? 'uab' : 'u';
+            const qaPayload = esc(JSON.stringify({
+              device_type: r.device_type,
+              device_idx: r.idx,
+              device_name: r.name,
+              metric: vMetric,
+              unit: data.units?.u_unit || 'V',
+              meas_value: r.v_meas,
+              se_value: r.v_se,
+            }));
+            return `<tr class="${r.imbalanced ? 'row-bad' : ''}">
+              <td class="se-cell-ellipsis" title="${esc(r.name)}"><strong>${esc(r.name)}</strong> <small class="se-muted">#${r.idx}</small></td>
+              <td><span class="se-pill neutral">${esc(r.domain)}</span></td>
+              <td class="num tabular">${fmtNum(r.v_meas, 2)} / ${fmtNum(r.v_se, 2)}</td>
+              <td class="num tabular">${fmtNum(r.p_in_meas, 2)}</td>
+              <td class="num tabular">${fmtNum(r.p_out_meas, 2)}</td>
+              <td class="num tabular ${r.imbalanced ? 'cell-bad' : ''}">${fmtNum(r.dp_meas, 2)}</td>
+              <td class="num tabular">${fmtNum(r.dp_se, 3)}</td>
+              <td class="num tabular">${fmtNum(r.dq_meas, 2)}</td>
+              <td class="num tabular">${r.meas_cnt}</td>
+              <td><span class="se-pill ${stCls}">${esc(stLbl)}</span></td>
+              <td class="se-sticky-right">
+                <button type="button" class="se-btn mini" data-locate-dev="${esc(r.dev_id)}">${esc(t('action.locate'))}</button>
+                <button type="button" class="se-btn mini" data-qa-mode="pseudo" data-qa="${qaPayload}">${esc(t('action.pseudo'))}</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  /* ==================== 5. 算法参数 (pas_se_para) + 量测权重 + 试算对比 ==================== */
   async function loadParamsTab() {
+    const isWeights = appState.paramsSubTab === 'weights';
+    const form = document.getElementById('se-params-form');
+    const wtWrap = document.getElementById('weights-table-wrap');
+    const wtTools = document.getElementById('weights-toolbar-right');
+    if (form) form.hidden = isWeights;
+    if (wtWrap) wtWrap.hidden = !isWeights;
+    if (wtTools) wtTools.hidden = !isWeights;
+    document.querySelectorAll('#params-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.psub === appState.paramsSubTab));
+    if (isWeights) {
+      await loadWeightsTab();
+      return;
+    }
+
     const params = await api('/api/se/params');
     appState.params = params;
     document.getElementById('params-updated-at').textContent = params.updated_at ? fmtTime(params.updated_at) : '—';
-    const form = document.getElementById('se-params-form');
     let html = '';
     PARAM_SCHEMA.forEach((grp) => {
       html += `<div class="se-param-group-title">${esc(t(grp.group))}</div>`;
@@ -1749,6 +2163,141 @@
     appState.params = await api('/api/se/params', payload);
     notify(t('params.saved'));
     await loadParamsTab();
+  }
+
+  async function saveAndTrialParams() {
+    const btn = document.getElementById('btn-params-trial');
+    const bar = document.getElementById('params-trial-bar');
+    if (btn) btn.disabled = true;
+    try {
+      const beforeOv = await api('/api/se/overview');
+      const before = beforeOv?.latest || null;
+      await saveParams();
+      notify(t('params.trial_running'));
+      await api('/api/actions/trigger', { task: 'se' });
+      const afterOv = await api('/api/se/overview');
+      const after = afterOv?.latest || null;
+      appState.overview = afterOv;
+      if (bar && after) {
+        const bIter = before?.iterations ?? '—';
+        const bPass = before?.pass_rate != null ? `${(before.pass_rate * 100).toFixed(2)}%` : '—';
+        const aPass = after.pass_rate != null ? `${(after.pass_rate * 100).toFixed(2)}%` : '—';
+        const bBad = before?.bad_data_count ?? '—';
+        const bObj = before?.objective != null ? fmtNum(before.objective, 4) : '—';
+        const bEl = before?.elapsed_seconds != null ? `${Number(before.elapsed_seconds).toFixed(3)}s` : '—';
+        bar.innerHTML = `
+          <strong class="tag">${esc(t('trial.title'))}</strong>
+          <span class="tabular">${esc(t('trial.iters'))}: ${bIter} → <b>${after.iterations}</b></span>
+          <span class="tabular">${esc(t('trial.pass'))}: ${bPass} → <b>${aPass}</b></span>
+          <span class="tabular">${esc(t('trial.bad'))}: ${bBad} → <b>${after.bad_data_count}</b></span>
+          <span class="tabular">${esc(t('trial.obj'))}: ${bObj} → <b>${fmtNum(after.objective, 4)}</b></span>
+          <span class="tabular">${esc(t('trial.elapsed'))}: ${bEl} → <b>${Number(after.elapsed_seconds || 0).toFixed(3)}s</b></span>
+          <button type="button" class="se-btn mini" id="btn-trial-close">×</button>`;
+        bar.hidden = false;
+        document.getElementById('btn-trial-close')?.addEventListener('click', () => { bar.hidden = true; });
+      }
+      notify(t('notice.se_done', { id: after?.run_id || '' }));
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function ensureCatalog() {
+    if (!appState.catalog) {
+      appState.catalog = await api('/api/se/model-catalog');
+    }
+    return appState.catalog;
+  }
+
+  async function loadWeightsTab() {
+    const [cat, rows] = await Promise.all([
+      ensureCatalog(),
+      api(`/api/se/weights?device_type=${encodeURIComponent(appState.weights.type)}&q=${encodeURIComponent(appState.weights.q)}`),
+    ]);
+    appState.weights.rows = rows || [];
+    const typeFilter = document.getElementById('wt-type-filter');
+    if (typeFilter) {
+      const types = Object.keys(cat.solver_metrics || {});
+      typeFilter.innerHTML = `<option value="">${esc(t('devtype.all'))}</option>` + types.map((dt) => `<option value="${esc(dt)}">${esc(devTypeLabel(dt))}</option>`).join('');
+      typeFilter.value = appState.weights.type;
+    }
+    const wrap = document.getElementById('weights-table-wrap');
+    if (!wrap) return;
+    if (!appState.weights.rows.length) {
+      wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="se-data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>${esc(t('wt.scope'))}</th>
+            <th>${esc(t('wt.dev_type'))}</th>
+            <th>${esc(t('wt.dev_name'))}</th>
+            <th>${esc(t('wt.metric'))}</th>
+            <th class="num">${esc(t('qa.weight'))}</th>
+            <th>${esc(t('wt.status'))}</th>
+            <th>${esc(t('qa.note'))}</th>
+            <th class="se-sticky-right">${esc(t('col.actions'))}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${appState.weights.rows.map((r) => `
+            <tr>
+              <td class="tabular">${r.id}</td>
+              <td><span class="se-pill neutral">${esc(t(r.scope === 'device' ? 'wt.scope_dev' : 'wt.scope_type'))}</span></td>
+              <td>${esc(devTypeLabel(r.device_type))}</td>
+              <td><strong>${esc(r.device_name)}</strong></td>
+              <td class="tabular">${esc(r.metric)}</td>
+              <td class="num tabular"><strong>${esc(r.weight)}</strong></td>
+              <td><span class="se-pill ${r.enabled ? 'ok' : 'neutral'}">${esc(t(r.enabled ? 'bool.on' : 'bool.off'))}</span></td>
+              <td class="se-cell-ellipsis" title="${esc(r.note)}">${esc(r.note || '—')}</td>
+              <td class="se-sticky-right">
+                <button type="button" class="se-btn mini" data-wt-act="edit" data-wt-id="${r.id}">${esc(t('action.edit'))}</button>
+                <button type="button" class="se-btn mini" data-wt-act="toggle" data-wt-id="${r.id}">${esc(t(r.enabled ? 'bool.off' : 'bool.on'))}</button>
+                <button type="button" class="se-btn mini danger-ghost" data-wt-act="del" data-wt-id="${r.id}">${esc(t('action.delete'))}</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function openWeightDialog(rule) {
+    const dlg = document.getElementById('weight-dialog');
+    if (!dlg) return;
+    const cat = await ensureCatalog();
+    const dtSel = document.getElementById('fw-dev-type');
+    const types = Object.keys(cat.solver_metrics || {});
+    dtSel.innerHTML = types.map((dt) => `<option value="${esc(dt)}">${esc(devTypeLabel(dt))}</option>`).join('');
+
+    const syncWeightForm = (selectedDev, selectedMetric) => {
+      const scope = document.getElementById('fw-scope').value;
+      const dt = dtSel.value;
+      document.getElementById('fw-dev-row').hidden = scope !== 'device';
+      const devSel = document.getElementById('fw-dev-name');
+      const devs = (cat.devices || {})[dt] || [];
+      devSel.innerHTML = devs.map((d) => `<option value="${esc(d.name)}" data-idx="${d.idx}">${esc(d.name)} (#${d.idx})</option>`).join('');
+      if (selectedDev) devSel.value = selectedDev;
+      const mSel = document.getElementById('fw-metric');
+      const metrics = Object.keys((cat.solver_metrics || {})[dt] || {});
+      mSel.innerHTML = metrics.map((mk) => `<option value="${esc(mk)}">${esc(mk)}</option>`).join('');
+      if (selectedMetric) mSel.value = selectedMetric;
+    };
+
+    document.getElementById('fw-id').value = rule?.id || '';
+    document.getElementById('fw-scope').value = rule?.scope || 'device_type';
+    dtSel.value = rule?.device_type || types[0] || 'ACNode';
+    document.getElementById('fw-weight').value = rule?.weight ?? 1;
+    document.getElementById('fw-enabled').value = String(rule?.enabled ?? 1);
+    document.getElementById('fw-note').value = rule?.note || '';
+    syncWeightForm(rule?.device_name, rule?.metric);
+
+    document.getElementById('fw-scope').onchange = () => syncWeightForm();
+    dtSel.onchange = () => syncWeightForm();
+    dlg.showModal();
   }
 
   /* ==================== 6. 运行与调度 ==================== */
@@ -1855,17 +2404,52 @@
     await switchView('curves');
   }
 
+  function populateRunSelect() {
+    const sel = document.getElementById('se-run-select');
+    if (!sel) return;
+    const runs = appState.convergedRuns || [];
+    const opts = [`<option value="">${esc(t('snap.latest'))}</option>`];
+    runs.forEach((r) => {
+      const ts = fmtTime(r.calc_time || r.started_at).slice(5);
+      const pr = r.pass_rate != null ? `${(Number(r.pass_rate) * 100).toFixed(2)}%` : '—';
+      const bad = r.bad_data_count != null ? ` · B${r.bad_data_count}` : '';
+      opts.push(`<option value="${r.run_id}">${esc(t('snap.history'))} #${r.run_id} · ${esc(ts)} · ${pr}${bad}</option>`);
+    });
+    sel.innerHTML = opts.join('');
+    sel.value = appState.selectedRunId || '';
+    sel.classList.toggle('is-history', Boolean(appState.selectedRunId));
+  }
+
   async function refreshAll() {
     try {
-      const tasks = [api('/api/se/overview')];
-      if (appState.view === 'topology') tasks.push(api('/api/se/topology-values'));
-      const [overview, topology] = await Promise.all(tasks);
+      const qp = new URLSearchParams(window.location.search);
+      if (!appState._urlInitDone) {
+        appState._urlInitDone = true;
+        if (appState.view === 'measurements' && qp.get('sub') === 'balance') {
+          appState.meas.subTab = 'balance';
+        }
+        if ((appState.view === 'topology' || appState.view === 'measurements') && qp.get('run_id')) {
+          appState.selectedRunId = qp.get('run_id');
+        }
+      }
+      const needRuns = appState.view === 'topology' || appState.view === 'measurements';
+      const topoUrl = appState.selectedRunId
+        ? `/api/se/topology-values?run_id=${encodeURIComponent(appState.selectedRunId)}`
+        : '/api/se/topology-values';
+      const [overview, topology, converged] = await Promise.all([
+        api('/api/se/overview'),
+        appState.view === 'topology' ? api(topoUrl) : Promise.resolve(null),
+        needRuns ? api('/api/se/runs/converged?limit=30').catch(() => []) : Promise.resolve(null),
+      ]);
       appState.overview = overview;
+      if (Array.isArray(converged)) {
+        appState.convergedRuns = converged;
+        populateRunSelect();
+      }
       if (topology) {
         appState.topology = topology;
         // 支持跨页通过 ?dev_id=... 或 ?device_type=...&device_name=... 跳转定位
         if (!appState.selectedDevId) {
-          const qp = new URLSearchParams(window.location.search);
           const qDevId = qp.get('dev_id');
           const qType = qp.get('device_type');
           const qName = qp.get('device_name');
@@ -1884,7 +2468,6 @@
         }
       }
       if (appState.view === 'curves' && !appState.curves.selectedPoint) {
-        const qp = new URLSearchParams(window.location.search);
         const dt = qp.get('device_type');
         const dn = qp.get('device_name');
         const mt = qp.get('meas_type');
@@ -1944,9 +2527,34 @@
       localStorage.setItem('pas_se_lang', appState.lang);
       applyI18n();
       renderOverviewKPIs();
+      populateRunSelect();
       if (appState.view === 'topology') populateDeviceJumpSelect();
       await switchView(appState.view);
       await pollServiceStatus();
+    });
+
+    // 历史收敛断面选择器（潮流图 / 全量测分析）
+    on('se-run-select', 'change', async (e) => {
+      appState.selectedRunId = e.target.value || '';
+      e.target.classList.toggle('is-history', Boolean(appState.selectedRunId));
+      appState.meas.selected.clear();
+      appState.meas.page = 0;
+      if (appState.view === 'topology') {
+        try {
+          const url = appState.selectedRunId
+            ? `/api/se/topology-values?run_id=${encodeURIComponent(appState.selectedRunId)}`
+            : '/api/se/topology-values';
+          appState.topology = await api(url);
+          populateDeviceJumpSelect();
+          renderSvgBindings();
+          renderTopoBadPanel();
+          selectTopologyDevice(appState.selectedDevId);
+        } catch (err) {
+          notify(err.message, true);
+        }
+      } else if (appState.view === 'measurements') {
+        await loadMeasurementsTab();
+      }
     });
 
     on('theme-select', 'change', (e) => {
@@ -2061,7 +2669,28 @@
       exportCsv(`se-dev-${d.device_type}.csv`, cols, d.rows.map((r) => cols.map((c) => r[c] ?? '')));
     });
 
-    // 量测明细控件（防抖 + 方向切换 + 大残差筛选 + 后端全量导出）
+    // 量测明细子标签、筛选、排序、批量操作与后端全量导出
+    on('meas-subtab-seg', 'click', (e) => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      appState.meas.subTab = btn.dataset.msub || 'list';
+      loadMeasurementsTab();
+    });
+    on('bal-domain-filter', 'change', (e) => {
+      appState.balance.domain = e.target.value;
+      renderBalanceTable();
+    });
+    on('btn-bal-only-imb', 'click', (e) => {
+      appState.balance.onlyImb = !appState.balance.onlyImb;
+      e.currentTarget.classList.toggle('active', appState.balance.onlyImb);
+      renderBalanceTable();
+    });
+    let balSearchTimer;
+    on('bal-search-input', 'input', (e) => {
+      appState.balance.q = e.target.value;
+      clearTimeout(balSearchTimer);
+      balSearchTimer = setTimeout(() => renderBalanceTable(), 200);
+    });
     on('meas-source-seg', 'click', (e) => {
       const btn = e.target.closest('.seg');
       if (!btn) return;
@@ -2098,6 +2727,80 @@
       clearTimeout(measSearchTimer);
       measSearchTimer = setTimeout(() => loadMeasurementsTab(), 200);
     });
+    on('meas-table-wrap', 'change', (e) => {
+      if (e.target.id === 'meas-check-all') {
+        const checked = e.target.checked;
+        document.querySelectorAll('#meas-table-wrap .meas-row-chk').forEach((chk) => {
+          chk.checked = checked;
+          const key = chk.dataset.rowKey;
+          if (checked) {
+            try { appState.meas.selected.set(key, JSON.parse(chk.dataset.qa || '{}')); } catch (_) {}
+          } else {
+            appState.meas.selected.delete(key);
+          }
+        });
+        syncMeasBatchBar();
+      } else if (e.target.classList.contains('meas-row-chk')) {
+        const key = e.target.dataset.rowKey;
+        if (e.target.checked) {
+          try { appState.meas.selected.set(key, JSON.parse(e.target.dataset.qa || '{}')); } catch (_) {}
+        } else {
+          appState.meas.selected.delete(key);
+        }
+        const allChks = [...document.querySelectorAll('#meas-table-wrap .meas-row-chk')];
+        const allEl = document.getElementById('meas-check-all');
+        if (allEl) allEl.checked = allChks.length > 0 && allChks.every((c) => c.checked);
+        syncMeasBatchBar();
+      }
+    });
+    on('btn-batch-clear', 'click', () => {
+      appState.meas.selected.clear();
+      document.querySelectorAll('#meas-table-wrap .meas-row-chk, #meas-check-all').forEach((c) => { c.checked = false; });
+      syncMeasBatchBar();
+    });
+    on('btn-batch-suppress', 'click', async () => {
+      const items = [...appState.meas.selected.values()].map((it) => ({
+        device_type: it.device_type,
+        device_idx: it.device_idx,
+        device_name: it.device_name,
+        metric: it.metric,
+        action: 'suppress',
+        enabled: 1,
+        note: 'batch suppress',
+      }));
+      if (!items.length) return;
+      try {
+        const res = await api('/api/se/bad/policies/batch', { items });
+        appState.meas.selected.clear();
+        syncMeasBatchBar();
+        notify(t('batch.done', { n: Array.isArray(res) ? res.length : (res?.saved ?? items.length) }));
+        await loadMeasurementsTab();
+      } catch (err) {
+        notify(err.message, true);
+      }
+    });
+    on('btn-batch-prefilter', 'click', async () => {
+      const items = [...appState.meas.selected.values()].map((it) => ({
+        scope: 'device',
+        device_type: it.device_type,
+        device_idx: it.device_idx,
+        device_name: it.device_name,
+        metric: it.metric,
+        rule_type: 'force_filter',
+        enabled: 1,
+        note: 'batch prefilter',
+      }));
+      if (!items.length) return;
+      try {
+        const res = await api('/api/se/prefilter/rules/batch', { items });
+        appState.meas.selected.clear();
+        syncMeasBatchBar();
+        notify(t('batch.done', { n: Array.isArray(res) ? res.length : (res?.saved ?? items.length) }));
+        await loadMeasurementsTab();
+      } catch (err) {
+        notify(err.message, true);
+      }
+    });
     on('btn-export-meas', 'click', () => {
       const m = appState.meas;
       const qs = new URLSearchParams({
@@ -2108,15 +2811,90 @@
         direction: m.direction,
         high_residual_only: m.highResOnly ? '1' : '0',
       });
+      if (appState.selectedRunId) qs.set('run_id', appState.selectedRunId);
       window.location.href = `/api/se/measurements/export?${qs.toString()}`;
+    });
+
+    // 页内就地处置模态框（屏蔽 / 预过滤 / 伪量测 / 权重）
+    const qaDialog = document.getElementById('quick-action-dialog');
+    on('btn-qa-cancel', 'click', () => qaDialog?.close());
+    on('qa-form', 'submit', async (e) => {
+      e.preventDefault();
+      const mode = document.getElementById('qa-mode').value;
+      const device_type = document.getElementById('qa-dev-type').value;
+      const idxRaw = document.getElementById('qa-dev-idx').value;
+      const device_idx = idxRaw !== '' ? Number(idxRaw) : null;
+      const device_name = document.getElementById('qa-dev-name').value;
+      const metric = document.getElementById('qa-metric').value;
+      const unit = document.getElementById('qa-unit').value;
+      const note = document.getElementById('qa-note').value.trim();
+      try {
+        if (mode === 'suppress') {
+          await api('/api/se/bad/policies', {
+            device_type,
+            device_idx,
+            device_name,
+            metric,
+            action: 'suppress',
+            enabled: 1,
+            note,
+          });
+        } else if (mode === 'prefilter') {
+          const minRaw = document.getElementById('qa-min').value.trim();
+          const maxRaw = document.getElementById('qa-max').value.trim();
+          const hasRange = minRaw !== '' || maxRaw !== '';
+          await api('/api/se/prefilter/rules', {
+            scope: 'device',
+            device_type,
+            device_idx,
+            device_name,
+            metric,
+            rule_type: hasRange ? 'range' : 'force_filter',
+            min_value: minRaw !== '' ? Number(minRaw) : null,
+            max_value: maxRaw !== '' ? Number(maxRaw) : null,
+            enabled: 1,
+            note,
+          });
+        } else if (mode === 'pseudo') {
+          await api('/api/se/pseudo/meas', {
+            device_type,
+            device_idx,
+            device_name,
+            metric,
+            unit,
+            meas_value: Number(document.getElementById('qa-val').value),
+            meas_weight: Number(document.getElementById('qa-weight').value || 0.0001),
+            enabled: 1,
+            note,
+          });
+        } else if (mode === 'weight') {
+          await api('/api/se/weights', {
+            scope: 'device',
+            device_type,
+            device_idx,
+            device_name,
+            metric,
+            weight: Number(document.getElementById('qa-weight').value || 1),
+            enabled: 1,
+            note,
+          });
+        }
+        qaDialog?.close();
+        notify(t('qa.saved'));
+      } catch (err) {
+        notify(err.message, true);
+      }
     });
 
     // 快捷键：'/' 聚焦搜索框，'Esc' 清空当前搜索框
     document.addEventListener('keydown', (e) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase();
       if (e.key === '/' && tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
-        const box = document.getElementById('meas-search-input') || document.getElementById('dev-search-input');
-        if (box) {
+        const box = (appState.meas.subTab === 'balance' ? document.getElementById('bal-search-input') : null)
+          || document.getElementById('meas-search-input')
+          || document.getElementById('dev-search-input')
+          || document.getElementById('wt-search-input');
+        if (box && !box.hidden) {
           e.preventDefault();
           box.focus();
           box.select();
@@ -2127,25 +2905,135 @@
       }
     });
 
-    // 算法参数保存与高危重置模态确认
+    // 通用高危模态确认框（统一承接参数重置与权重删除，默认聚焦取消按钮）
+    const confirmDialog = document.getElementById('confirm-dialog');
+    let pendingConfirmFn = null;
+    const openConfirmModal = ({ title, desc, okText, onConfirm }) => {
+      if (!confirmDialog) return;
+      const tEl = document.getElementById('confirm-title');
+      const dEl = document.getElementById('confirm-desc');
+      const okEl = document.getElementById('btn-confirm-ok');
+      if (tEl && title) tEl.textContent = title;
+      if (dEl && desc) dEl.textContent = desc;
+      if (okEl && okText) okEl.textContent = okText;
+      pendingConfirmFn = onConfirm;
+      confirmDialog.showModal();
+      document.getElementById('btn-confirm-cancel')?.focus();
+    };
+    on('btn-confirm-cancel', 'click', () => {
+      pendingConfirmFn = null;
+      confirmDialog?.close();
+    });
+    on('btn-confirm-ok', 'click', async () => {
+      const fn = pendingConfirmFn;
+      pendingConfirmFn = null;
+      confirmDialog?.close();
+      if (typeof fn === 'function') await fn();
+    });
+
+    // 算法参数保存、试算对比、重置与量测权重子标签
+    on('params-subtab-seg', 'click', (e) => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      appState.paramsSubTab = btn.dataset.psub || 'para';
+      loadParamsTab();
+    });
     on('btn-params-save', 'click', async () => {
       try { await saveParams(); } catch (err) { notify(err.message, true); }
     });
-    const confirmDialog = document.getElementById('confirm-dialog');
+    on('btn-params-trial', 'click', saveAndTrialParams);
     on('btn-params-reset', 'click', () => {
-      if (!confirmDialog) return;
-      confirmDialog.showModal();
-      document.getElementById('btn-confirm-cancel')?.focus();
+      openConfirmModal({
+        title: t('modal.reset_title'),
+        desc: t('modal.reset_desc'),
+        okText: t('action.confirm_reset'),
+        onConfirm: async () => {
+          try {
+            await api('/api/se/params/reset', { action: 'reset' });
+            notify(t('params.reset_done'));
+            await loadParamsTab();
+          } catch (err) {
+            notify(err.message, true);
+          }
+        },
+      });
     });
-    on('btn-confirm-cancel', 'click', () => confirmDialog?.close());
-    on('btn-confirm-ok', 'click', async () => {
-      confirmDialog?.close();
+
+    // 量测权重工具栏、表格委派与编辑弹窗
+    on('wt-type-filter', 'change', (e) => {
+      appState.weights.type = e.target.value;
+      loadWeightsTab();
+    });
+    let wtSearchTimer;
+    on('wt-search-input', 'input', (e) => {
+      appState.weights.q = e.target.value;
+      clearTimeout(wtSearchTimer);
+      wtSearchTimer = setTimeout(() => loadWeightsTab(), 200);
+    });
+    on('btn-add-weight', 'click', () => openWeightDialog(null));
+    const wtDialog = document.getElementById('weight-dialog');
+    on('btn-wt-cancel', 'click', () => wtDialog?.close());
+    on('weight-form', 'submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('fw-id').value;
+      const scope = document.getElementById('fw-scope').value;
+      const devSel = document.getElementById('fw-dev-name');
+      const opt = devSel?.selectedOptions?.[0];
+      const payload = {
+        scope,
+        device_type: document.getElementById('fw-dev-type').value,
+        device_name: scope === 'device' ? (devSel?.value || '') : '*',
+        device_idx: scope === 'device' && opt?.dataset?.idx ? Number(opt.dataset.idx) : null,
+        metric: document.getElementById('fw-metric').value,
+        weight: Number(document.getElementById('fw-weight').value),
+        enabled: Number(document.getElementById('fw-enabled').value),
+        note: document.getElementById('fw-note').value.trim(),
+      };
       try {
-        await api('/api/se/params/reset', { action: 'reset' });
-        notify(t('params.reset_done'));
-        await loadParamsTab();
+        if (id) {
+          await api(`/api/se/weights/${id}`, payload, 'PUT');
+        } else {
+          await api('/api/se/weights', payload, 'POST');
+        }
+        wtDialog?.close();
+        notify(t('wt.saved'));
+        await loadWeightsTab();
       } catch (err) {
         notify(err.message, true);
+      }
+    });
+    on('weights-table-wrap', 'click', async (e) => {
+      const btn = e.target.closest('[data-wt-act]');
+      if (!btn) return;
+      const act = btn.dataset.wtAct;
+      const wid = Number(btn.dataset.wtId);
+      const row = appState.weights.rows.find((r) => Number(r.id) === wid);
+      if (!row) return;
+      if (act === 'edit') {
+        await openWeightDialog(row);
+      } else if (act === 'toggle') {
+        try {
+          await api(`/api/se/weights/${wid}`, { ...row, enabled: row.enabled ? 0 : 1 }, 'PUT');
+          notify(t('wt.saved'));
+          await loadWeightsTab();
+        } catch (err) {
+          notify(err.message, true);
+        }
+      } else if (act === 'del') {
+        openConfirmModal({
+          title: t('wt.dlg_title'),
+          desc: `${t('wt.del_confirm')} (${row.device_type}.${row.device_name}.${row.metric})`,
+          okText: t('action.delete'),
+          onConfirm: async () => {
+            try {
+              await api(`/api/se/weights/${wid}`, null, 'DELETE');
+              notify(t('wt.deleted'));
+              await loadWeightsTab();
+            } catch (err) {
+              notify(err.message, true);
+            }
+          },
+        });
       }
     });
 
@@ -2171,8 +3059,38 @@
       try { await api('/api/actions/daemon/stop', {}); await pollServiceStatus(); } catch (err) { notify(err.message, true); }
     });
 
-    // 全局委派点击（坏数据定位、跨页曲线跳转、分页）
+    // 全局委派点击（坏数据定位、就地处置、强合/强分、跨页曲线跳转、分页）
     document.addEventListener('click', async (e) => {
+      const qaBtn = e.target.closest('[data-qa-mode]');
+      if (qaBtn) {
+        try {
+          const item = JSON.parse(qaBtn.dataset.qa || '{}');
+          openQuickActionDialog(qaBtn.dataset.qaMode, item);
+        } catch (err) {
+          notify(err.message, true);
+        }
+        return;
+      }
+      const statBtn = e.target.closest('[data-force-stat]');
+      if (statBtn) {
+        const [dt, idxStr, dn, valStr] = (statBtn.dataset.forceStat || '').split('|');
+        if (dt && dn) {
+          try {
+            await api('/api/se/pseudo/stat', {
+              device_type: dt,
+              device_idx: idxStr !== '' ? Number(idxStr) : null,
+              device_name: dn,
+              stat_value: Number(valStr),
+              enabled: 1,
+              note: 'flow quick force',
+            });
+            notify(t('qa.saved'));
+          } catch (err) {
+            notify(err.message, true);
+          }
+        }
+        return;
+      }
       const focusBtn = e.target.closest('[data-focus-dev]');
       if (focusBtn) {
         const devId = focusBtn.dataset.focusDev;

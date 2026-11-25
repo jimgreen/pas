@@ -617,3 +617,140 @@ def test_se_optimizations_regressions(tmp_path: Path) -> None:
         assert "databases" in h_lite["data"]
     finally:
         repo.close()
+
+
+def test_se_interactive_enhancements_weights_balance_batch_and_replay(tmp_path: Path) -> None:
+    """验证三批交互升级：量测权重规则与求解器注入、批量处置、母线 KCL 平衡及历史收敛断面回放。"""
+    app, repo = _make_dummy_app(tmp_path)
+    try:
+        # 1. 量测权重规则 CRUD（设备类 + 单设备优先级）及 measurement_input 注入验证
+        w_type = app.api_post(
+            "/api/se/weights",
+            {"scope": "device_type", "device_type": "ACNode", "metric": "uab", "weight": 0.25, "enabled": 1, "note": "type rule"},
+        )
+        assert w_type["ok"] is True
+        w_dev = app.api_post(
+            "/api/se/weights",
+            {"scope": "device", "device_type": "ACNode", "device_idx": 1, "device_name": "Bus1", "metric": "uab", "weight": 2.5, "enabled": 1, "note": "dev rule"},
+        )
+        assert w_dev["ok"] is True
+        wid = w_dev["data"]["id"]
+
+        listed = app.api_get("/api/se/weights?device_type=ACNode")
+        assert listed["ok"] is True and len(listed["data"]) == 2
+
+        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_wt.sqlite3")
+        with sqlite3.connect(scada_db) as sc_conn:
+            sc_conn.execute("UPDATE ACNode SET uab = 379.0, uab_qual = 0 WHERE idx = 2")
+            sc_conn.commit()
+        model = {
+            "Model": [{"u_unit": "V", "p_unit": "kW", "i_unit": "A"}],
+            "ACNode": [{"idx": 1, "name": "Bus1"}, {"idx": 2, "name": "Bus2"}],
+            "ACBreak": [{"idx": 1, "name": "Brk1", "status": 1}],
+        }
+        task = SimpleNamespace(measurement_file=scada_db, model_file=None, point_catalog_file=None)
+        w_rules = repo.se_weight_rules(enabled_only=True)
+        with measurement_input(task, model, scada_snapshot=True, weight_rules=w_rules) as (meas_path, _meta):
+            lines = [ln for ln in meas_path.read_text(encoding="utf-8").splitlines() if ln.startswith("# ")]
+            bus1_line = next(ln for ln in lines if "Bus1" in ln)
+            bus2_line = next(ln for ln in lines if "Bus2" in ln)
+            assert " 2.5 " in bus1_line
+            assert " 0.25 " in bus2_line
+
+        upd = app.api_put(
+            f"/api/se/weights/{wid}",
+            {"scope": "device", "device_type": "ACNode", "device_idx": 1, "device_name": "Bus1", "metric": "uab", "weight": 5.0, "enabled": 1},
+        )
+        assert upd["ok"] is True and upd["data"]["weight"] == 5.0
+        assert app.api_delete(f"/api/se/weights/{wid}")["data"]["deleted"] is True
+
+        # 2. 批量屏蔽与批量预过滤 API
+        b_pol = app.api_post(
+            "/api/se/bad/policies/batch",
+            {
+                "items": [
+                    {"device_type": "ACNode", "device_name": "Bus1", "metric": "uab", "action": "suppress", "enabled": 1},
+                    {"device_type": "ACNode", "device_name": "Bus2", "metric": "uab", "action": "suppress", "enabled": 1},
+                ]
+            },
+        )
+        assert b_pol["ok"] is True and len(b_pol["data"]) == 2
+        b_pf = app.api_post(
+            "/api/se/prefilter/rules/batch",
+            {
+                "items": [
+                    {"scope": "device", "device_type": "ACNode", "device_name": "Bus1", "metric": "uab", "rule_type": "force_filter", "enabled": 1},
+                    {"scope": "device", "device_type": "ACNode", "device_name": "Bus2", "metric": "uab", "rule_type": "force_filter", "enabled": 1},
+                ]
+            },
+        )
+        assert b_pf["ok"] is True and len(b_pf["data"]) == 2
+
+        # 3. 构造两次历史收敛断面并验证 /api/se/runs/converged、历史断面回放、历史导出与 /api/se/balance
+        sid = repo.upsert_schedule("se", True, 60, {})
+        run1 = repo.start_run(sid, "se", "2026-11-26T00:00:00Z", "k", "fp1", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run1,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 2,
+                    "measurements": [
+                        {
+                            "idx": 1, "name": "ACNode.1.uab", "device_type": "ACNode", "device_idx": 1,
+                            "device_name": "Bus1", "metric": "uab", "meas_type": "V", "unit": "V",
+                            "value": 381.0, "estimated_value": 380.2, "residual": 0.8,
+                            "normalized_residual": 0.5, "valid": True, "source": "normal",
+                        }
+                    ],
+                    "device_tables": {"ACNode": [{"idx": 1, "name": "Bus1", "uab_meas": 381.0, "uab_se": 380.2}]},
+                    "se_statistics": {"meas_count": 1, "valid_meas_count": 1, "good_meas_count": 1, "pass_rate": 1.0},
+                },
+            )
+        repo.finish_run(run1, "succeeded", "2026-11-26T00:00:01Z", 1.0, 0)
+
+        run2 = repo.start_run(sid, "se", "2026-11-26T00:05:00Z", "k", "fp2", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run2,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 3,
+                    "measurements": [
+                        {
+                            "idx": 1, "name": "ACNode.1.uab", "device_type": "ACNode", "device_idx": 1,
+                            "device_name": "Bus1", "metric": "uab", "meas_type": "V", "unit": "V",
+                            "value": 399.0, "estimated_value": 380.0, "residual": 19.0,
+                            "normalized_residual": 3.5, "valid": True, "source": "normal", "is_bad_data": True,
+                        }
+                    ],
+                    "device_tables": {"ACNode": [{"idx": 1, "name": "Bus1", "uab_meas": 399.0, "uab_se": 380.0}]},
+                    "se_statistics": {"meas_count": 1, "valid_meas_count": 1, "good_meas_count": 0, "bad_data_count": 1, "pass_rate": 0.0},
+                },
+            )
+        repo.finish_run(run2, "succeeded", "2026-11-26T00:05:01Z", 1.0, 0)
+
+        conv = app.api_get("/api/se/runs/converged?limit=10")
+        assert conv["ok"] is True
+        assert [r["run_id"] for r in conv["data"][:2]] == [run2, run1]
+
+        hist_meas = app.api_get(f"/api/se/measurements?run_id={run1}")
+        assert hist_meas["ok"] is True
+        assert hist_meas["data"]["meta"]["run_id"] == run1
+        assert hist_meas["data"]["rows"][0]["meas_value"] == 381.0
+
+        hist_csv = repo.se_measurements_export_csv(run_id=run1).decode("utf-8-sig")
+        assert "381.0" in hist_csv and "399.0" not in hist_csv
+
+        hist_topo = app.api_get(f"/api/se/topology-values?run_id={run1}")
+        assert hist_topo["ok"] is True
+        assert hist_topo["data"]["run_id"] == run1
+        assert hist_topo["data"]["is_history"] is True
+
+        bal = app.api_get("/api/se/balance")
+        assert bal["ok"] is True
+        assert "summary" in bal["data"] and "rows" in bal["data"]
+    finally:
+        repo.close()

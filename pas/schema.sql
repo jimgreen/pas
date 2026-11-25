@@ -2034,3 +2034,19 @@ CREATE TABLE IF NOT EXISTS se_prefilter_result (
     reason TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_se_prefilter_result_origin ON se_prefilter_result(origin, device_type);
+
+-- 状态估计量测权重覆盖规则表（单设备优先，设备类次之，求解输入时动态覆盖默认权重）
+CREATE TABLE IF NOT EXISTS se_weight_rule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL DEFAULT 'device_type',
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL DEFAULT '*',
+    metric TEXT NOT NULL,
+    weight REAL NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(scope, device_type, device_name, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_se_weight_rule_lookup ON se_weight_rule(enabled, device_type, metric);

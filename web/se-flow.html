@@ -60,7 +60,8 @@
             <h1 data-i18n="title.flow">潮流图</h1>
             <span id="se-conv-pill" class="se-pill neutral">—</span>
             <span id="se-bad-pill" class="se-pill ok" hidden></span>
-            <span id="se-run-meta" class="se-run-meta tabular">—</span>
+            <select id="se-run-select" class="se-select compact tabular" aria-label="Snapshot"></select>
+            <span id="se-run-meta" class="se-run-meta tabular" hidden>—</span>
           </div>
         </div>
         <div class="se-top-actions">
@@ -165,6 +166,47 @@
       </div>
     </main>
   </div>
+
+  <!-- 潮流图就地处置模态框（屏蔽 / 预过滤 / 伪量测 / 权重） -->
+  <dialog id="quick-action-dialog" class="se-modal wide" aria-labelledby="qa-title">
+    <h3 id="qa-title">—</h3>
+    <form id="qa-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" name="mode" id="qa-mode">
+      <input type="hidden" name="device_type" id="qa-dev-type">
+      <input type="hidden" name="device_idx" id="qa-dev-idx">
+      <input type="hidden" name="device_name" id="qa-dev-name">
+      <input type="hidden" name="metric" id="qa-metric">
+      <input type="hidden" name="unit" id="qa-unit">
+      <div class="se-field full">
+        <span data-i18n="qa.target">目标量测</span>
+        <input id="qa-target-display" class="tabular" type="text" readonly>
+      </div>
+      <label class="se-field" id="qa-f-min" hidden>
+        <span data-i18n="qa.min_val">下限 min</span>
+        <input id="qa-min" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-max" hidden>
+        <span data-i18n="qa.max_val">上限 max</span>
+        <input id="qa-max" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-val" hidden>
+        <span data-i18n="qa.pseudo_val">伪量测值</span>
+        <input id="qa-val" class="tabular" type="number" step="any">
+      </label>
+      <label class="se-field" id="qa-f-weight" hidden>
+        <span data-i18n="qa.weight">权重</span>
+        <input id="qa-weight" class="tabular" type="number" step="any" min="1e-9" max="1e9">
+      </label>
+      <label class="se-field full">
+        <span data-i18n="qa.note">备注 / 原因</span>
+        <input id="qa-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-qa-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" id="btn-qa-save" data-i18n="qa.submit">保存并生效</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/assets/se-dashboard.js"></script>
 </body>

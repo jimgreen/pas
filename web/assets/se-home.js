@@ -85,6 +85,10 @@
       'lg.yest': '对比日合格率',
       'msg.daemon_on': '周期调度已启动',
       'msg.daemon_off': '周期调度已暂停',
+      'action.auto_on': '自动刷新: 开',
+      'action.auto_off': '自动刷新: 关',
+      'chart.click_log': '点击查看日志',
+      'chart.bad_cnt': '坏数据',
     },
     'en-US': {
       'title.home': 'State Estimation Home',
@@ -168,6 +172,10 @@
       'lg.yest': 'Compare Pass Rate',
       'msg.daemon_on': 'Periodic scheduler started',
       'msg.daemon_off': 'Periodic scheduler paused',
+      'action.auto_on': 'Auto: On',
+      'action.auto_off': 'Auto: Off',
+      'chart.click_log': 'Click to open log',
+      'chart.bad_cnt': 'Bad',
     },
     'ru-RU': {
       'title.home': 'Главный экран SE',
@@ -251,6 +259,10 @@
       'lg.yest': 'Предыдущий',
       'msg.daemon_on': 'Цикл запущен',
       'msg.daemon_off': 'Цикл остановлен',
+      'action.auto_on': 'Авто: Вкл',
+      'action.auto_off': 'Авто: Выкл',
+      'chart.click_log': 'Клик — журнал',
+      'chart.bad_cnt': 'Сбои',
     },
   };
 
@@ -324,10 +336,76 @@
                   <text x="${x.toFixed(1)}" y="${h - 6}" text-anchor="${hr === 0 ? 'start' : hr === 24 ? 'end' : 'middle'}" fill="var(--text-secondary)" font-size="10" class="tabular">${lbl}</text>`;
         }).join('')}
         ${yest.length > 1 ? `<polyline fill="none" stroke="var(--text-secondary)" stroke-width="1.5" opacity="0.8" points="${polyStr(yest)}"/>` : ''}
-        ${yest.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.2" fill="var(--text-secondary)"><title>${esc(seriesObj.compare_date)} ${p.time_hm} · ${p.pass_rate.toFixed(2)}% (#${p.run_id})</title></circle>`).join('')}
+        ${yest.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.2" fill="var(--text-secondary)"/>`).join('')}
         ${today.length > 1 ? `<polyline fill="none" stroke="var(--sem-danger)" stroke-width="2" points="${polyStr(today)}"/>` : ''}
-        ${today.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.8" fill="var(--sem-danger)"><title>${esc(seriesObj.today_date)} ${p.time_hm} · ${p.pass_rate.toFixed(2)}% (#${p.run_id})</title></circle>`).join('')}
-      </svg>`;
+        ${today.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.8" fill="var(--sem-danger)"/>`).join('')}
+        <line id="home-crosshair" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + plotH}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>
+        <circle id="home-hover-dot" cx="0" cy="0" r="4.5" fill="var(--accent)" stroke="var(--bg-surface)" stroke-width="1.5" visibility="hidden"/>
+        <rect id="home-chart-overlay" x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/>
+      </svg>
+      <div class="se-chart-tip" id="home-chart-tip" hidden></div>`;
+
+    // 绑定十字准星与点击下钻运行日志交互
+    const overlay = document.getElementById('home-chart-overlay');
+    const cross = document.getElementById('home-crosshair');
+    const dot = document.getElementById('home-hover-dot');
+    const tip = document.getElementById('home-chart-tip');
+    if (!overlay || !cross || !dot || !tip) return;
+
+    const allPts = [
+      ...today.map((p) => ({ ...p, series: 'today', date: seriesObj.today_date })),
+      ...yest.map((p) => ({ ...p, series: 'yest', date: seriesObj.compare_date })),
+    ];
+    let nearestPt = null;
+
+    overlay.addEventListener('mousemove', (e) => {
+      const rect = overlay.getBoundingClientRect();
+      const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width || 1)));
+      const targetMin = relX * 1440;
+      let best = null;
+      let bestDist = Infinity;
+      for (const p of allPts) {
+        const d = Math.abs(p.minute - targetMin);
+        if (d < bestDist) {
+          bestDist = d;
+          best = p;
+        }
+      }
+      nearestPt = best;
+      if (!best) return;
+      const sx = xOf(best.minute);
+      const sy = yOf(best.pass_rate);
+      cross.setAttribute('x1', sx.toFixed(1));
+      cross.setAttribute('x2', sx.toFixed(1));
+      cross.setAttribute('visibility', 'visible');
+      dot.setAttribute('cx', sx.toFixed(1));
+      dot.setAttribute('cy', sy.toFixed(1));
+      dot.setAttribute('visibility', 'visible');
+      const hostRect = host.getBoundingClientRect();
+      const leftPx = Math.min(hostRect.width - 175, Math.max(8, e.clientX - hostRect.left + 12));
+      const topPx = Math.max(6, Math.min(hostRect.height - 68, e.clientY - hostRect.top - 12));
+      tip.style.left = `${leftPx}px`;
+      tip.style.top = `${topPx}px`;
+      tip.innerHTML = `
+        <div class="tip-hd tabular">${esc(best.date)} ${esc(best.time_hm)} · #${best.run_id}</div>
+        <div class="tip-row"><span>${esc(best.series === 'today' ? t('lg.today') : t('lg.yest'))}</span><strong class="tabular">${best.pass_rate.toFixed(2)}%</strong></div>
+        <div class="tip-row"><span>${esc(t('chart.bad_cnt'))}</span><strong class="tabular">${best.bad_data_count}</strong></div>
+        <div class="tip-sub">${esc(t('chart.click_log'))}</div>`;
+      tip.hidden = false;
+    });
+
+    overlay.addEventListener('mouseleave', () => {
+      cross.setAttribute('visibility', 'hidden');
+      dot.setAttribute('visibility', 'hidden');
+      tip.hidden = true;
+      nearestPt = null;
+    });
+
+    overlay.addEventListener('click', () => {
+      if (nearestPt && nearestPt.run_id) {
+        window.location.href = `/se-logs.html?run_id=${encodeURIComponent(nearestPt.run_id)}`;
+      }
+    });
   }
 
   function renderHome(d) {
@@ -444,12 +522,25 @@
     }
   }
 
-  async function refreshAll() {
+  let autoRefreshOn = localStorage.getItem('pas_se_home_auto') !== '0';
+  let lastHomeSig = '';
+
+  function syncAutoBtn() {
+    const btn = document.getElementById('btn-auto-refresh');
+    if (!btn) return;
+    btn.classList.toggle('active', autoRefreshOn);
+    btn.textContent = t(autoRefreshOn ? 'action.auto_on' : 'action.auto_off');
+  }
+
+  async function refreshAll(silent = false) {
     try {
       const data = await api('/api/se/home');
+      const sig = `${data.latest?.run_id || 0}|${data.latest_log?.log_id || 0}|${data.today_stats?.today_runs || 0}|${data.schedule?.enabled ? 1 : 0}`;
+      if (silent && sig === lastHomeSig) return;
+      lastHomeSig = sig;
       renderHome(data);
     } catch (err) {
-      notify(err.message, true);
+      if (!silent) notify(err.message, true);
     }
   }
 
@@ -632,8 +723,21 @@
     applyLayout(false);
   }
 
-  common.initShell({ onRefresh: refreshAll, afterRunSE: refreshAll });
+  common.initShell({ onRefresh: () => refreshAll(false), afterRunSE: () => refreshAll(false) });
+  syncAutoBtn();
+  const btnAuto = document.getElementById('btn-auto-refresh');
+  if (btnAuto) {
+    btnAuto.addEventListener('click', () => {
+      autoRefreshOn = !autoRefreshOn;
+      localStorage.setItem('pas_se_home_auto', autoRefreshOn ? '1' : '0');
+      syncAutoBtn();
+      if (autoRefreshOn) refreshAll(true);
+    });
+  }
+  setInterval(() => {
+    if (autoRefreshOn && !document.hidden) refreshAll(true);
+  }, 10000);
   initHomeSplitters();
   bindEvents();
-  refreshAll();
+  refreshAll(false);
 })();

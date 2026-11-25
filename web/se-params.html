@@ -63,8 +63,8 @@
         </div>
         <div class="se-top-actions">
           <button type="button" class="se-btn danger-ghost" id="btn-params-reset" data-i18n="params.reset">恢复默认</button>
-          <button type="button" class="se-btn primary" id="btn-params-save" data-i18n="params.save">保存参数</button>
-          <button type="button" class="se-btn ghost" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
+          <button type="button" class="se-btn ghost" id="btn-params-save" data-i18n="params.save">保存参数</button>
+          <button type="button" class="se-btn primary" id="btn-params-trial" data-i18n="params.trial">保存并试算对比</button>
           <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
           <select id="theme-select" class="se-select compact" aria-label="Theme">
             <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
@@ -85,16 +85,75 @@
       </header>
 
       <div id="notice" class="notice" role="status" hidden></div>
+      <div id="params-trial-bar" class="se-trial-bar" hidden></div>
 
       <div class="se-workspace" id="se-workspace">
         <section class="se-panel active" data-panel="params">
           <div class="se-card se-full-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group" id="params-subtab-seg" role="tablist">
+                <button type="button" class="se-chip-btn seg active" data-psub="para" data-i18n="params.tab_para">算法参数</button>
+                <button type="button" class="se-chip-btn seg" data-psub="weights" data-i18n="params.tab_weights">量测权重</button>
+              </div>
+              <div class="se-tool-group" id="weights-toolbar-right" hidden>
+                <select id="wt-type-filter" class="se-select compact" aria-label="Device type"></select>
+                <input id="wt-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_wt" placeholder="搜索权重规则">
+                <button type="button" class="se-btn primary mini" id="btn-add-weight" data-i18n="wt.add">+ 新增权重</button>
+              </div>
+            </div>
             <form id="se-params-form" class="se-params-form"></form>
+            <div class="se-table-scroll" id="weights-table-wrap" hidden></div>
           </div>
         </section>
       </div>
     </main>
   </div>
+
+  <!-- 量测权重编辑弹窗 -->
+  <dialog id="weight-dialog" class="se-modal wide" aria-labelledby="wt-dlg-title">
+    <h3 id="wt-dlg-title" data-i18n="wt.dlg_title">量测权重规则</h3>
+    <form id="weight-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" name="id" id="fw-id">
+      <label class="se-field">
+        <span data-i18n="wt.scope">作用范围</span>
+        <select id="fw-scope">
+          <option value="device_type" data-i18n="wt.scope_type">按设备类</option>
+          <option value="device" data-i18n="wt.scope_dev">按单设备</option>
+        </select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="wt.dev_type">设备类型</span>
+        <select id="fw-dev-type"></select>
+      </label>
+      <label class="se-field" id="fw-dev-row" hidden>
+        <span data-i18n="wt.dev_name">目标设备</span>
+        <select id="fw-dev-name"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="wt.metric">指标</span>
+        <select id="fw-metric"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="qa.weight">权重</span>
+        <input id="fw-weight" class="tabular" type="number" step="any" min="1e-9" max="1e9" value="1" required>
+      </label>
+      <label class="se-field">
+        <span data-i18n="wt.status">状态</span>
+        <select id="fw-enabled">
+          <option value="1" data-i18n="bool.on">开启</option>
+          <option value="0" data-i18n="bool.off">关闭</option>
+        </select>
+      </label>
+      <label class="se-field full">
+        <span data-i18n="qa.note">备注</span>
+        <input id="fw-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-wt-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" data-i18n="qa.submit">保存并生效</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- 高危操作模态确认框（重置 SE 算法参数） -->
   <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">

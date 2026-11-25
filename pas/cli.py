@@ -52,6 +52,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
         )
         bad_policies = se_repo.se_bad_policies(enabled_only=True)
         prefilter_rules = se_repo.se_prefilter_rules(enabled_only=True)
+        weight_rules = se_repo.se_weight_rules(enabled_only=True)
         pseudo_meas = se_repo.se_pseudo_meas_list(enabled_only=True)
         pseudo_stat = se_repo.se_pseudo_stat_list(enabled_only=True)
         return kernels.run_se(
@@ -60,6 +61,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             se_params=se_params,
             bad_policies=bad_policies,
             prefilter_rules=prefilter_rules,
+            weight_rules=weight_rules,
             pseudo_meas_defines=pseudo_meas,
             pseudo_stat_defines=pseudo_stat,
             stage_logger=stage_logger,
