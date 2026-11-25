@@ -2272,6 +2272,14 @@
     if (form) form.hidden = isWeights;
     if (wtWrap) wtWrap.hidden = !isWeights;
     if (wtTools) wtTools.hidden = !isWeights;
+    ['btn-params-reset', 'btn-params-save', 'btn-params-trial'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = isWeights;
+    });
+    if (isWeights) {
+      const bar = document.getElementById('params-trial-bar');
+      if (bar) bar.hidden = true;
+    }
     document.querySelectorAll('#params-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.psub === appState.paramsSubTab));
     if (isWeights) {
       await loadWeightsTab();

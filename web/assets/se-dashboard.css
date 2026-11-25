@@ -1,5 +1,10 @@
 /* 状态估计页面 Design Tokens：完整覆盖 style-presets.md 全部 8 套视觉风格预设 */
 
+/* 防止组件显式 display:flex/grid 覆盖原生 [hidden] 属性 */
+[hidden] {
+  display: none !important;
+}
+
 [data-theme="minimalist-light"] {
   --bg-canvas: #F8FAFC;
   --bg-surface: #FFFFFF;
