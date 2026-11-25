@@ -10,7 +10,8 @@
       'kpi.policies_sub': '已生效 / 总策略',
       'kpi.suspect': '可疑遥信',
       'kpi.suspect_sub': '拓扑与潮流矛盾点',
-      'kpi.abnormal': '预过滤 / 缺测',
+      'kpi.abnormal': '未参与 / 缺测',
+      'link.prefilter': '预过滤管理 →',
       'kpi.abnormal_sub': '预过滤 / 缺测与坏质量',
       'tab.current': '当前坏量测与处置',
       'tab.policies': '屏蔽与替代策略',
@@ -68,7 +69,8 @@
       'kpi.policies_sub': 'Active / Total',
       'kpi.suspect': 'Suspect Status',
       'kpi.suspect_sub': 'Topology Conflicts',
-      'kpi.abnormal': 'Prefilter / Missing',
+      'kpi.abnormal': 'Excluded / Missing',
+      'link.prefilter': 'Prefilter →',
       'kpi.abnormal_sub': 'Prefiltered / Missing',
       'tab.current': 'Current Bad Data',
       'tab.policies': 'Suppress Policies',
@@ -126,7 +128,8 @@
       'kpi.policies_sub': 'Активно / Всего',
       'kpi.suspect': 'Подозр. ТС',
       'kpi.suspect_sub': 'Конфликты топологии',
-      'kpi.abnormal': 'Фильтр / Пропуски',
+      'kpi.abnormal': 'Не учт. / Пропуски',
+      'link.prefilter': 'Предфильтр →',
       'kpi.abnormal_sub': 'Фильтр / Нет данных',
       'tab.current': 'Текущие сбои',
       'tab.policies': 'Блокировка',
@@ -294,7 +297,7 @@
                   <button type="button" class="se-btn mini" data-act="${r.ack_status === 'acked' ? 'unack' : 'ack'}" data-id="${r.id}">${esc(r.ack_status === 'acked' ? t('act.unack') : t('act.ack'))}</button>
                   <button type="button" class="se-btn mini" data-act="suppress" data-id="${r.id}">${esc(t('act.suppress'))}</button>
                   <button type="button" class="se-btn mini" data-act="to-pseudo" data-id="${r.id}">${esc(t('act.to_pseudo'))}</button>
-                  <a class="se-btn mini se-link-btn" href="/se-main.html?device_type=${encodeURIComponent(r.device_type)}&device_name=${encodeURIComponent(r.device_name)}">${esc(t('act.locate'))}</a>
+                  <a class="se-btn mini se-link-btn" href="/se-flow.html?device_type=${encodeURIComponent(r.device_type)}&device_name=${encodeURIComponent(r.device_name)}">${esc(t('act.locate'))}</a>
                 </div>
               </td>
             </tr>
@@ -526,7 +529,7 @@
     document.getElementById('kpi-pol-enabled').textContent = ov.policy_enabled;
     document.getElementById('kpi-pol-total').textContent = `/ ${ov.policy_total}`;
     document.getElementById('kpi-suspect').textContent = ov.suspect_count;
-    document.getElementById('kpi-prefilter').textContent = ov.prefiltered_count;
+    document.getElementById('kpi-notuse').textContent = ov.notuse_count;
     document.getElementById('kpi-nomeas').textContent = `/ ${ov.nomeas_count}`;
     const meta = document.getElementById('bad-run-meta');
     meta.textContent = ov.latest_run ? `Run #${ov.latest_run.run_id} · ${fmtTime(ov.latest_run.calc_time)}` : '--';

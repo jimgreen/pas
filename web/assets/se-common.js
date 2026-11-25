@@ -9,6 +9,12 @@
       'nav.analysis': '分析功能',
       'nav.se_root': '状态估计 SE',
       'nav.se_main': '状态估计主画面',
+      'nav.se_flow': '潮流图',
+      'nav.se_curves': '历史曲线',
+      'nav.se_devices': '设备对比',
+      'nav.se_measurements': '有效实测明细',
+      'nav.se_params': '算法参数',
+      'nav.se_prefilter': '预过滤量测管理',
       'nav.se_pseudo': '伪量测管理',
       'nav.se_bad': '坏量测管理',
       'nav.se_logs': '运行日志',
@@ -70,7 +76,13 @@
       'nav.overview': 'Overview',
       'nav.analysis': 'Analysis',
       'nav.se_root': 'State Estimation SE',
-      'nav.se_main': 'SE Main View',
+      'nav.se_main': 'SE Home',
+      'nav.se_flow': 'Power Flow Map',
+      'nav.se_curves': 'History Curves',
+      'nav.se_devices': 'Device Compare',
+      'nav.se_measurements': 'Valid Measurements',
+      'nav.se_params': 'SE Parameters',
+      'nav.se_prefilter': 'Prefilter Meas',
       'nav.se_pseudo': 'Pseudo Meas',
       'nav.se_bad': 'Bad Data',
       'nav.se_logs': 'Run Logs',
@@ -133,6 +145,12 @@
       'nav.analysis': 'Анализ',
       'nav.se_root': 'Оценка сост. SE',
       'nav.se_main': 'Главный экран SE',
+      'nav.se_flow': 'Схема потоков',
+      'nav.se_curves': 'Графики истории',
+      'nav.se_devices': 'Сравнение оборуд.',
+      'nav.se_measurements': 'Достоверные изм.',
+      'nav.se_params': 'Параметры SE',
+      'nav.se_prefilter': 'Предфильтр',
       'nav.se_pseudo': 'Псевдоизмерения',
       'nav.se_bad': 'Плохие данные',
       'nav.se_logs': 'Журнал работы',
@@ -342,6 +360,7 @@
     }
 
     function initShell({ onRefresh, afterRunSE } = {}) {
+      if (typeof window.initSidebarSplitter === 'function') window.initSidebarSplitter();
       applyTheme(theme);
       applyLang(lang, false);
       const themeSel = document.getElementById('theme-select');
@@ -370,5 +389,124 @@
     };
   }
 
+  /**
+   * 为 .sidebar 与 .main 之间注入可拖拽分割条与一键隐藏目录树按钮（全站持久化）。
+   */
+  function initSidebarSplitter() {
+    const shell = document.querySelector('.app-shell');
+    const sidebar = shell?.querySelector('.sidebar');
+    if (!shell || !sidebar || shell.querySelector('.sidebar-resizer')) return;
+
+    const W_KEY = 'pas_sidebar_width';
+    const C_KEY = 'pas_sidebar_collapsed';
+    const MIN_W = 160;
+    const MAX_W = 340;
+    const COLLAPSE_THRESHOLD = 100;
+
+    let savedWidth = Math.min(MAX_W, Math.max(MIN_W, Number(localStorage.getItem(W_KEY)) || 214));
+    let collapsed = localStorage.getItem(C_KEY) === '1';
+
+    const resizer = document.createElement('div');
+    resizer.className = 'sidebar-resizer';
+    resizer.setAttribute('role', 'separator');
+    resizer.setAttribute('aria-orientation', 'vertical');
+    resizer.title = '拖动调整宽度 / 双击隐藏或展开';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'sidebar-toggle-btn';
+    resizer.appendChild(toggleBtn);
+    sidebar.insertAdjacentElement('afterend', resizer);
+
+    const emitResize = () => {
+      window.dispatchEvent(new Event('resize'));
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 180);
+    };
+
+    const applyState = (notifyResize = false) => {
+      sidebar.classList.toggle('is-collapsed', collapsed);
+      resizer.classList.toggle('is-collapsed', collapsed);
+      if (!collapsed) {
+        sidebar.style.width = `${savedWidth}px`;
+        sidebar.style.flexBasis = `${savedWidth}px`;
+      }
+      toggleBtn.textContent = collapsed ? '›' : '‹';
+      toggleBtn.title = collapsed ? '展开左侧目录树' : '隐藏左侧目录树';
+      toggleBtn.setAttribute('aria-label', toggleBtn.title);
+      localStorage.setItem(C_KEY, collapsed ? '1' : '0');
+      localStorage.setItem(W_KEY, String(Math.round(savedWidth)));
+      if (notifyResize) emitResize();
+    };
+
+    toggleBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      collapsed = !collapsed;
+      applyState(true);
+    });
+
+    resizer.addEventListener('dblclick', () => {
+      collapsed = !collapsed;
+      applyState(true);
+    });
+
+    let dragging = false;
+    let moved = false;
+    let startX = 0;
+
+    resizer.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target === toggleBtn) return;
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      resizer.setPointerCapture(e.pointerId);
+      sidebar.classList.add('is-resizing');
+      resizer.classList.add('is-active');
+      document.body.classList.add('sidebar-resizing');
+    });
+
+    resizer.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      if (Math.abs(e.clientX - startX) > 3) moved = true;
+      const x = e.clientX;
+      if (x < COLLAPSE_THRESHOLD) {
+        collapsed = true;
+        sidebar.classList.add('is-collapsed');
+        resizer.classList.add('is-collapsed');
+        toggleBtn.textContent = '›';
+      } else {
+        collapsed = false;
+        savedWidth = Math.min(MAX_W, Math.max(MIN_W, x));
+        sidebar.classList.remove('is-collapsed');
+        resizer.classList.remove('is-collapsed');
+        sidebar.style.width = `${savedWidth}px`;
+        sidebar.style.flexBasis = `${savedWidth}px`;
+        toggleBtn.textContent = '‹';
+      }
+    });
+
+    const finishDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (e && resizer.hasPointerCapture?.(e.pointerId)) {
+        resizer.releasePointerCapture(e.pointerId);
+      }
+      sidebar.classList.remove('is-resizing');
+      resizer.classList.remove('is-active');
+      document.body.classList.remove('sidebar-resizing');
+      if (!moved && collapsed) {
+        // 折叠态单击窄边缘条即可快速展开
+        collapsed = false;
+      }
+      applyState(true);
+    };
+
+    resizer.addEventListener('pointerup', finishDrag);
+    resizer.addEventListener('pointercancel', finishDrag);
+
+    applyState(false);
+  }
+
+  window.initSidebarSplitter = initSidebarSplitter;
   window.createSECommon = createSECommon;
 })();

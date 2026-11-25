@@ -45,6 +45,15 @@ from .se_log import (
     update_se_log_policy,
 )
 from .se_params import ensure_se_para_columns, sync_se_parameters_table
+from .se_prefilter import (
+    delete_prefilter_rule,
+    list_prefilter_results,
+    list_prefilter_rules,
+    prefilter_analysis,
+    prefilter_overview,
+    save_prefilter_rule,
+    store_se_prefilter_results,
+)
 from .se_pseudo import (
     delete_pseudo_meas_define,
     delete_pseudo_stat_define,
@@ -280,6 +289,172 @@ class Repository:
         }
 
     @synchronized
+    def se_home_summary(self, para_file: str | Path | None = None, do_cycle: int | float = 60) -> dict[str, Any]:
+        """聚合新版三栏状态估计主画面所需的全量真实指标、今日/昨日合格率曲线、参数与最新运行日志。"""
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        latest_rows = self._rows(
+            """SELECT s.*, r.started_at, r.finished_at, r.status AS run_status, r.execution_source,
+                      COALESCE(sr.deficiency, 0) AS deficiency,
+                      COALESCE(sr.rank, 0) AS rank,
+                      COALESCE(sr.state_count, 0) AS state_count
+               FROM se_statistics s
+               LEFT JOIN calculation_run r ON r.run_id = s.run_id
+               LEFT JOIN se_result sr ON sr.run_id = s.run_id
+               ORDER BY s.run_id DESC LIMIT 1"""
+        )
+        latest = latest_rows[0] if latest_rows else None
+
+        device_counts: dict[str, int] = {}
+        for dev_type in SE_DEVICE_RESULT_METRICS:
+            table_name = f"se_dev_{dev_type}"
+            device_counts[dev_type] = int(conn.execute(f"SELECT COUNT(*) FROM [{table_name}]").fetchone()[0] or 0)
+        bus_count = device_counts.get("ACNode", 0) + device_counts.get("DCNode", 0)
+        total_devices = sum(device_counts.values())
+
+        pf_ov = prefilter_overview(conn)
+        ps_ov = pseudo_overview(conn)
+        bd_ov = bad_overview(conn)
+        params = self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+        sched_rows = self._rows("SELECT * FROM schedule WHERE task_type = 'se' LIMIT 1")
+        schedule = sched_rows[0] if sched_rows else None
+
+        # 按本地自然日聚合今日/昨日合格率曲线与当日运行统计
+        local_now = datetime.now().astimezone()
+        today_str = local_now.strftime("%Y-%m-%d")
+        yesterday_str = (local_now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        def _parse_local(stamp: str | None) -> datetime | None:
+            if not stamp:
+                return None
+            txt = str(stamp).strip()
+            if txt.endswith("Z"):
+                txt = txt[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(txt)
+            except ValueError:
+                return None
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone()
+
+        stat_rows = self._rows(
+            """SELECT run_id, calc_time, pass_rate, converged, bad_data_count
+               FROM se_statistics
+               ORDER BY run_id DESC LIMIT 1200"""
+        )
+        by_day: dict[str, list[dict[str, Any]]] = {}
+        for row in reversed(stat_rows):
+            dt = _parse_local(row.get("calc_time"))
+            if dt is None:
+                continue
+            day_key = dt.strftime("%Y-%m-%d")
+            minute = dt.hour * 60 + dt.minute + dt.second / 60.0
+            by_day.setdefault(day_key, []).append(
+                {
+                    "run_id": int(row["run_id"]),
+                    "calc_time": row["calc_time"],
+                    "time_hm": dt.strftime("%H:%M"),
+                    "minute": round(minute, 2),
+                    "pass_rate": round(float(row.get("pass_rate") or 0.0) * 100.0, 3),
+                    "converged": int(row.get("converged") or 0),
+                    "bad_data_count": int(row.get("bad_data_count") or 0),
+                }
+            )
+
+        today_series = by_day.get(today_str, [])
+        compare_day = yesterday_str
+        yesterday_series = by_day.get(yesterday_str, [])
+        if not yesterday_series:
+            other_days = sorted((d for d in by_day if d < today_str), reverse=True)
+            if other_days:
+                compare_day = other_days[0]
+                yesterday_series = by_day[compare_day]
+
+        # 当日总运行次数（包含成功与失败，真实反映调度执行频次）
+        run_rows = self._rows(
+            """SELECT run_id, status, started_at FROM calculation_run
+               WHERE task_type = 'se' ORDER BY run_id DESC LIMIT 1200"""
+        )
+        today_total_runs = 0
+        for r in run_rows:
+            dt = _parse_local(r.get("started_at"))
+            if dt is not None and dt.strftime("%Y-%m-%d") == today_str:
+                today_total_runs += 1
+        today_conv_runs = sum(1 for item in today_series if item["converged"])
+        denom_runs = max(today_total_runs, len(today_series))
+        today_conv_rate = (today_conv_runs / denom_runs * 100.0) if denom_runs > 0 else (
+            100.0 if latest and latest.get("converged") else 0.0
+        )
+        today_avg_pass = (
+            sum(item["pass_rate"] for item in today_series) / len(today_series)
+            if today_series
+            else (float(latest["pass_rate"]) * 100.0 if latest and latest.get("pass_rate") is not None else None)
+        )
+        yesterday_avg_pass = (
+            sum(item["pass_rate"] for item in yesterday_series) / len(yesterday_series)
+            if yesterday_series
+            else None
+        )
+
+        # 最近运行日志（显示在主画面底部通栏）
+        latest_logs = self._rows(
+            "SELECT log_id, run_id, calc_time, level, stage, source, message FROM se_run_log ORDER BY log_id DESC LIMIT 1"
+        )
+        latest_log = latest_logs[0] if latest_logs else None
+
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+
+        return {
+            "latest": latest,
+            "observability": {
+                "bus_count": bus_count,
+                "total_devices": total_devices,
+                "meas_count": int(latest.get("meas_count") or 0) if latest else 0,
+                "valid_meas_count": int(latest.get("valid_meas_count") or 0) if latest else 0,
+                "good_meas_count": int(latest.get("good_meas_count") or 0) if latest else 0,
+                "deficiency": int(latest.get("deficiency") or 0) if latest else 0,
+                "observable": bool(latest.get("observable")) if latest else False,
+            },
+            "prefilter": {
+                "total": pf_ov["total"],
+                "by_rule": pf_ov["by_rule"],
+                "by_kernel": pf_ov["by_kernel"],
+                "rule_enabled": pf_ov["rule_enabled"],
+                "nomeas_count": bd_ov["nomeas_count"],
+                "suspect_count": bd_ov["suspect_count"],
+            },
+            "control": {
+                "pseudo_stat_enabled": ps_ov["stat_enabled"],
+                "pseudo_meas_enabled": ps_ov["defined_enabled"],
+                "pseudo_result_total": ps_ov["result_total"],
+                "policy_enabled": bd_ov["policy_enabled"],
+                "bad_total": bd_ov["bad_total"],
+                "total_devices": total_devices,
+            },
+            "params": params,
+            "schedule": schedule,
+            "today_stats": {
+                "today_date": today_str,
+                "compare_date": compare_day,
+                "today_runs": denom_runs,
+                "today_converged": today_conv_runs,
+                "today_conv_rate": round(today_conv_rate, 2),
+                "today_avg_pass_rate": round(today_avg_pass, 2) if today_avg_pass is not None else None,
+                "yesterday_avg_pass_rate": round(yesterday_avg_pass, 2) if yesterday_avg_pass is not None else None,
+                "current_pass_rate": round(float(latest["pass_rate"]) * 100.0, 2) if latest and latest.get("pass_rate") is not None else None,
+            },
+            "pass_rate_series": {
+                "today_date": today_str,
+                "compare_date": compare_day,
+                "today": today_series,
+                "yesterday": yesterday_series,
+            },
+            "latest_log": latest_log,
+        }
+
+    @synchronized
     def se_devices(self, device_type: str | None = None, *, q: str = "", bad_only: bool = False) -> dict[str, Any]:
         """读取最新断面各类设备表 se_dev_*，并标注坏数据指标。"""
         conn = self._connection()
@@ -489,6 +664,36 @@ class Repository:
     @synchronized
     def se_bad_abnormal(self, *, category: str = "susstat", device_type: str = "", q: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
         return list_abnormal_measurements(self._connection(), category=category, device_type=device_type, q=q, limit=limit, offset=offset)
+
+    @synchronized
+    def se_prefilter_overview(self) -> dict[str, Any]:
+        return prefilter_overview(self._connection())
+
+    @synchronized
+    def se_prefilter_results(self, *, origin: str = "all", device_type: str = "", q: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        return list_prefilter_results(self._connection(), origin=origin, device_type=device_type, q=q, limit=limit, offset=offset)
+
+    @synchronized
+    def se_prefilter_rules(self, *, enabled_only: bool = False, device_type: str = "", rule_type: str = "", q: str = "") -> list[dict[str, Any]]:
+        return list_prefilter_rules(self._connection(), enabled_only=enabled_only, device_type=device_type, rule_type=rule_type, q=q)
+
+    @synchronized
+    def se_prefilter_rule_save(self, payload: dict[str, Any], *, rule_id: int | None = None, units: dict[str, Any] | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        row = save_prefilter_rule(conn, payload, rule_id=rule_id, units=units)
+        conn.commit()
+        return row
+
+    @synchronized
+    def se_prefilter_rule_delete(self, rule_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_prefilter_rule(conn, rule_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def se_prefilter_analysis(self, *, limit: int = 60) -> dict[str, Any]:
+        return prefilter_analysis(self._connection(), limit=limit)
 
     @synchronized
     def record_se_run_log(
@@ -1334,7 +1539,10 @@ class Repository:
         # 3.1 伪量测结果表 se_pseudo_result（原子刷新为最新一次计算伪量测集合）
         store_se_pseudo_results(conn, run_id, stamp, measurements)
 
-        # 3.2 可疑遥信表 se_suspect_status 与兼容表 pas_se_susstat
+        # 3.2 预过滤量测结果表 se_prefilter_result（原子刷新为最新一次计算预过滤集合）
+        store_se_prefilter_results(conn, run_id, stamp, measurements)
+
+        # 3.3 可疑遥信表 se_suspect_status 与兼容表 pas_se_susstat
         store_se_suspect_statuses(conn, run_id, stamp, result.get("suspect_statuses") or [])
 
         # 4. 各类设备表 se_dev_*（按模型设备类原子刷新为最新断面，含 <metric>_meas 与 <metric>_se）
@@ -1552,6 +1760,9 @@ class RepositoryHub:
     def se_overview(self, para_file=None, do_cycle=60):
         return self.for_task("se").se_overview(para_file, do_cycle)
 
+    def se_home_summary(self, para_file=None, do_cycle=60):
+        return self.for_task("se").se_home_summary(para_file, do_cycle)
+
     def se_devices(self, device_type=None, *, q="", bad_only=False):
         return self.for_task("se").se_devices(device_type, q=q, bad_only=bad_only)
 
@@ -1617,6 +1828,24 @@ class RepositoryHub:
 
     def se_bad_abnormal(self, **kwargs):
         return self.for_task("se").se_bad_abnormal(**kwargs)
+
+    def se_prefilter_overview(self):
+        return self.for_task("se").se_prefilter_overview()
+
+    def se_prefilter_results(self, **kwargs):
+        return self.for_task("se").se_prefilter_results(**kwargs)
+
+    def se_prefilter_rules(self, **kwargs):
+        return self.for_task("se").se_prefilter_rules(**kwargs)
+
+    def se_prefilter_rule_save(self, payload, **kwargs):
+        return self.for_task("se").se_prefilter_rule_save(payload, **kwargs)
+
+    def se_prefilter_rule_delete(self, rule_id):
+        return self.for_task("se").se_prefilter_rule_delete(rule_id)
+
+    def se_prefilter_analysis(self, **kwargs):
+        return self.for_task("se").se_prefilter_analysis(**kwargs)
 
     def record_se_run_log(self, **kwargs):
         return self.for_task("se").record_se_run_log(**kwargs)

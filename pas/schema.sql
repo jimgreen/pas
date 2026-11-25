@@ -1990,3 +1990,45 @@ CREATE TABLE IF NOT EXISTS se_log_policy (
     last_deleted_count INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 );
+
+-- 状态估计预过滤规则配置表（支持按设备类 device_type 或按单设备 device 生效）
+CREATE TABLE IF NOT EXISTS se_prefilter_rule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL DEFAULT 'device_type' CHECK (scope IN ('device_type', 'device')),
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL DEFAULT '*',
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT '',
+    rule_type TEXT NOT NULL DEFAULT 'range' CHECK (rule_type IN ('range', 'force_filter')),
+    min_value REAL,
+    max_value REAL,
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    UNIQUE(scope, device_type, device_name, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_se_prefilter_rule_enabled ON se_prefilter_rule(enabled, device_type);
+
+-- 状态估计最新断面预过滤量测明细表（区分 rule 规则命中 / kernel 内核预过滤 / policy 策略屏蔽）
+CREATE TABLE IF NOT EXISTS se_prefilter_result (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+    calc_time TEXT NOT NULL,
+    meas_id INTEGER NOT NULL,
+    meas_name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    meas_type TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT '',
+    meas_value REAL,
+    min_value REAL,
+    max_value REAL,
+    origin TEXT NOT NULL DEFAULT 'kernel',
+    rule_id INTEGER,
+    reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_se_prefilter_result_origin ON se_prefilter_result(origin, device_type);

@@ -11,10 +11,21 @@
       'nav.analysis': '分析功能',
       'nav.se_root': '状态估计 SE',
       'nav.se_main': '状态估计主画面',
+      'nav.se_flow': '潮流图',
+      'nav.se_curves': '历史曲线',
+      'nav.se_devices': '设备对比',
+      'nav.se_measurements': '有效实测明细',
+      'nav.se_params': '算法参数',
+      'nav.se_prefilter': '预过滤量测管理',
       'nav.se_pseudo': '伪量测管理',
       'nav.se_bad': '坏量测管理',
       'nav.se_logs': '运行日志',
       'nav.se': '状态估计明细',
+      'title.flow': '潮流图',
+      'title.curves': '历史曲线',
+      'title.devices': '设备对比',
+      'title.measurements': '有效实测明细',
+      'title.params': 'SE 算法参数',
       'link.manage_bad': '处置 →',
       'link.manage_bad_full': '坏量测管理 →',
       'link.manage_pseudo': '伪量测管理 →',
@@ -184,9 +195,20 @@
       'nav.lf': 'Load Flow LF',
       'nav.ca': 'Contingency CA',
       'nav.se_root': 'State Estimation SE',
+      'nav.se_flow': 'Power Flow Map',
+      'nav.se_curves': 'History Curves',
+      'nav.se_devices': 'Device Compare',
+      'nav.se_measurements': 'Valid Measurements',
+      'nav.se_params': 'SE Parameters',
+      'nav.se_prefilter': 'Prefilter Meas',
       'nav.se_pseudo': 'Pseudo Meas',
       'nav.se_bad': 'Bad Data',
       'nav.se_logs': 'Run Logs',
+      'title.flow': 'Power Flow Map',
+      'title.curves': 'History Curves',
+      'title.devices': 'Device Comparison',
+      'title.measurements': 'Valid Measurements',
+      'title.params': 'SE Parameters',
       'link.manage_bad': 'Handle →',
       'link.manage_bad_full': 'Bad Data →',
       'link.manage_pseudo': 'Pseudo Meas →',
@@ -351,10 +373,21 @@
       'nav.analysis': 'Анализ',
       'nav.se_root': 'Оценка сост. SE',
       'nav.se_main': 'Главный экран SE',
+      'nav.se_flow': 'Схема потоков',
+      'nav.se_curves': 'Графики истории',
+      'nav.se_devices': 'Сравнение оборуд.',
+      'nav.se_measurements': 'Достоверные изм.',
+      'nav.se_params': 'Параметры SE',
+      'nav.se_prefilter': 'Предфильтр',
       'nav.se_pseudo': 'Псевдоизмерения',
       'nav.se_bad': 'Плохие данные',
       'nav.se_logs': 'Журнал работы',
       'nav.se': 'Детали SE',
+      'title.flow': 'Схема потоков',
+      'title.curves': 'Графики истории',
+      'title.devices': 'Сравнение оборудования',
+      'title.measurements': 'Достоверные измерения',
+      'title.params': 'Параметры алгоритма SE',
       'link.manage_bad': 'Обраб. →',
       'link.manage_bad_full': 'Плохие данные →',
       'link.manage_pseudo': 'Псевдоизм. →',
@@ -554,10 +587,13 @@
     },
   ];
 
+  const INITIAL_VIEW = document.body.dataset.seView || 'topology';
+  const SINGLE_VIEW_PAGE = Boolean(document.body.dataset.seView);
+
   const appState = {
     lang: localStorage.getItem('pas_se_lang') || localStorage.getItem('se_lang') || 'zh-CN',
     theme: localStorage.getItem('pas_se_theme') || localStorage.getItem('se_theme') || 'minimalist-light',
-    view: 'topology',
+    view: INITIAL_VIEW,
     overview: null,
     topology: null,
     svgLoaded: false,
@@ -662,7 +698,14 @@
     document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
       el.placeholder = t(el.dataset.i18nPlaceholder);
     });
-    document.title = `${t('title.main')} · PAS`;
+    const titleKeyMap = {
+      topology: 'title.flow',
+      curves: 'title.curves',
+      devices: 'title.devices',
+      measurements: 'title.measurements',
+      params: 'title.params',
+    };
+    document.title = `${t(titleKeyMap[appState.view] || 'title.main')} · PAS`;
   }
 
   function applyTheme() {
@@ -671,7 +714,12 @@
     if (sel) sel.value = appState.theme;
   }
 
-  /* ==================== KPI 与顶栏渲染 ==================== */
+  /* ==================== KPI 与顶栏渲染（严格单行精简，不折行、无废话） ==================== */
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
   function renderOverviewKPIs() {
     const ov = appState.overview;
     const latest = ov?.latest;
@@ -681,50 +729,47 @@
     const runMeta = document.getElementById('se-run-meta');
 
     if (!latest) {
-      convPill.className = 'se-pill neutral';
-      convPill.textContent = '--';
-      badPill.hidden = true;
-      runMeta.textContent = '--';
+      if (convPill) { convPill.className = 'se-pill neutral'; convPill.textContent = '—'; }
+      if (badPill) badPill.hidden = true;
+      if (runMeta) runMeta.textContent = '—';
       return;
     }
 
     const conv = Boolean(latest.converged);
     const obs = Boolean(latest.observable);
-    convPill.className = `se-pill ${conv ? 'ok' : 'bad'}`;
-    convPill.textContent = conv ? t('status.converged') : t('status.diverged');
-
-    badPill.hidden = false;
-    if (badList.length > 0) {
-      badPill.className = 'se-pill bad bad-pulse';
-      badPill.textContent = t('status.bad_alert', { n: badList.length });
-    } else {
-      badPill.className = 'se-pill ok';
-      badPill.textContent = t('status.no_bad');
+    if (convPill) {
+      convPill.className = `se-pill ${conv ? 'ok' : 'bad'}`;
+      convPill.textContent = conv ? t('status.converged') : t('status.diverged');
     }
-    runMeta.textContent = `#${latest.run_id} · ${fmtTime(latest.calc_time)}`;
+    if (badPill) {
+      badPill.hidden = false;
+      if (badList.length > 0) {
+        badPill.className = 'se-pill bad bad-pulse';
+        badPill.textContent = t('status.bad_alert', { n: badList.length });
+      } else {
+        badPill.className = 'se-pill ok';
+        badPill.textContent = t('status.no_bad');
+      }
+    }
+    if (runMeta) runMeta.textContent = `#${latest.run_id} · ${fmtTime(latest.calc_time)}`;
 
-    document.getElementById('kpi-dot-status').className = `se-dot ${conv && obs ? 'ok' : 'bad'}`;
-    document.getElementById('kpi-conv').textContent = conv ? t('status.converged') : t('status.diverged');
-    document.getElementById('kpi-obs').textContent = obs ? t('status.observable') : t('status.unobservable');
-    document.getElementById('kpi-iters').textContent = `Iter: ${latest.iterations} · Δx: ${Number(latest.max_correction || 0).toExponential(2)}`;
+    const dot = document.getElementById('kpi-dot-status');
+    if (dot) dot.className = `se-dot ${conv && obs ? 'ok' : 'bad'}`;
+    setText('kpi-conv', conv ? t('status.converged') : t('status.diverged'));
+    setText('kpi-obs', `${obs ? t('status.observable') : t('status.unobservable')} · ${latest.iterations}it`);
 
     const passPct = (Number(latest.pass_rate || 0) * 100).toFixed(2);
-    document.getElementById('kpi-pass').textContent = passPct;
-    document.getElementById('kpi-meas-ratio').textContent = `${latest.good_meas_count} / ${latest.valid_meas_count} (${t('meas.all')}: ${latest.meas_count})`;
+    setText('kpi-pass', passPct);
+    setText('kpi-meas-ratio', `${latest.good_meas_count}/${latest.valid_meas_count}`);
 
     const badCount = Number(latest.bad_data_count || badList.length || 0);
-    document.getElementById('kpi-bad').textContent = String(badCount);
-    document.getElementById('kpi-card-bad').classList.toggle('is-alert', badCount > 0);
-    document.getElementById('kpi-bad-sub').textContent = badCount > 0
-      ? `${badList[0]?.device_name || ''} · ${badList[0]?.metric || ''}`
-      : `${t('meas.prefiltered')}: ${latest.prefiltered_count} · ${t('meas.pseudo')}: ${latest.pseudo_count}`;
+    setText('kpi-bad', String(badCount));
+    const badCard = document.getElementById('kpi-card-bad');
+    if (badCard) badCard.classList.toggle('is-alert', badCount > 0);
 
-    document.getElementById('kpi-res-total').textContent = fmtNum(latest.total_residual, 2);
-    document.getElementById('kpi-res-max').textContent = `max ${fmtNum(latest.residual_inf, 2)}`;
-    document.getElementById('kpi-obj').textContent = `J(x) = ${fmtNum(latest.objective, 4)}`;
-
-    document.getElementById('kpi-elapsed').textContent = Number(latest.elapsed_seconds || 0).toFixed(3);
-    document.getElementById('kpi-calc-time').textContent = fmtTime(latest.calc_time);
+    setText('kpi-res-total', fmtNum(latest.total_residual, 2));
+    setText('kpi-res-max', `max ${fmtNum(latest.residual_inf, 2)}`);
+    setText('kpi-elapsed', Number(latest.elapsed_seconds || 0).toFixed(3));
   }
 
   /* ==================== 1. SVG 潮流图可视化与坏数据告警闪烁 ==================== */
@@ -798,6 +843,7 @@
 
   function initSvgInteractions() {
     const vp = document.getElementById('se-svg-viewport');
+    if (!vp) return;
     let dragging = false;
     let startX = 0;
     let startY = 0;
@@ -1719,32 +1765,48 @@
   }
 
   async function jumpToPointCurve(deviceType, deviceName, measType) {
+    if (SINGLE_VIEW_PAGE && appState.view !== 'curves') {
+      const qs = new URLSearchParams({ device_type: deviceType, device_name: deviceName, meas_type: measType });
+      window.location.href = `/se-curves.html?${qs.toString()}`;
+      return;
+    }
     appState.curves.selectedPoint = { device_type: deviceType, device_name: deviceName, meas_type: measType };
     await switchView('curves');
   }
 
   async function refreshAll() {
     try {
-      const [overview, topology] = await Promise.all([
-        api('/api/se/overview'),
-        api('/api/se/topology-values'),
-      ]);
+      const tasks = [api('/api/se/overview')];
+      if (appState.view === 'topology') tasks.push(api('/api/se/topology-values'));
+      const [overview, topology] = await Promise.all(tasks);
       appState.overview = overview;
-      appState.topology = topology;
-      // 支持从 /se-bad.html 通过 ?device_type=...&device_name=... 跳转定位
-      if (!appState.selectedDevId) {
-        const qp = new URLSearchParams(window.location.search);
-        const qType = qp.get('device_type');
-        const qName = qp.get('device_name');
-        if (qType && qName) {
-          const matched = Object.values(topology.devices || {}).find(
-            (d) => d.device_type === qType && d.name === qName,
-          );
-          if (matched) appState.selectedDevId = matched.dev_id;
+      if (topology) {
+        appState.topology = topology;
+        // 支持跨页通过 ?dev_id=... 或 ?device_type=...&device_name=... 跳转定位
+        if (!appState.selectedDevId) {
+          const qp = new URLSearchParams(window.location.search);
+          const qDevId = qp.get('dev_id');
+          const qType = qp.get('device_type');
+          const qName = qp.get('device_name');
+          if (qDevId && topology.devices?.[qDevId]) {
+            appState.selectedDevId = qDevId;
+          } else if (qType && qName) {
+            const matched = Object.values(topology.devices || {}).find(
+              (d) => d.device_type === qType && d.name === qName,
+            );
+            if (matched) appState.selectedDevId = matched.dev_id;
+          }
         }
       }
+      if (appState.view === 'curves' && !appState.curves.selectedPoint) {
+        const qp = new URLSearchParams(window.location.search);
+        const dt = qp.get('device_type');
+        const dn = qp.get('device_name');
+        const mt = qp.get('meas_type');
+        if (dt && dn && mt) appState.curves.selectedPoint = { device_type: dt, device_name: dn, meas_type: mt };
+      }
       renderOverviewKPIs();
-      populateDeviceJumpSelect();
+      if (appState.view === 'topology') populateDeviceJumpSelect();
       await switchView(appState.view);
     } catch (err) {
       notify(err.message, true);
@@ -1782,21 +1844,27 @@
     }
   }
 
-  /* ==================== 事件绑定 ==================== */
+  /* ==================== 事件绑定（按当前页面 DOM 安全挂载） ==================== */
+  function on(id, event, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+  }
+
   function bindEvents() {
-    document.getElementById('lang-select').value = appState.lang;
-    document.getElementById('lang-select').addEventListener('change', async (e) => {
+    const langSel = document.getElementById('lang-select');
+    if (langSel) langSel.value = appState.lang;
+    on('lang-select', 'change', async (e) => {
       appState.lang = e.target.value;
       localStorage.setItem('se_lang', appState.lang);
       localStorage.setItem('pas_se_lang', appState.lang);
       applyI18n();
       renderOverviewKPIs();
-      populateDeviceJumpSelect();
+      if (appState.view === 'topology') populateDeviceJumpSelect();
       await switchView(appState.view);
       await pollServiceStatus();
     });
 
-    document.getElementById('theme-select').addEventListener('change', (e) => {
+    on('theme-select', 'change', (e) => {
       appState.theme = e.target.value;
       localStorage.setItem('se_theme', appState.theme);
       localStorage.setItem('pas_se_theme', appState.theme);
@@ -1805,9 +1873,9 @@
       if (appState.view === 'curves') { renderGlobalCurve(); renderPointCurve(); }
     });
 
-    document.getElementById('btn-refresh').addEventListener('click', refreshAll);
+    on('btn-refresh', 'click', refreshAll);
 
-    document.getElementById('btn-run-se').addEventListener('click', async () => {
+    on('btn-run-se', 'click', async () => {
       try {
         const res = await api('/api/actions/submit', { task: 'se' });
         if (res.accepted) {
@@ -1820,41 +1888,41 @@
       }
     });
 
-    document.getElementById('se-view-tabs').addEventListener('click', (e) => {
+    on('se-view-tabs', 'click', (e) => {
       const btn = e.target.closest('.se-tab');
       if (btn) switchView(btn.dataset.view);
     });
 
     // 潮流图工具栏
-    document.getElementById('svg-display-mode').addEventListener('change', (e) => {
+    on('svg-display-mode', 'change', (e) => {
       appState.svgDisplayMode = e.target.value;
       renderSvgBindings();
     });
-    document.getElementById('svg-device-jump').addEventListener('change', (e) => {
+    on('svg-device-jump', 'change', (e) => {
       if (e.target.value) focusSvgDevice(e.target.value);
     });
-    document.getElementById('btn-svg-zoom-in').addEventListener('click', () => zoomSvgAt(1.25));
-    document.getElementById('btn-svg-zoom-out').addEventListener('click', () => zoomSvgAt(0.8));
-    document.getElementById('btn-svg-fit').addEventListener('click', fitSvgToViewport);
+    on('btn-svg-zoom-in', 'click', () => zoomSvgAt(1.25));
+    on('btn-svg-zoom-out', 'click', () => zoomSvgAt(0.8));
+    on('btn-svg-fit', 'click', fitSvgToViewport);
 
     // 历史曲线控件
-    document.getElementById('global-curve-metric').addEventListener('click', (e) => {
+    on('global-curve-metric', 'click', (e) => {
       const btn = e.target.closest('.seg');
       if (!btn) return;
       appState.curves.globalMetric = btn.dataset.gmetric;
       document.querySelectorAll('#global-curve-metric .seg').forEach((b) => b.classList.toggle('active', b === btn));
       renderGlobalCurve();
     });
-    document.getElementById('curve-limit').addEventListener('change', async (e) => {
+    on('curve-limit', 'change', async (e) => {
       appState.curves.limit = Number(e.target.value);
       await loadCurvesTab();
     });
-    document.getElementById('pt-type-select').addEventListener('change', async (e) => {
+    on('pt-type-select', 'change', async (e) => {
       appState.curves.selectedPoint = { device_type: e.target.value, device_name: '', meas_type: '' };
       populatePointSelectors();
       await loadSelectedPointSeries();
     });
-    document.getElementById('pt-dev-select').addEventListener('change', async (e) => {
+    on('pt-dev-select', 'change', async (e) => {
       appState.curves.selectedPoint = {
         device_type: document.getElementById('pt-type-select').value,
         device_name: e.target.value,
@@ -1863,7 +1931,7 @@
       populatePointSelectors();
       await loadSelectedPointSeries();
     });
-    document.getElementById('pt-meas-select').addEventListener('change', async (e) => {
+    on('pt-meas-select', 'change', async (e) => {
       appState.curves.selectedPoint = {
         device_type: document.getElementById('pt-type-select').value,
         device_name: document.getElementById('pt-dev-select').value,
@@ -1871,14 +1939,14 @@
       };
       await loadSelectedPointSeries();
     });
-    document.getElementById('pt-bad-hotspot').addEventListener('change', async (e) => {
+    on('pt-bad-hotspot', 'change', async (e) => {
       if (!e.target.value) return;
       const [dt, dn, mt] = e.target.value.split('|');
       appState.curves.selectedPoint = { device_type: dt, device_name: dn, meas_type: mt };
       populatePointSelectors();
       await loadSelectedPointSeries();
     });
-    document.getElementById('point-curve-mode').addEventListener('click', (e) => {
+    on('point-curve-mode', 'click', (e) => {
       const btn = e.target.closest('.seg');
       if (!btn) return;
       appState.curves.pointMode = btn.dataset.pmode;
@@ -1887,19 +1955,19 @@
     });
 
     // 设备对比控件
-    document.getElementById('dev-type-select').addEventListener('change', (e) => {
+    on('dev-type-select', 'change', (e) => {
       appState.devices.type = e.target.value;
       loadDevicesTab();
     });
-    document.getElementById('dev-search-input').addEventListener('input', (e) => {
+    on('dev-search-input', 'input', (e) => {
       appState.devices.q = e.target.value;
       loadDevicesTab();
     });
-    document.getElementById('dev-bad-only').addEventListener('change', (e) => {
+    on('dev-bad-only', 'change', (e) => {
       appState.devices.badOnly = e.target.checked;
       loadDevicesTab();
     });
-    document.getElementById('btn-export-devices').addEventListener('click', () => {
+    on('btn-export-devices', 'click', () => {
       const d = appState.devices.data;
       if (!d?.rows?.length) return;
       const cols = ['idx', 'name', ...d.metrics.flatMap((m) => [`${m}_meas`, `${m}_se`])];
@@ -1907,33 +1975,30 @@
     });
 
     // 量测明细控件
-    const measSeg = document.getElementById('meas-source-seg');
-    if (measSeg) {
-      measSeg.addEventListener('click', (e) => {
-        const btn = e.target.closest('.seg');
-        if (!btn) return;
-        appState.meas.source = btn.dataset.msrc;
-        appState.meas.page = 0;
-        document.querySelectorAll('#meas-source-seg .seg').forEach((b) => b.classList.toggle('active', b === btn));
-        loadMeasurementsTab();
-      });
-    }
-    document.getElementById('meas-devtype-select').addEventListener('change', (e) => {
+    on('meas-source-seg', 'click', (e) => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      appState.meas.source = btn.dataset.msrc;
+      appState.meas.page = 0;
+      document.querySelectorAll('#meas-source-seg .seg').forEach((b) => b.classList.toggle('active', b === btn));
+      loadMeasurementsTab();
+    });
+    on('meas-devtype-select', 'change', (e) => {
       appState.meas.devType = e.target.value;
       appState.meas.page = 0;
       loadMeasurementsTab();
     });
-    document.getElementById('meas-sort-select').addEventListener('change', (e) => {
+    on('meas-sort-select', 'change', (e) => {
       appState.meas.sort = e.target.value;
       appState.meas.page = 0;
       loadMeasurementsTab();
     });
-    document.getElementById('meas-search-input').addEventListener('input', (e) => {
+    on('meas-search-input', 'input', (e) => {
       appState.meas.q = e.target.value;
       appState.meas.page = 0;
       loadMeasurementsTab();
     });
-    document.getElementById('btn-export-meas').addEventListener('click', () => {
+    on('btn-export-meas', 'click', () => {
       const rows = appState.meas.data?.rows || [];
       if (!rows.length) return;
       const cols = ['meas_id', 'device_type', 'device_name', 'metric', 'meas_type', 'unit', 'meas_value', 'se_value', 'residual', 'normalized_residual', 'is_bad', 'source'];
@@ -1941,17 +2006,18 @@
     });
 
     // 算法参数保存与高危重置模态确认
-    document.getElementById('btn-params-save').addEventListener('click', async () => {
+    on('btn-params-save', 'click', async () => {
       try { await saveParams(); } catch (err) { notify(err.message, true); }
     });
     const confirmDialog = document.getElementById('confirm-dialog');
-    document.getElementById('btn-params-reset').addEventListener('click', () => {
+    on('btn-params-reset', 'click', () => {
+      if (!confirmDialog) return;
       confirmDialog.showModal();
-      document.getElementById('btn-confirm-cancel').focus();
+      document.getElementById('btn-confirm-cancel')?.focus();
     });
-    document.getElementById('btn-confirm-cancel').addEventListener('click', () => confirmDialog.close());
-    document.getElementById('btn-confirm-ok').addEventListener('click', async () => {
-      confirmDialog.close();
+    on('btn-confirm-cancel', 'click', () => confirmDialog?.close());
+    on('btn-confirm-ok', 'click', async () => {
+      confirmDialog?.close();
       try {
         await api('/api/se/params/reset', { action: 'reset' });
         notify(t('params.reset_done'));
@@ -1961,8 +2027,8 @@
       }
     });
 
-    // 调度保存与启停
-    document.getElementById('se-schedule-form').addEventListener('submit', async (e) => {
+    // 调度保存与启停（兼容）
+    on('se-schedule-form', 'submit', async (e) => {
       e.preventDefault();
       try {
         const f = e.target;
@@ -1976,14 +2042,14 @@
         notify(err.message, true);
       }
     });
-    document.getElementById('btn-daemon-start').addEventListener('click', async () => {
+    on('btn-daemon-start', 'click', async () => {
       try { await api('/api/actions/daemon/start', {}); await pollServiceStatus(); } catch (err) { notify(err.message, true); }
     });
-    document.getElementById('btn-daemon-stop').addEventListener('click', async () => {
+    on('btn-daemon-stop', 'click', async () => {
       try { await api('/api/actions/daemon/stop', {}); await pollServiceStatus(); } catch (err) { notify(err.message, true); }
     });
 
-    // 全局委派点击（坏数据定位、曲线跳转、分页）
+    // 全局委派点击（坏数据定位、跨页曲线跳转、分页）
     document.addEventListener('click', async (e) => {
       const focusBtn = e.target.closest('[data-focus-dev]');
       if (focusBtn) {
@@ -1994,6 +2060,10 @@
       const locateBtn = e.target.closest('[data-locate-dev]');
       if (locateBtn) {
         const devId = locateBtn.dataset.locateDev;
+        if (SINGLE_VIEW_PAGE && appState.view !== 'topology') {
+          window.location.href = `/se-flow.html?dev_id=${encodeURIComponent(devId)}`;
+          return;
+        }
         await switchView('topology');
         focusSvgDevice(devId);
         return;
@@ -2025,7 +2095,88 @@
     });
   }
 
+  /* ==================== 侧边栏可拖拽分割条与折叠隐藏 ==================== */
+  function initSidebarSplitter() {
+    if (typeof window.initSidebarSplitter === 'function') {
+      window.initSidebarSplitter();
+      return;
+    }
+    const shell = document.querySelector('.app-shell');
+    const sidebar = shell?.querySelector('.sidebar');
+    if (!shell || !sidebar || shell.querySelector('.sidebar-resizer')) return;
+    const W_KEY = 'pas_sidebar_width';
+    const C_KEY = 'pas_sidebar_collapsed';
+    const MIN_W = 160;
+    const MAX_W = 340;
+    const COLLAPSE_THRESHOLD = 100;
+    let savedWidth = Math.min(MAX_W, Math.max(MIN_W, Number(localStorage.getItem(W_KEY)) || 214));
+    let collapsed = localStorage.getItem(C_KEY) === '1';
+    const resizer = document.createElement('div');
+    resizer.className = 'sidebar-resizer';
+    resizer.setAttribute('role', 'separator');
+    resizer.setAttribute('aria-orientation', 'vertical');
+    resizer.title = '拖动调整宽度 / 双击隐藏或展开';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'sidebar-toggle-btn';
+    resizer.appendChild(toggleBtn);
+    sidebar.insertAdjacentElement('afterend', resizer);
+    const emitResize = () => {
+      window.dispatchEvent(new Event('resize'));
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 180);
+    };
+    const applyState = (notifyResize = false) => {
+      sidebar.classList.toggle('is-collapsed', collapsed);
+      resizer.classList.toggle('is-collapsed', collapsed);
+      if (!collapsed) {
+        sidebar.style.width = `${savedWidth}px`;
+        sidebar.style.flexBasis = `${savedWidth}px`;
+      }
+      toggleBtn.textContent = collapsed ? '›' : '‹';
+      toggleBtn.title = collapsed ? '展开左侧目录树' : '隐藏左侧目录树';
+      toggleBtn.setAttribute('aria-label', toggleBtn.title);
+      localStorage.setItem(C_KEY, collapsed ? '1' : '0');
+      localStorage.setItem(W_KEY, String(Math.round(savedWidth)));
+      if (notifyResize) emitResize();
+    };
+    toggleBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); collapsed = !collapsed; applyState(true); });
+    resizer.addEventListener('dblclick', () => { collapsed = !collapsed; applyState(true); });
+    let dragging = false; let moved = false; let startX = 0;
+    resizer.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target === toggleBtn) return;
+      dragging = true; moved = false; startX = e.clientX;
+      resizer.setPointerCapture(e.pointerId);
+      sidebar.classList.add('is-resizing'); resizer.classList.add('is-active');
+      document.body.classList.add('sidebar-resizing');
+    });
+    resizer.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      if (Math.abs(e.clientX - startX) > 3) moved = true;
+      if (e.clientX < COLLAPSE_THRESHOLD) {
+        collapsed = true; sidebar.classList.add('is-collapsed'); resizer.classList.add('is-collapsed'); toggleBtn.textContent = '›';
+      } else {
+        collapsed = false; savedWidth = Math.min(MAX_W, Math.max(MIN_W, e.clientX));
+        sidebar.classList.remove('is-collapsed'); resizer.classList.remove('is-collapsed');
+        sidebar.style.width = `${savedWidth}px`; sidebar.style.flexBasis = `${savedWidth}px`; toggleBtn.textContent = '‹';
+      }
+    });
+    const finishDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (e && resizer.hasPointerCapture?.(e.pointerId)) resizer.releasePointerCapture(e.pointerId);
+      sidebar.classList.remove('is-resizing'); resizer.classList.remove('is-active');
+      document.body.classList.remove('sidebar-resizing');
+      if (!moved && collapsed) collapsed = false;
+      applyState(true);
+    };
+    resizer.addEventListener('pointerup', finishDrag);
+    resizer.addEventListener('pointercancel', finishDrag);
+    applyState(false);
+  }
+
   /* ==================== 启动初始化 ==================== */
+  initSidebarSplitter();
   applyTheme();
   applyI18n();
   initSvgInteractions();

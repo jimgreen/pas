@@ -343,6 +343,19 @@ class PasWebApp:
                 query = parse_qs(parsed.query)
                 if parsed.path == "/api/se/overview":
                     return {"ok": True, "data": se_repo.se_overview(para_file, period)}
+                if parsed.path == "/api/se/home":
+                    import socket
+
+                    summary = se_repo.se_home_summary(para_file, period)
+                    st = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
+                    summary["runtime"] = {
+                        "host": socket.gethostname(),
+                        "scenario": str(getattr(self.config, "scenario", "") or ""),
+                        "runtime": str(getattr(self.config, "runtime", "") or ""),
+                        "daemon_running": bool(self._daemon_thread and self._daemon_thread.is_alive()),
+                        "se_busy": "se" in set(st.get("active_tasks") or ()) | set(st.get("pending_tasks") or ()),
+                    }
+                    return {"ok": True, "data": summary}
                 if parsed.path == "/api/se/devices":
                     return {
                         "ok": True,
@@ -460,6 +473,35 @@ class PasWebApp:
                             "history": se_repo.se_history_bad_data(_int_query(query, "limit", 100, 1, 500)),
                             "trend": se_repo.se_history_stats(_int_query(query, "limit", 100, 1, 500)),
                         },
+                    }
+                # --- 预过滤量测模块 API ---
+                if parsed.path == "/api/se/prefilter/overview":
+                    return {"ok": True, "data": se_repo.se_prefilter_overview()}
+                if parsed.path == "/api/se/prefilter/results":
+                    return {
+                        "ok": True,
+                        "data": se_repo.se_prefilter_results(
+                            origin=query.get("origin", ["all"])[0],
+                            device_type=query.get("device_type", [""])[0],
+                            q=query.get("q", [""])[0],
+                            limit=_int_query(query, "limit", 100, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/se/prefilter/rules":
+                    return {
+                        "ok": True,
+                        "data": se_repo.se_prefilter_rules(
+                            enabled_only=query.get("enabled_only", ["0"])[0] in {"1", "true"},
+                            device_type=query.get("device_type", [""])[0],
+                            rule_type=query.get("rule_type", [""])[0],
+                            q=query.get("q", [""])[0],
+                        ),
+                    }
+                if parsed.path == "/api/se/prefilter/analysis":
+                    return {
+                        "ok": True,
+                        "data": se_repo.se_prefilter_analysis(limit=_int_query(query, "limit", 60, 1, 300)),
                     }
                 # --- SE 运行日志模块 API ---
                 if parsed.path == "/api/se/logs":
@@ -740,6 +782,13 @@ class PasWebApp:
                             note=str(payload.get("note") or ""),
                         ),
                     }
+                if path == "/api/se/prefilter/rules":
+                    return {"ok": True, "data": se_repo.se_prefilter_rule_save(payload)}
+                if len(parts) == 6 and parts[:4] == ["api", "se", "prefilter", "rules"] and parts[5] == "delete":
+                    rid = _int_path(parts[4])
+                    if rid is None:
+                        return {"ok": False, "error": "invalid_id"}
+                    return {"ok": True, "data": {"deleted": se_repo.se_prefilter_rule_delete(rid), "id": rid}}
                 if path == "/api/se/logs/policy":
                     return {"ok": True, "data": se_repo.se_logs_policy_update(payload)}
                 if path == "/api/se/logs/purge":
@@ -839,6 +888,11 @@ class PasWebApp:
                 if pid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": se_repo.se_bad_policy_save(payload, policy_id=pid)}
+            if len(parts) == 5 and parts[:4] == ["api", "se", "prefilter", "rules"]:
+                rid = _int_path(parts[4])
+                if rid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": se_repo.se_prefilter_rule_save(payload, rule_id=rid)}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}
@@ -863,6 +917,11 @@ class PasWebApp:
                 if pid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": {"deleted": se_repo.se_bad_policy_delete(pid), "id": pid}}
+            if len(parts) == 5 and parts[:4] == ["api", "se", "prefilter", "rules"]:
+                rid = _int_path(parts[4])
+                if rid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": {"deleted": se_repo.se_prefilter_rule_delete(rid), "id": rid}}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}

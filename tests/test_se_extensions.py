@@ -388,16 +388,150 @@ def test_se_extensions_web_api_and_static_pages(tmp_path: Path) -> None:
         dry = app.api_post("/api/se/logs/purge", {"dry_run": True})
         assert dry["ok"] is True
 
-        # 4. 验证三套新页面静态路径与 1 级/2 级导航结构
-        for html_name in ("se-main.html", "se-pseudo.html", "se-bad.html", "se-logs.html"):
+        # 4. 验证全部 10 套独立 SE 子页面静态路径、新三栏主画面、潮流图页及 1 级/2 级导航结构
+        home_api = app.api_get("/api/se/home")
+        assert home_api["ok"] is True
+        assert "observability" in home_api["data"]
+        assert "pass_rate_series" in home_api["data"]
+        assert "today_stats" in home_api["data"]
+
+        for html_name in (
+            "se-main.html",
+            "se-flow.html",
+            "se-curves.html",
+            "se-devices.html",
+            "se-measurements.html",
+            "se-params.html",
+            "se-prefilter.html",
+            "se-pseudo.html",
+            "se-bad.html",
+            "se-logs.html",
+        ):
             p = app.static_path(f"/{html_name}")
             assert p is not None and p.is_file()
             text = p.read_text(encoding="utf-8")
             assert 'class="nav-sub"' in text
-            assert "/se-pseudo.html" in text and "/se-bad.html" in text and "/se-logs.html" in text
+            for sub_link in (
+                "/se-flow.html",
+                "/se-curves.html",
+                "/se-devices.html",
+                "/se-measurements.html",
+                "/se-params.html",
+                "/se-prefilter.html",
+                "/se-pseudo.html",
+                "/se-bad.html",
+                "/se-logs.html",
+            ):
+                assert sub_link in text
+        # 新主画面为三栏总控布局，潮流图独立于 /se-flow.html
+        main_html = app.static_path("/se-main.html").read_text(encoding="utf-8")
+        assert 'class="se-home-grid"' in main_html
+        assert "/assets/se-home.js" in main_html
+        flow_html = app.static_path("/se-flow.html").read_text(encoding="utf-8")
+        assert 'data-se-view="topology"' in flow_html
+        assert 'id="se-view-tabs"' not in flow_html
+        # 运行与调度已并入运行日志页
+        logs_html = app.static_path("/se-logs.html").read_text(encoding="utf-8")
+        assert 'id="se-schedule-form"' in logs_html
+        # 坏量测页已去重移除“预过滤”分段按钮
+        bad_html = app.static_path("/se-bad.html").read_text(encoding="utf-8")
+        assert 'data-cat="filter"' not in bad_html
         # 非 SE 页面应保持 1 级导航清爽（无 nav-sub）
         lf_html = app.static_path("/analysis/lf.html").read_text(encoding="utf-8")
         assert 'class="nav-sub"' not in lf_html
         assert 'data-route="se-root"' in lf_html
+    finally:
+        repo.close()
+
+
+def test_prefilter_rules_input_exclusion_persistence_and_api(tmp_path: Path) -> None:
+    """验证预过滤规则 CRUD、SE 输入拦截、结果落库、分布分析及 Web API 闭环。"""
+    app, repo = _make_dummy_app(tmp_path)
+    try:
+        # 1. 创建按设备类上下限越界规则（380V 电压节点上限设为 370V 以触发命中）
+        created = app.api_post(
+            "/api/se/prefilter/rules",
+            {
+                "scope": "device_type",
+                "device_type": "ACNode",
+                "metric": "uab",
+                "rule_type": "range",
+                "min_value": 300.0,
+                "max_value": 370.0,
+                "enabled": 1,
+                "note": "电压上限预过滤测试",
+            },
+        )
+        assert created["ok"] is True
+        rid = created["data"]["id"]
+        assert created["data"]["device_name"] == "*"
+
+        # 2. 验证 measurement_input 命中规则并将 Bus1.uab=380.0 标为 valid=0 status=1
+        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_pf.sqlite3")
+        model = {
+            "Model": [{"u_unit": "V", "p_unit": "kW", "i_unit": "A"}],
+            "ACNode": [{"idx": 1, "name": "Bus1"}, {"idx": 2, "name": "Bus2"}],
+            "ACBreak": [{"idx": 1, "name": "Brk1", "status": 1}],
+        }
+        task = SimpleNamespace(measurement_file=scada_db, model_file=None, point_catalog_file=None)
+        rules = repo.se_prefilter_rules(enabled_only=True)
+        with measurement_input(task, model, scada_snapshot=True, prefilter_rules=rules) as (meas_path, meta):
+            text = meas_path.read_text(encoding="utf-8")
+            assert meta["rule_prefiltered_count"] == 1
+            lines = [ln for ln in text.splitlines() if ln.startswith("# ")]
+            assert any("Bus1" in ln and ln.endswith(" 0 380.0 1") for ln in lines)
+
+        # 3. 验证 store_se_result 写入 se_prefilter_result 与分析统计接口
+        sid = repo.upsert_schedule("se", True, 60, {})
+        run1 = repo.start_run(sid, "se", "2026-11-25T10:00:00+00:00", str(tmp_path), "fp-pf", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run1,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 2,
+                    "measurements": [
+                        {
+                            "idx": 1,
+                            "name": "ACNode.1.uab",
+                            "device_type": "ACNode",
+                            "device_idx": 1,
+                            "device_name": "Bus1",
+                            "metric": "uab",
+                            "meas_type": "V",
+                            "unit": "V",
+                            "value": 380.0,
+                            "min_value": 300.0,
+                            "max_value": 370.0,
+                            "valid": False,
+                            "source": "prefiltered",
+                            "prefilter_origin": "rule",
+                            "prefilter_rule_id": rid,
+                            "reason": "above_max(380.000 > 370.000)",
+                        }
+                    ],
+                    "se_statistics": {"meas_count": 1, "prefiltered_count": 1},
+                },
+            )
+        ov = app.api_get("/api/se/prefilter/overview")
+        assert ov["ok"] is True
+        assert ov["data"]["total"] == 1
+        assert ov["data"]["by_rule"] == 1
+        res_page = app.api_get("/api/se/prefilter/results?origin=rule")
+        assert res_page["ok"] is True and res_page["data"]["total"] == 1
+        ana = app.api_get("/api/se/prefilter/analysis")
+        assert ana["ok"] is True and len(ana["data"]["by_reason"]) == 1
+
+        # 4. PUT 更新与 DELETE 删除及审计日志检查
+        upd = app.api_put(
+            f"/api/se/prefilter/rules/{rid}",
+            {"scope": "device_type", "device_type": "ACNode", "metric": "uab", "rule_type": "force_filter", "enabled": 0},
+        )
+        assert upd["ok"] is True and upd["data"]["rule_type"] == "force_filter"
+        deleted = app.api_delete(f"/api/se/prefilter/rules/{rid}")
+        assert deleted["ok"] is True and deleted["data"]["deleted"] is True
+        logs = repo.se_logs_list(stage="prefilter_change")
+        assert logs["total"] >= 3
     finally:
         repo.close()

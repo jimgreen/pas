@@ -50,8 +50,12 @@ def test_se_main_page_and_assets_exist():
     html = (web_root / "se-main.html").read_text(encoding="utf-8")
     assert '<body data-page="/se-main"' in html
     assert "/assets/se-dashboard.css" in html
-    assert "/assets/se-dashboard.js" in html
+    assert "/assets/se-home.js" in html
+    flow_html = (web_root / "se-flow.html").read_text(encoding="utf-8")
+    assert '<body data-page="/se-flow"' in flow_html
+    assert "/assets/se-dashboard.js" in flow_html
     assert (web_root / "assets" / "se-dashboard.css").is_file()
+    assert (web_root / "assets" / "se-home.js").is_file()
     assert (web_root / "assets" / "se-dashboard.js").is_file()
     # 验证侧边栏入口存在于主页面
     for name in ("overview.html", "analysis/se.html", "runs.html", "settings.html"):

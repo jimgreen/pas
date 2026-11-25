@@ -546,6 +546,7 @@ def measurement_input(
     *,
     scada_snapshot=False,
     bad_policies: list[dict] | None = None,
+    prefilter_rules: list[dict] | None = None,
     pseudo_meas_defines: list[dict] | None = None,
     pseudo_stat_defines: list[dict] | None = None,
 ):
@@ -605,11 +606,12 @@ def measurement_input(
             continue
         suppress_map[(str(pol.get("device_type") or ""), str(pol.get("device_name") or ""), str(pol.get("metric") or ""))] = pol
 
+    active_rules = [r for r in (prefilter_rules or ()) if int(r.get("enabled", 1))]
     active_pseudos = [
         p for p in (pseudo_meas_defines or ())
         if int(p.get("meas_useflag", 1)) and str(p.get("device_type") or "") in SE_SOLVER_METRICS
     ]
-    use_status_col = bool(suppress_map or active_pseudos)
+    use_status_col = bool(suppress_map or active_rules or active_pseudos)
     header = (
         '<Measurement>\n@ idx name dev_type dev_name meas_type weight valid value status\n'
         if use_status_col
@@ -619,6 +621,9 @@ def measurement_input(
     lookup: dict[int, dict] = {}
     max_mid = 0
     policy_suppressed_count = 0
+    rule_prefiltered_count = 0
+
+    from .se_prefilter import evaluate_prefilter_rule
 
     for row in selected:
         mid = int(row['measurement_id'])
@@ -630,10 +635,22 @@ def measurement_input(
         value = row['value']*_unit_factor(row['unit'],target)
         mname = row.get('meas_name') or f"m{mid}"
         pol = suppress_map.get((str(row['model_table']), str(row['device_name']), str(row.get('metric') or '')))
-        valid_flag = 0 if pol is not None else 1
-        status_flag = 1 if pol is not None else 0  # 0=NORMAL, 1=INVALID
+        rule_hit = None
+        if pol is None and active_rules:
+            rule_hit = evaluate_prefilter_rule(
+                active_rules,
+                device_type=str(row['model_table']),
+                device_name=str(row['device_name']),
+                metric=str(row.get('metric') or ''),
+                value=float(value),
+            )
+        excluded = (pol is not None) or (rule_hit is not None)
+        valid_flag = 0 if excluded else 1
+        status_flag = 1 if excluded else 0  # 0=NORMAL, 1=INVALID
         if pol is not None:
             policy_suppressed_count += 1
+        elif rule_hit is not None:
+            rule_prefiltered_count += 1
         cols = (mid, mname, row['model_table'], row['device_name'], row['se_type'], row['weight'], valid_flag, value)
         if use_status_col:
             cols = (*cols, status_flag)
@@ -653,6 +670,11 @@ def measurement_input(
             "policy_suppressed": bool(pol is not None),
             "policy_id": pol.get("id") if pol is not None else None,
             "policy_reason": str(pol.get("reason") or pol.get("action") or "") if pol is not None else "",
+            "rule_prefiltered": bool(rule_hit is not None),
+            "prefilter_rule_id": rule_hit.get("rule_id") if rule_hit is not None else None,
+            "prefilter_min_value": rule_hit.get("min_value") if rule_hit is not None else None,
+            "prefilter_max_value": rule_hit.get("max_value") if rule_hit is not None else None,
+            "prefilter_reason": str(rule_hit.get("reason") or "") if rule_hit is not None else "",
         }
 
     # 3. 注入人工启用的伪量测（status=2 对应内核 MEAS_STATUS_PSEUDO）
@@ -700,6 +722,7 @@ def measurement_input(
     metadata["snapshot_sha256"] = hashlib.sha256(text.encode()).hexdigest()
     metadata["_measurement_lookup"] = lookup
     metadata["policy_suppressed_count"] = policy_suppressed_count
+    metadata["rule_prefiltered_count"] = rule_prefiltered_count
     metadata["user_pseudo_injected"] = user_pseudo_injected
     metadata["pseudo_stat_applied"] = pseudo_stat_applied
     with tempfile.TemporaryDirectory(prefix='pas_meas_') as directory:

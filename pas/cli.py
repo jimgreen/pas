@@ -51,6 +51,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             do_cycle=current_task.period_seconds,
         )
         bad_policies = se_repo.se_bad_policies(enabled_only=True)
+        prefilter_rules = se_repo.se_prefilter_rules(enabled_only=True)
         pseudo_meas = se_repo.se_pseudo_meas_list(enabled_only=True)
         pseudo_stat = se_repo.se_pseudo_stat_list(enabled_only=True)
         return kernels.run_se(
@@ -58,6 +59,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             config.kernel_root,
             se_params=se_params,
             bad_policies=bad_policies,
+            prefilter_rules=prefilter_rules,
             pseudo_meas_defines=pseudo_meas,
             pseudo_stat_defines=pseudo_stat,
             stage_logger=stage_logger,
@@ -100,6 +102,7 @@ def run_se_snapshot(config, measurement_db: Path | None = None) -> int:
         try:
             kernel_start = time.perf_counter()
             bad_policies = repo.se_bad_policies(enabled_only=True)
+            prefilter_rules = repo.se_prefilter_rules(enabled_only=True)
             pseudo_meas = repo.se_pseudo_meas_list(enabled_only=True)
             pseudo_stat = repo.se_pseudo_stat_list(enabled_only=True)
             result = kernels.run_se(
@@ -108,6 +111,7 @@ def run_se_snapshot(config, measurement_db: Path | None = None) -> int:
                 scada_snapshot=True,
                 se_params=se_params,
                 bad_policies=bad_policies,
+                prefilter_rules=prefilter_rules,
                 pseudo_meas_defines=pseudo_meas,
                 pseudo_stat_defines=pseudo_stat,
                 stage_logger=lambda stage, level="INFO", message="", elapsed_ms=None, detail=None: repo.record_se_run_log(

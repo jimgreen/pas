@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>潮流图 · 状态估计 SE · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/se-flow" data-se-view="topology" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
+          <div class="nav-sub">
+            <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-flow.html" data-route="se-flow" class="active" data-i18n="nav.se_flow">潮流图</a>
+            <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
+            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
+            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">有效实测明细</a>
+            <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
+            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测管理</a>
+            <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
+            <a href="/se-bad.html" data-route="se-bad" data-i18n="nav.se_bad">坏量测管理</a>
+            <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
+            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se">状态估计明细</a>
+          </div>
+          <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.flow">潮流图</h1>
+            <span id="se-conv-pill" class="se-pill neutral">—</span>
+            <span id="se-bad-pill" class="se-pill ok" hidden></span>
+            <span id="se-run-meta" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section class="se-kpi-strip" id="se-kpi-strip" aria-label="KPI">
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span class="se-dot" id="kpi-dot-status"></span><span data-i18n="kpi.status">状态</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-conv">—</strong><small id="kpi-obs">—</small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.pass_rate">合格率</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-pass">—</strong><small>%</small><small id="kpi-meas-ratio"></small></div>
+        </article>
+        <article class="se-kpi-card" id="kpi-card-bad">
+          <div class="se-kpi-head"><span data-i18n="kpi.bad_data">坏数据</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-bad">0</strong></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.residual">总残差</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-res-total">—</strong><small id="kpi-res-max"></small></div>
+        </article>
+        <article class="se-kpi-card">
+          <div class="se-kpi-head"><span data-i18n="kpi.elapsed">用时</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-elapsed">—</strong><small>s</small></div>
+        </article>
+      </section>
+
+      <div class="se-workspace" id="se-workspace">
+        <section class="se-panel active" data-panel="topology">
+          <div class="se-topo-layout">
+            <div class="se-topo-stage-card">
+              <div class="se-toolbar">
+                <div class="se-tool-group">
+                  <select id="svg-display-mode" class="se-select compact" aria-label="Mode">
+                    <option value="compare" data-i18n="topo.mode_compare">Meas / SE</option>
+                    <option value="se" data-i18n="topo.mode_se">SE</option>
+                    <option value="meas" data-i18n="topo.mode_meas">Meas</option>
+                    <option value="residual" data-i18n="topo.mode_residual">Δ (Meas-SE)</option>
+                  </select>
+                  <select id="svg-device-jump" class="se-select compact" aria-label="Locate device"></select>
+                </div>
+                <div class="se-tool-group">
+                  <div class="se-legend-inline">
+                    <span class="lg-chip meas"><i class="dot"></i><span data-i18n="legend.meas">Meas</span></span>
+                    <span class="lg-chip se"><i class="dot"></i><span data-i18n="legend.se">SE</span></span>
+                    <span class="lg-chip bad"><i class="dot"></i><span data-i18n="legend.bad">坏数据</span></span>
+                  </div>
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-in" title="Zoom in">+</button>
+                  <span class="se-zoom-text tabular" id="svg-zoom-label">100%</span>
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-out" title="Zoom out">−</button>
+                  <button type="button" class="se-btn mini" id="btn-svg-fit" data-i18n="topo.fit">适应画布</button>
+                </div>
+              </div>
+              <div class="se-svg-viewport" id="se-svg-viewport">
+                <div class="se-svg-canvas" id="se-svg-canvas"></div>
+                <div class="se-svg-tooltip" id="se-svg-tooltip" hidden></div>
+              </div>
+            </div>
+
+            <aside class="se-topo-inspector">
+              <section class="se-side-card se-bad-card">
+                <div class="se-side-head">
+                  <h2 data-i18n="topo.bad_panel">坏数据</h2>
+                  <div class="se-tool-group">
+                    <span class="se-pill ok tabular" id="topo-bad-count">0</span>
+                    <a href="/se-bad.html" class="se-btn mini se-link-btn" data-i18n="link.manage_bad">处置 →</a>
+                  </div>
+                </div>
+                <div class="se-bad-list" id="topo-bad-list"></div>
+              </section>
+              <section class="se-side-card se-dev-card">
+                <div class="se-side-head">
+                  <h2 id="inspector-dev-title" data-i18n="topo.dev_detail">设备对比</h2>
+                  <span class="se-tag" id="inspector-dev-type">—</span>
+                </div>
+                <div class="se-inspector-body" id="inspector-dev-body"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/se-dashboard.js"></script>
+</body>
+</html>

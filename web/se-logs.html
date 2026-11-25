@@ -25,6 +25,12 @@
           <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
           <div class="nav-sub">
             <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
+            <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
+            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
+            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">有效实测明细</a>
+            <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
+            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测管理</a>
             <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
             <a href="/se-bad.html" data-route="se-bad" data-i18n="nav.se_bad">坏量测管理</a>
             <a href="/se-logs.html" data-route="se-logs" class="active" data-i18n="nav.se_logs">运行日志</a>
@@ -103,6 +109,7 @@
 
       <nav class="se-view-tabs" id="logs-tabs" role="tablist">
         <button type="button" class="se-tab active" data-view="stream" role="tab" data-i18n="tab.stream">日志明细与检索</button>
+        <button type="button" class="se-tab" data-view="runs" role="tab" data-i18n="tab.runs">运行与调度</button>
         <button type="button" class="se-tab" data-view="policy" role="tab" data-i18n="tab.policy">定期删除与存储策略</button>
       </nav>
 
@@ -242,6 +249,37 @@
                 <h2 data-i18n="dist.title">阶段分布统计</h2>
               </div>
               <div class="se-stage-bars" id="log-stage-bars"></div>
+            </section>
+          </div>
+        </section>
+
+        <!-- 3. 运行与调度（由主画面并入） -->
+        <section class="se-panel" data-panel="runs">
+          <div class="se-runs-layout">
+            <section class="se-card se-full-card">
+              <div class="se-toolbar">
+                <h2 data-i18n="runs.title">SE 运行记录</h2>
+                <a class="se-btn mini se-link-btn" href="/analysis/se.html" data-i18n="runs.open_detail">明细与 dbdef →</a>
+              </div>
+              <div class="se-table-scroll" id="se-runs-table-wrap"></div>
+            </section>
+            <section class="se-card">
+              <h2 data-i18n="sched.title">SE 周期调度</h2>
+              <form id="se-schedule-form" class="se-sched-form">
+                <label class="se-field">
+                  <span data-i18n="sched.period">周期 (s)</span>
+                  <input type="number" name="period_seconds" min="1" max="604800" step="1" required>
+                </label>
+                <label class="se-check-inline">
+                  <input type="checkbox" name="enabled">
+                  <span data-i18n="sched.enabled">启用周期自动执行</span>
+                </label>
+                <div class="se-tool-group">
+                  <button type="submit" class="se-btn primary" data-i18n="sched.save">保存调度</button>
+                  <button type="button" class="se-btn ghost" id="btn-daemon-start" data-i18n="sched.daemon_start">启动周期</button>
+                  <button type="button" class="se-btn ghost" id="btn-daemon-stop" data-i18n="sched.daemon_stop">停止周期</button>
+                </div>
+              </form>
             </section>
           </div>
         </section>

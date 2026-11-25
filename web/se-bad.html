@@ -25,6 +25,12 @@
           <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
           <div class="nav-sub">
             <a href="/se-main.html" data-route="se-main" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
+            <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
+            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
+            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">有效实测明细</a>
+            <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
+            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测管理</a>
             <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
             <a href="/se-bad.html" data-route="se-bad" class="active" data-i18n="nav.se_bad">坏量测管理</a>
             <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
@@ -94,8 +100,8 @@
           <div class="se-kpi-val tabular"><strong id="kpi-suspect">0</strong></div>
         </article>
         <article class="se-kpi-card">
-          <div class="se-kpi-head"><span data-i18n="kpi.abnormal">预过滤 / 缺测</span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-prefilter">0</strong><small id="kpi-nomeas">/ 0</small></div>
+          <div class="se-kpi-head"><span data-i18n="kpi.abnormal">未参与 / 缺测</span></div>
+          <div class="se-kpi-val tabular"><strong id="kpi-notuse">0</strong><small id="kpi-nomeas">/ 0</small></div>
         </article>
       </section>
 
@@ -155,7 +161,6 @@
               <div class="se-tool-group wrap">
                 <div class="se-segmented" id="abn-cat-seg">
                   <button type="button" class="seg active" data-cat="susstat" data-i18n="cat.susstat">可疑遥信</button>
-                  <button type="button" class="seg" data-cat="filter" data-i18n="cat.filter">预过滤</button>
                   <button type="button" class="seg" data-cat="notuse" data-i18n="cat.notuse">未参与</button>
                   <button type="button" class="seg" data-cat="nomeas" data-i18n="cat.nomeas">缺测 / 坏质量</button>
                 </div>
@@ -163,6 +168,7 @@
                 <input id="abn-search" class="se-input compact" type="search" data-i18n-placeholder="ph.search" placeholder="筛选设备/量测">
               </div>
               <div class="se-tool-group">
+                <a class="se-btn mini se-link-btn" href="/se-prefilter.html" data-i18n="link.prefilter">预过滤管理 →</a>
                 <span class="se-muted tabular" id="abn-count-meta">--</span>
               </div>
             </div>

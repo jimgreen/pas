@@ -13,7 +13,24 @@
       'unit.days': '天',
       'unit.rows': '条',
       'tab.stream': '日志明细与检索',
+      'tab.runs': '运行与调度',
       'tab.policy': '定期删除与存储策略',
+      'runs.title': 'SE 运行记录',
+      'runs.open_detail': '明细与 dbdef →',
+      'runs.view_log': '看日志',
+      'col.pass_rate': '合格率',
+      'col.bad_count': '坏数据',
+      'col.status': '状态',
+      'col.elapsed_s': '用时 (s)',
+      'sched.title': 'SE 周期调度',
+      'sched.period': '周期 (s)',
+      'sched.enabled': '启用周期自动执行',
+      'sched.save': '保存调度',
+      'sched.daemon_start': '启动周期',
+      'sched.daemon_stop': '停止周期',
+      'sched.saved': '调度已保存',
+      'sched.started': '周期已启动',
+      'sched.stopped': '周期已停止',
       'filter.level_all': '全部级别',
       'filter.stage_all': '全部阶段',
       'filter.source_all': '全部来源',
@@ -61,7 +78,24 @@
       'unit.days': 'd',
       'unit.rows': 'rows',
       'tab.stream': 'Log Stream',
+      'tab.runs': 'Runs & Schedule',
       'tab.policy': 'Retention & Auto-Purge',
+      'runs.title': 'SE Run History',
+      'runs.open_detail': 'Details & dbdef →',
+      'runs.view_log': 'Logs',
+      'col.pass_rate': 'Pass Rate',
+      'col.bad_count': 'Bad',
+      'col.status': 'Status',
+      'col.elapsed_s': 'Elapsed (s)',
+      'sched.title': 'SE Schedule',
+      'sched.period': 'Period (s)',
+      'sched.enabled': 'Enable periodic run',
+      'sched.save': 'Save',
+      'sched.daemon_start': 'Start',
+      'sched.daemon_stop': 'Stop',
+      'sched.saved': 'Schedule saved',
+      'sched.started': 'Daemon started',
+      'sched.stopped': 'Daemon stopped',
       'filter.level_all': 'All Levels',
       'filter.stage_all': 'All Stages',
       'filter.source_all': 'All Sources',
@@ -109,7 +143,24 @@
       'unit.days': 'дн',
       'unit.rows': 'зап.',
       'tab.stream': 'Лента журнала',
+      'tab.runs': 'Запуски и цикл',
       'tab.policy': 'Автоочистка',
+      'runs.title': 'Запуски SE',
+      'runs.open_detail': 'Детали и dbdef →',
+      'runs.view_log': 'Лог',
+      'col.pass_rate': 'Годные',
+      'col.bad_count': 'Плохие',
+      'col.status': 'Статус',
+      'col.elapsed_s': 'Время (с)',
+      'sched.title': 'Расписание SE',
+      'sched.period': 'Период (с)',
+      'sched.enabled': 'Автозапуск',
+      'sched.save': 'Сохранить',
+      'sched.daemon_start': 'Старт',
+      'sched.daemon_stop': 'Стоп',
+      'sched.saved': 'Сохранено',
+      'sched.started': 'Запущено',
+      'sched.stopped': 'Остановлено',
       'filter.level_all': 'Все уровни',
       'filter.stage_all': 'Все этапы',
       'filter.source_all': 'Все источники',
@@ -322,9 +373,53 @@
     renderLogs();
   }
 
+  async function loadRunsAndSchedule() {
+    const [ov, cfg] = await Promise.all([api('/api/se/overview'), api('/api/config')]);
+    const seCfg = (cfg && cfg.tasks && cfg.tasks.se) || { period_seconds: 60, enabled: true };
+    const form = document.getElementById('se-schedule-form');
+    if (form) {
+      form.elements.period_seconds.value = seCfg.period_seconds;
+      form.elements.enabled.checked = Boolean(seCfg.enabled);
+    }
+    const rows = (ov && ov.recent_runs) || [];
+    const wrap = document.getElementById('se-runs-table-wrap');
+    if (!wrap) return;
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="se-table">
+        <thead>
+          <tr>
+            <th>${esc(t('col.run_id'))}</th>
+            <th>${esc(t('col.status'))}</th>
+            <th>${esc(t('col.time'))}</th>
+            <th>${esc(t('col.pass_rate'))}</th>
+            <th>${esc(t('col.bad_count'))}</th>
+            <th>${esc(t('col.elapsed_s'))}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r) => `
+            <tr>
+              <td class="tabular"><a href="/analysis/se.html?run=${r.run_id}">#${r.run_id}</a></td>
+              <td><span class="se-pill ${r.status === 'succeeded' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td>
+              <td class="tabular">${esc(fmtTime(r.started_at))}</td>
+              <td class="tabular">${r.pass_rate != null ? (Number(r.pass_rate) * 100).toFixed(2) + '%' : '—'}</td>
+              <td class="tabular">${r.bad_data_count ?? '—'}</td>
+              <td class="tabular">${r.elapsed_seconds != null ? Number(r.elapsed_seconds).toFixed(3) : '—'}</td>
+              <td><button type="button" class="se-btn mini" data-filter-run="${r.run_id}">${esc(t('runs.view_log'))}</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+
   async function refreshAll() {
     try {
-      await Promise.all([loadSummary(), loadLogs()]);
+      await Promise.all([loadSummary(), loadLogs(), loadRunsAndSchedule()]);
     } catch (err) {
       notify(err.message, true);
     }
@@ -357,6 +452,49 @@
       const qs = buildFilterQuery(false);
       window.location.href = `/api/se/logs/export?${qs}`;
     });
+
+    const runsWrap = document.getElementById('se-runs-table-wrap');
+    if (runsWrap) {
+      runsWrap.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-filter-run]');
+        if (!btn) return;
+        document.getElementById('log-runid-input').value = btn.dataset.filterRun;
+        state.logs.offset = 0;
+        document.querySelector('#logs-tabs .se-tab[data-view="stream"]')?.click();
+        loadLogs();
+      });
+    }
+
+    const schedForm = document.getElementById('se-schedule-form');
+    if (schedForm) {
+      schedForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await api('/api/schedules/se', {
+            method: 'POST',
+            body: JSON.stringify({
+              period_seconds: Number(schedForm.elements.period_seconds.value),
+              enabled: Boolean(schedForm.elements.enabled.checked),
+            }),
+          });
+          notify(t('sched.saved'));
+        } catch (err) {
+          notify(err.message, true);
+        }
+      });
+    }
+    const btnStart = document.getElementById('btn-daemon-start');
+    if (btnStart) {
+      btnStart.addEventListener('click', async () => {
+        try { await api('/api/actions/daemon/start', { method: 'POST', body: '{}' }); notify(t('sched.started')); } catch (err) { notify(err.message, true); }
+      });
+    }
+    const btnStop = document.getElementById('btn-daemon-stop');
+    if (btnStop) {
+      btnStop.addEventListener('click', async () => {
+        try { await api('/api/actions/daemon/stop', { method: 'POST', body: '{}' }); notify(t('sched.stopped')); } catch (err) { notify(err.message, true); }
+      });
+    }
 
     document.getElementById('log-policy-form').addEventListener('submit', async (e) => {
       e.preventDefault();

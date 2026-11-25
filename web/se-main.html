@@ -25,10 +25,16 @@
           <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
           <div class="nav-sub">
             <a href="/se-main.html" data-route="se-main" class="active" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
+            <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
+            <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
+            <a href="/se-measurements.html" data-route="se-measurements" data-i18n="nav.se_measurements">有效实测明细</a>
+            <a href="/se-params.html" data-route="se-params" data-i18n="nav.se_params">算法参数</a>
+            <a href="/se-prefilter.html" data-route="se-prefilter" data-i18n="nav.se_prefilter">预过滤量测管理</a>
             <a href="/se-pseudo.html" data-route="se-pseudo" data-i18n="nav.se_pseudo">伪量测管理</a>
             <a href="/se-bad.html" data-route="se-bad" data-i18n="nav.se_bad">坏量测管理</a>
             <a href="/se-logs.html" data-route="se-logs" data-i18n="nav.se_logs">运行日志</a>
-            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se">状态估计明细</a>
+            <a href="/analysis/se.html" data-route="se" data-i18n="nav.se_detail">状态估计明细</a>
           </div>
           <a href="/analysis/lf.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
           <a href="/analysis/ca.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
@@ -52,14 +58,12 @@
       <header class="se-topbar">
         <div class="se-title-group">
           <div class="se-title-row">
-            <h1 data-i18n="title.main">状态估计主画面</h1>
-            <span id="se-conv-pill" class="se-pill neutral">--</span>
-            <span id="se-bad-pill" class="se-pill ok" hidden></span>
-            <span id="se-run-meta" class="se-run-meta tabular">--</span>
+            <h1 data-i18n="title.home">状态估计主画面</h1>
+            <span id="home-conv-pill" class="se-pill neutral">—</span>
+            <span id="home-run-meta" class="se-run-meta tabular">—</span>
           </div>
         </div>
         <div class="se-top-actions">
-          <button type="button" class="se-btn primary" id="btn-run-se" data-i18n="action.run_se">立即执行 SE</button>
           <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
           <select id="theme-select" class="se-select compact" aria-label="Theme">
             <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
@@ -81,256 +85,165 @@
 
       <div id="notice" class="notice" role="status" hidden></div>
 
-      <section class="se-kpi-strip" id="se-kpi-strip" aria-label="KPI">
-        <article class="se-kpi-card">
-          <div class="se-kpi-head"><span data-i18n="kpi.status">收敛与可观测</span><span class="se-dot" id="kpi-dot-status"></span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-conv">--</strong><small id="kpi-obs">--</small></div>
-          <div class="se-kpi-sub tabular" id="kpi-iters">--</div>
-        </article>
-        <article class="se-kpi-card">
-          <div class="se-kpi-head"><span data-i18n="kpi.pass_rate">状态估计合格率</span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-pass">--</strong><small>%</small></div>
-          <div class="se-kpi-sub tabular" id="kpi-meas-ratio">--</div>
-        </article>
-        <article class="se-kpi-card" id="kpi-card-bad">
-          <div class="se-kpi-head"><span data-i18n="kpi.bad_data">坏数据点</span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-bad">0</strong><small data-i18n="unit.count">条</small></div>
-          <div class="se-kpi-sub tabular" id="kpi-bad-sub">--</div>
-        </article>
-        <article class="se-kpi-card">
-          <div class="se-kpi-head"><span data-i18n="kpi.residual">总残差 / 最大残差</span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-res-total">--</strong><small id="kpi-res-max">--</small></div>
-          <div class="se-kpi-sub tabular" id="kpi-obj">--</div>
-        </article>
-        <article class="se-kpi-card">
-          <div class="se-kpi-head"><span data-i18n="kpi.elapsed">计算用时</span></div>
-          <div class="se-kpi-val tabular"><strong id="kpi-elapsed">--</strong><small>s</small></div>
-          <div class="se-kpi-sub tabular" id="kpi-calc-time">--</div>
-        </article>
-      </section>
-
-      <nav class="se-view-tabs" id="se-view-tabs" role="tablist">
-        <button type="button" class="se-tab active" data-view="topology" role="tab" data-i18n="tab.topology">潮流图可视化</button>
-        <button type="button" class="se-tab" data-view="curves" role="tab" data-i18n="tab.curves">历史曲线</button>
-        <button type="button" class="se-tab" data-view="devices" role="tab" data-i18n="tab.devices">设备对比</button>
-        <button type="button" class="se-tab" data-view="measurements" role="tab" data-i18n="tab.measurements">有效实测明细</button>
-        <button type="button" class="se-tab" data-view="params" role="tab" data-i18n="tab.params">算法参数</button>
-        <button type="button" class="se-tab" data-view="runs" role="tab" data-i18n="tab.runs">运行与调度</button>
-      </nav>
-
-      <div class="se-workspace" id="se-workspace">
-        <!-- 1. SVG 潮流图可视化 -->
-        <section class="se-panel active" data-panel="topology">
-          <div class="se-topo-layout">
-            <div class="se-topo-stage-card">
-              <div class="se-toolbar">
-                <div class="se-tool-group">
-                  <select id="svg-display-mode" class="se-select compact" aria-label="Mode">
-                    <option value="compare" data-i18n="topo.mode_compare">Meas / SE</option>
-                    <option value="se" data-i18n="topo.mode_se">SE</option>
-                    <option value="meas" data-i18n="topo.mode_meas">Meas</option>
-                    <option value="residual" data-i18n="topo.mode_residual">Δ (Meas-SE)</option>
-                  </select>
-                  <select id="svg-device-jump" class="se-select compact" aria-label="Locate device"></select>
+      <div class="se-workspace">
+        <div class="se-home-shell">
+          <div class="se-home-grid">
+            <!-- 左栏：量测分析与控制 -->
+            <div class="se-home-col">
+              <section class="se-home-panel accent-meas grow">
+                <div class="se-home-panel-head">
+                  <h2 data-i18n="sec.meas_ctrl">量测分析与控制</h2>
                 </div>
-                <div class="se-tool-group">
-                  <div class="se-legend-inline">
-                    <span class="lg-chip meas"><i class="dot"></i><span data-i18n="legend.meas">实测 Meas</span></span>
-                    <span class="lg-chip se"><i class="dot"></i><span data-i18n="legend.se">估计 SE</span></span>
-                    <span class="lg-chip bad"><i class="dot"></i><span data-i18n="legend.bad">坏数据告警</span></span>
+                <div class="se-home-panel-body">
+                  <div class="se-home-sub grow">
+                    <div class="se-home-sub-title" data-i18n="sub.obs">可观测性分析</div>
+                    <div class="se-kv-list">
+                      <div class="se-kv-row"><span class="k" data-i18n="m.bus_count">母线总数</span><span class="v tabular" id="h-bus-count">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.meas_count">量测总数</span><span class="v tabular" id="h-meas-count">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.valid_meas">有效量测数</span><span class="v tabular" id="h-valid-meas">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.deficiency">不可观测点数</span><span class="v tabular" id="h-deficiency">—</span></div>
+                    </div>
+                    <a class="se-more-link" href="/se-measurements.html" data-i18n="link.more">更多…</a>
                   </div>
-                  <button type="button" class="se-btn mini" id="btn-svg-zoom-in" title="Zoom in">+</button>
-                  <span class="se-zoom-text tabular" id="svg-zoom-label">100%</span>
-                  <button type="button" class="se-btn mini" id="btn-svg-zoom-out" title="Zoom out">−</button>
-                  <button type="button" class="se-btn mini" id="btn-svg-fit" data-i18n="topo.fit">适应画布</button>
-                </div>
-              </div>
-              <div class="se-svg-viewport" id="se-svg-viewport">
-                <div class="se-svg-canvas" id="se-svg-canvas"></div>
-                <div class="se-svg-tooltip" id="se-svg-tooltip" hidden></div>
-              </div>
-            </div>
 
-            <aside class="se-topo-inspector">
-              <section class="se-side-card se-bad-card">
-                <div class="se-side-head">
-                  <h2 data-i18n="topo.bad_panel">坏数据告警</h2>
-                  <div class="se-tool-group">
-                    <span class="se-pill ok tabular" id="topo-bad-count">0</span>
-                    <a href="/se-bad.html" class="se-btn mini se-link-btn" data-i18n="link.manage_bad">处置 →</a>
+                  <div class="se-home-sub grow">
+                    <div class="se-home-sub-title" data-i18n="sub.prefilter">预处理信息</div>
+                    <div class="se-kv-list">
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_total">预过滤总数</span><span class="v tabular" id="h-pf-total">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rule">越限规则命中</span><span class="v tabular" id="h-pf-rule">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_kernel">内核预过滤</span><span class="v tabular" id="h-pf-kernel">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.nomeas">缺测 / 坏质量</span><span class="v tabular" id="h-nomeas">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.suspect">可疑遥信数</span><span class="v tabular" id="h-suspect">—</span></div>
+                    </div>
+                    <a class="se-more-link" href="/se-prefilter.html" data-i18n="link.more">更多…</a>
+                  </div>
+
+                  <div class="se-home-sub grow">
+                    <div class="se-home-sub-title" data-i18n="sub.control">量测控制</div>
+                    <div class="se-kv-list">
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_stat">伪遥信数</span><span class="v tabular" id="h-pseudo-stat">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_meas">伪遥测数</span><span class="v tabular" id="h-pseudo-meas">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.policy">遥测屏蔽数</span><span class="v tabular" id="h-policy">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.bad_total">坏量测数</span><span class="v tabular" id="h-bad-left">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.devices">建模设备数</span><span class="v tabular" id="h-dev-total">—</span></div>
+                    </div>
+                    <div class="se-sub-links">
+                      <a class="se-more-link" href="/se-pseudo.html" data-i18n="link.pseudo">伪量测…</a>
+                      <a class="se-more-link" href="/se-bad.html" data-i18n="link.bad">坏量测…</a>
+                    </div>
                   </div>
                 </div>
-                <div class="se-bad-list" id="topo-bad-list"></div>
               </section>
-              <section class="se-side-card se-dev-card">
-                <div class="se-side-head">
-                  <h2 id="inspector-dev-title" data-i18n="topo.dev_detail">设备量测对比</h2>
-                  <span class="se-tag" id="inspector-dev-type">--</span>
+            </div>
+
+            <!-- 中栏：计算控制 -->
+            <div class="se-home-col">
+              <section class="se-home-panel accent-ctrl grow">
+                <div class="se-home-panel-head">
+                  <h2 data-i18n="sec.calc_ctrl">计算控制</h2>
                 </div>
-                <div class="se-inspector-body" id="inspector-dev-body"></div>
+                <div class="se-home-panel-body">
+                  <div class="se-ctrl-btns">
+                    <button type="button" class="se-btn primary" id="btn-home-start" data-i18n="btn.start_calc">启动计算</button>
+                    <button type="button" class="se-btn ghost" id="btn-home-toggle-daemon" data-i18n="btn.pause_calc">暂停周期</button>
+                    <a class="se-btn ghost se-link-btn" href="/se-flow.html" style="justify-content:center" data-i18n="btn.open_flow">打开潮流图</a>
+                  </div>
+
+                  <div class="se-ctrl-stamp">
+                    <span class="lbl" data-i18n="lbl.snap_time">状态估计断面时间</span>
+                    <span class="val tabular" id="h-snap-time">—</span>
+                  </div>
+
+                  <div class="se-ctrl-stamp">
+                    <span class="lbl" data-i18n="lbl.model_scene">当前模型 / 场景</span>
+                    <span class="val tabular" id="h-model-scene">—</span>
+                  </div>
+
+                  <div class="se-home-sub grow">
+                    <div class="se-home-sub-title" data-i18n="sub.params">参数管理</div>
+                    <div class="se-kv-list">
+                      <div class="se-kv-row"><span class="k" data-i18n="p.periodic">周期运行</span><span class="v" id="h-p-periodic">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.cycle">执行周期</span><span class="v tabular" id="h-p-cycle">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.trigger">触发方式</span><span class="v tabular" id="h-p-trigger">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.flat">平启动</span><span class="v" id="h-p-flat">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.tol">收敛精度判据</span><span class="v tabular" id="h-p-tol">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.badeps">坏数据门槛</span><span class="v tabular" id="h-p-badeps">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.badmax">坏数据上限</span><span class="v tabular" id="h-p-badmax">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.pweight">伪量测权重</span><span class="v tabular" id="h-p-pweight">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.maxiter">最大迭代次数</span><span class="v tabular" id="h-p-maxiter">—</span></div>
+                    </div>
+                    <a class="se-more-link" href="/se-params.html" data-i18n="link.more">更多…</a>
+                  </div>
+                </div>
               </section>
-            </aside>
-          </div>
-        </section>
+            </div>
 
-        <!-- 2. 历史曲线分析 -->
-        <section class="se-panel" data-panel="curves">
-          <div class="se-curves-grid">
-            <article class="se-card se-chart-card">
-              <div class="se-toolbar">
-                <div class="se-tool-group">
-                  <h2 data-i18n="curves.global_title">系统状态估计历史曲线</h2>
-                  <div class="se-segmented" id="global-curve-metric">
-                    <button type="button" class="seg active" data-gmetric="pass_rate" data-i18n="curves.pass_rate">合格率 (%)</button>
-                    <button type="button" class="seg" data-gmetric="residual" data-i18n="curves.residual">总残差 / 最大残差</button>
-                    <button type="button" class="seg" data-gmetric="bad_data" data-i18n="curves.bad_data">坏数据数</button>
-                    <button type="button" class="seg" data-gmetric="elapsed" data-i18n="curves.elapsed">计算耗时 (s)</button>
+            <!-- 右栏：上方合格率曲线 + 下方计算结果 & 指标统计 -->
+            <div class="se-home-right">
+              <section class="se-home-panel accent-stat">
+                <div class="se-home-rate-bar">
+                  <div class="se-home-rate-items">
+                    <div class="se-home-rate-item"><span data-i18n="r.cur_pass">当前合格率</span><strong class="tabular ok" id="h-r-cur">—</strong></div>
+                    <div class="se-home-rate-item"><span data-i18n="r.today_avg">今日平均</span><strong class="tabular" id="h-r-today">—</strong></div>
+                    <div class="se-home-rate-item"><span data-i18n="r.yest_avg">对比日平均</span><strong class="tabular" id="h-r-yest">—</strong></div>
+                    <div class="se-home-rate-item"><span data-i18n="r.conv_rate">当日收敛率</span><strong class="tabular" id="h-r-conv">—</strong></div>
                   </div>
+                  <a class="se-more-link" style="margin:0" href="/se-curves.html" data-i18n="link.more">更多…</a>
                 </div>
-                <div class="se-tool-group">
-                  <select id="curve-limit" class="se-select compact" aria-label="Window">
-                    <option value="20">20</option>
-                    <option value="50" selected>50</option>
-                    <option value="100">100</option>
-                    <option value="200">200</option>
-                  </select>
+                <div class="se-home-chart-wrap">
+                  <div class="se-home-chart-host" id="home-pass-chart"></div>
+                  <div class="se-home-chart-legend" id="home-pass-legend"></div>
                 </div>
-              </div>
-              <div class="se-chart-legend" id="global-chart-legend"></div>
-              <div class="se-chart-host" id="global-chart-host"></div>
-            </article>
+              </section>
 
-            <article class="se-card se-chart-card">
-              <div class="se-toolbar">
-                <div class="se-tool-group wrap">
-                  <h2 data-i18n="curves.point_title">量测点与残差历史曲线</h2>
-                  <select id="pt-type-select" class="se-select compact" aria-label="Device type"></select>
-                  <select id="pt-dev-select" class="se-select compact" aria-label="Device"></select>
-                  <select id="pt-meas-select" class="se-select compact" aria-label="Measurement"></select>
-                  <select id="pt-bad-hotspot" class="se-select compact" aria-label="Bad hotspots"></select>
-                </div>
-                <div class="se-tool-group">
-                  <div class="se-segmented" id="point-curve-mode">
-                    <button type="button" class="seg active" data-pmode="value" data-i18n="curves.meas_vs_se">Meas vs SE</button>
-                    <button type="button" class="seg" data-pmode="residual" data-i18n="curves.point_residual">残差 Δ</button>
-                    <button type="button" class="seg" data-pmode="norm" data-i18n="curves.norm_residual">标准化残差</button>
+              <div class="se-home-bottom-cards">
+                <section class="se-home-panel accent-stat">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="sec.result">计算结果</h2>
+                    <a class="se-more-link" style="margin:0" href="/se-devices.html" data-i18n="link.more">更多…</a>
                   </div>
-                </div>
-              </div>
-              <div class="se-chart-legend" id="point-chart-legend"></div>
-              <div class="se-chart-host" id="point-chart-host"></div>
-            </article>
-          </div>
-        </section>
+                  <div class="se-home-panel-body">
+                    <div class="se-kv-row"><span class="k" data-i18n="res.start">计算开始时间</span><span class="v tabular" id="h-res-start">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.end">计算结束时间</span><span class="v tabular" id="h-res-end">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.elapsed">计算耗时</span><span class="v tabular" id="h-res-elapsed">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.iters">迭代次数</span><span class="v tabular" id="h-res-iters">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.obj">目标函数 J(x)</span><span class="v tabular" id="h-res-obj">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.residual">总残差 / 最大</span><span class="v tabular" id="h-res-residual">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="res.bad">大误差点数</span><span class="v tabular" id="h-res-bad">—</span></div>
+                  </div>
+                </section>
 
-        <!-- 3. 设备对比宽表 -->
-        <section class="se-panel" data-panel="devices">
-          <div class="se-card se-full-card">
-            <div class="se-toolbar">
-              <div class="se-tool-group wrap">
-                <select id="dev-type-select" class="se-select compact" aria-label="Device table"></select>
-                <input id="dev-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_device" placeholder="筛选设备编号或名称">
-                <label class="se-check-inline">
-                  <input type="checkbox" id="dev-bad-only">
-                  <span data-i18n="devices.bad_only">仅坏数据设备</span>
-                </label>
-              </div>
-              <div class="se-tool-group">
-                <span class="se-muted tabular" id="dev-count-summary">--</span>
-                <button type="button" class="se-btn mini" id="btn-export-devices" data-i18n="action.export_csv">导出 CSV</button>
+                <section class="se-home-panel accent-stat">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="sec.metrics">指标统计</h2>
+                    <a class="se-more-link" style="margin:0" href="/se-logs.html" data-i18n="link.more">更多…</a>
+                  </div>
+                  <div class="se-home-panel-body">
+                    <div class="se-kv-row"><span class="k" data-i18n="st.host">运行主机</span><span class="v tabular" id="h-st-host">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.runs">当天运行次数</span><span class="v tabular" id="h-st-runs">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.conv_cnt">收敛次数</span><span class="v tabular" id="h-st-conv-cnt">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.conv_rate">收敛率</span><span class="v tabular ok" id="h-st-conv-rate">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.pass_rate">量测合格率</span><span class="v tabular ok" id="h-st-pass-rate">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.good_valid">合格 / 有效量测</span><span class="v tabular" id="h-st-good-valid">—</span></div>
+                    <div class="se-kv-row"><span class="k" data-i18n="st.coverage">量测覆盖率</span><span class="v tabular" id="h-st-coverage">—</span></div>
+                  </div>
+                </section>
               </div>
             </div>
-            <div class="se-table-scroll" id="dev-table-wrap"></div>
           </div>
-        </section>
 
-        <!-- 4. 有效实测明细（坏数据与伪量测分别收口至 /se-bad.html 与 /se-pseudo.html，避免重复展示） -->
-        <section class="se-panel" data-panel="measurements">
-          <div class="se-card se-full-card">
-            <div class="se-toolbar">
-              <div class="se-tool-group wrap">
-                <select id="meas-devtype-select" class="se-select compact" aria-label="Device type"></select>
-                <select id="meas-sort-select" class="se-select compact" aria-label="Sort">
-                  <option value="abs_residual" data-i18n="sort.abs_res">残差绝对值</option>
-                  <option value="abs_norm_residual" data-i18n="sort.abs_norm">标准化残差</option>
-                  <option value="meas_id" data-i18n="sort.id">量测序号</option>
-                  <option value="device_name" data-i18n="sort.dev">设备名称</option>
-                </select>
-                <input id="meas-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_meas" placeholder="搜索设备/量测">
-              </div>
-              <div class="se-tool-group">
-                <a class="se-btn mini se-link-btn" href="/se-pseudo.html" data-i18n="link.manage_pseudo">伪量测管理 →</a>
-                <a class="se-btn mini se-link-btn" href="/se-bad.html" data-i18n="link.manage_bad_full">坏量测管理 →</a>
-                <button type="button" class="se-btn mini" id="btn-export-meas" data-i18n="action.export_csv">导出 CSV</button>
-              </div>
-            </div>
-            <div class="se-table-scroll" id="meas-table-wrap"></div>
-            <div class="se-pager" id="meas-pager"></div>
-          </div>
-        </section>
-
-        <!-- 5. SE 算法参数 (pas_se_para) -->
-        <section class="se-panel" data-panel="params">
-          <div class="se-card se-full-card">
-            <div class="se-toolbar">
-              <h2 data-i18n="params.title">SE 算法参数 (pas_se_para)</h2>
-              <div class="se-tool-group">
-                <span class="se-muted tabular" id="params-updated-at">--</span>
-                <button type="button" class="se-btn danger-ghost" id="btn-params-reset" data-i18n="params.reset">恢复默认</button>
-                <button type="button" class="se-btn primary" id="btn-params-save" data-i18n="params.save">保存参数</button>
-              </div>
-            </div>
-            <form id="se-params-form" class="se-params-form"></form>
-          </div>
-        </section>
-
-        <!-- 6. 运行记录与调度 -->
-        <section class="se-panel" data-panel="runs">
-          <div class="se-runs-layout">
-            <section class="se-card se-full-card">
-              <div class="se-toolbar">
-                <h2 data-i18n="runs.title">SE 历史运行记录</h2>
-                <div class="se-tool-group">
-                  <a class="se-btn mini se-link-btn" href="/se-logs.html" data-i18n="link.view_logs">运行日志 →</a>
-                  <a class="se-btn mini se-link-btn" href="/analysis/se.html" data-i18n="runs.open_legacy">打开明细与 dbdef 页 →</a>
-                </div>
-              </div>
-              <div class="se-table-scroll" id="runs-table-wrap"></div>
-            </section>
-            <section class="se-card">
-              <h2 data-i18n="sched.title">SE 周期调度</h2>
-              <form id="se-schedule-form" class="se-sched-form">
-                <label class="se-field">
-                  <span data-i18n="sched.period">周期 (s)</span>
-                  <input type="number" name="period_seconds" min="1" max="604800" step="1" required>
-                </label>
-                <label class="se-check-inline">
-                  <input type="checkbox" name="enabled">
-                  <span data-i18n="sched.enabled">启用周期自动执行</span>
-                </label>
-                <div class="se-tool-group">
-                  <button type="submit" class="se-btn primary" data-i18n="sched.save">保存调度</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-start" data-i18n="sched.daemon_start">启动周期</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-stop" data-i18n="sched.daemon_stop">停止周期</button>
-                </div>
-              </form>
-            </section>
-          </div>
-        </section>
+          <!-- 底部通栏：运行信息 -->
+          <a class="se-home-footer" href="/se-logs.html" id="home-log-bar">
+            <span class="tag" data-i18n="foot.run_info">运行信息</span>
+            <span class="se-muted tabular" id="h-log-time">—</span>
+            <span class="msg" id="h-log-msg">—</span>
+          </a>
+        </div>
       </div>
     </main>
   </div>
 
-  <!-- 高危操作模态确认框（重置 SE 算法参数） -->
-  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
-    <h3 id="confirm-title" data-i18n="modal.reset_title">重置 pas_se_para</h3>
-    <p id="confirm-desc" class="se-modal-desc" data-i18n="modal.reset_desc">恢复 se.para 默认值？</p>
-    <div class="se-modal-actions">
-      <button type="button" class="se-btn ghost" id="btn-confirm-cancel" autofocus data-i18n="action.cancel">取消</button>
-      <button type="button" class="se-btn danger" id="btn-confirm-ok" data-i18n="action.confirm_reset">确认恢复</button>
-    </div>
-  </dialog>
-
-  <script src="/assets/se-dashboard.js"></script>
+  <script src="/assets/se-common.js"></script>
+  <script src="/assets/se-home.js"></script>
 </body>
 </html>

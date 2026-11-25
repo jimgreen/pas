@@ -562,7 +562,9 @@ def _enrich_se_result(
         source = str(item.get("source") or "")
         is_user_pseudo = bool(meta.get("is_user_pseudo")) if meta is not None else False
         is_pseudo = source == "pseudo" or is_user_pseudo
-        is_prefiltered = source == "prefiltered" or bool(meta.get("policy_suppressed") if meta is not None else False)
+        is_rule_prefilter = bool(meta.get("rule_prefiltered") if meta is not None else False)
+        is_policy_suppress = bool(meta.get("policy_suppressed") if meta is not None else False)
+        is_prefiltered = source == "prefiltered" or is_policy_suppress or is_rule_prefilter
         is_bad = source == "bad_data"
 
         if meta is not None:
@@ -619,8 +621,16 @@ def _enrich_se_result(
         effective_source = "pseudo" if is_user_pseudo else ("prefiltered" if is_prefiltered and not is_bad else source)
         is_good = (effective_source == "normal") and is_valid and not is_bad
         reason_text = str(item.get("reason") or ("bad_data" if is_bad else ""))
-        if meta is not None and meta.get("policy_suppressed") and not reason_text:
-            reason_text = f"policy_suppressed:{meta.get('policy_reason') or 'manual'}"
+        prefilter_origin = ""
+        if is_rule_prefilter:
+            prefilter_origin = "rule"
+            reason_text = str(meta.get("prefilter_reason") or "rule_prefiltered")
+        elif is_policy_suppress:
+            prefilter_origin = "policy"
+            if not reason_text:
+                reason_text = f"policy_suppressed:{meta.get('policy_reason') or 'manual'}"
+        elif is_prefiltered:
+            prefilter_origin = "kernel"
         elif is_user_pseudo and not reason_text:
             reason_text = str(meta.get("pseudo_note") or "user_defined_pseudo")
 
@@ -635,6 +645,8 @@ def _enrich_se_result(
             "meas_type": mtype,
             "unit": unit,
             "value": meas_val_eng,
+            "min_value": meta.get("prefilter_min_value") if is_rule_prefilter and meta is not None else item.get("min_value"),
+            "max_value": meta.get("prefilter_max_value") if is_rule_prefilter and meta is not None else item.get("max_value"),
             "estimated_value": se_val_eng,
             "residual": residual_eng,
             "normalized_residual": norm_res_val,
@@ -644,6 +656,8 @@ def _enrich_se_result(
             "is_pseudo": int(is_pseudo),
             "pseudo_origin": "user_defined" if is_user_pseudo else ("kernel_auto" if is_pseudo else ""),
             "pseudo_define_id": meta.get("pseudo_define_id") if is_user_pseudo and meta is not None else None,
+            "prefilter_origin": prefilter_origin,
+            "prefilter_rule_id": meta.get("prefilter_rule_id") if is_rule_prefilter and meta is not None else None,
             "source": effective_source,
             "reason": reason_text,
         }
@@ -760,6 +774,7 @@ def run_se(
     scada_snapshot: bool = False,
     se_params: dict[str, Any] | None = None,
     bad_policies: list[dict[str, Any]] | None = None,
+    prefilter_rules: list[dict[str, Any]] | None = None,
     pseudo_meas_defines: list[dict[str, Any]] | None = None,
     pseudo_stat_defines: list[dict[str, Any]] | None = None,
     stage_logger: Any = None,
@@ -785,6 +800,7 @@ def run_se(
             raw_snapshot,
             scada_snapshot=True,
             bad_policies=bad_policies,
+            prefilter_rules=prefilter_rules,
             pseudo_meas_defines=pseudo_meas_defines,
             pseudo_stat_defines=pseudo_stat_defines,
         ) as (meas_file, measurement_metadata):
@@ -859,6 +875,7 @@ def run_se(
             snapshot,
             scada_snapshot=scada_snapshot,
             bad_policies=bad_policies,
+            prefilter_rules=prefilter_rules,
             pseudo_meas_defines=pseudo_meas_defines,
             pseudo_stat_defines=pseudo_stat_defines,
         ) as (meas_file, measurement_metadata):
