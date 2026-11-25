@@ -11,9 +11,29 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
+import threading
 
 
 SQLITE_SUFFIXES = {".sqlite3", ".sqlite", ".db"}
+_MODEL_CACHE_LOCK = threading.Lock()
+_MODEL_CACHE: dict[tuple[str, int, int, int, int], dict[str, dict]] = {}
+_MODEL_CACHE_MAX = 8
+
+
+def _file_sig(path: Path) -> tuple[str, int, int, int, int]:
+    resolved = path.resolve()
+    st = resolved.stat()
+    wal = Path(str(resolved) + "-wal")
+    wal_mtime = 0
+    wal_size = 0
+    if wal.is_file():
+        try:
+            wst = wal.stat()
+            wal_mtime = wst.st_mtime_ns
+            wal_size = wst.st_size
+        except OSError:
+            pass
+    return (str(resolved), st.st_mtime_ns, st.st_size, wal_mtime, wal_size)
 
 
 def _identifier(value):
@@ -34,7 +54,16 @@ def _cell(value):
 
 
 def read_model_tables(path: Path) -> dict[str, dict]:
-    """Read declared RTDB fields and values from a single read-only transaction."""
+    """Read declared RTDB fields and values from a single read-only transaction (with mtime cache)."""
+    try:
+        sig = _file_sig(path)
+    except OSError as exc:
+        raise ValueError(f"Cannot read embedded RTDB SQLite model {path}: {exc}") from exc
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(sig)
+        if cached is not None:
+            return cached
+
     connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
     try:
         connection.execute("PRAGMA query_only=ON")
@@ -57,6 +86,10 @@ def read_model_tables(path: Path) -> dict[str, dict]:
                 connection.execute(f'SELECT {selected} FROM "rtdb_data_{name}" ORDER BY "_pos"')]}
         if not any(name in result for name in ("ACNode", "DCNode", "Node")):
             raise ValueError("SQLite model contains no AC/DC node table")
+        with _MODEL_CACHE_LOCK:
+            if len(_MODEL_CACHE) >= _MODEL_CACHE_MAX:
+                _MODEL_CACHE.clear()
+            _MODEL_CACHE[sig] = result
         return result
     except sqlite3.Error as exc:
         raise ValueError(f"Cannot read embedded RTDB SQLite model {path}: {exc}") from exc
@@ -131,13 +164,18 @@ class ModelInput:
 
 
 @contextmanager
-def kernel_model(path, *, topology_overrides: dict[str, dict[int, dict[str, int]]] | None = None):
+def kernel_model(
+    path,
+    *,
+    topology_overrides: dict[str, dict[int, dict[str, int]]] | None = None,
+    raw_tables: dict[str, dict] | None = None,
+):
     source = Path(path).resolve()
     if source.suffix.lower() not in SQLITE_SUFFIXES:
         yield ModelInput(source, {"source": str(source), "format": "file"})
         return
-    raw_tables = read_model_tables(source)
-    patched_tables, applied = apply_topology_overrides(raw_tables, topology_overrides)
+    tables_loaded = raw_tables if raw_tables is not None else read_model_tables(source)
+    patched_tables, applied = apply_topology_overrides(tables_loaded, topology_overrides)
     text, table_count, row_count = render_model_text(patched_tables)
     metadata = {
         "source": str(source),

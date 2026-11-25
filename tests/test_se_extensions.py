@@ -535,3 +535,84 @@ def test_prefilter_rules_input_exclusion_persistence_and_api(tmp_path: Path) -> 
         assert logs["total"] >= 3
     finally:
         repo.close()
+
+
+def test_se_optimizations_regressions(tmp_path: Path) -> None:
+    """回归验证：NaN 清洗、单次聚合潮流快照、大残差过滤与全量导出、lite 探活、单位感知可疑遥信及僵尸任务回收。"""
+    import math
+    from pas.kernels import _json_value, _number
+    from pas.se_bad import detect_suspect_statuses
+    from pas.se_log import VALID_LOG_STAGES
+    from pas.web import _sanitize_json
+
+    # 1. NaN / Inf 清洗保护
+    assert _number(float("nan"), -1.0) == -1.0
+    assert _number(float("inf"), 0.0) == 0.0
+    assert _json_value({"a": float("nan"), "b": [1.5, float("-inf")]}) == {"a": None, "b": [1.5, None]}
+    assert _sanitize_json({"x": float("nan"), "y": (2.0, float("inf"))}) == {"x": None, "y": [2.0, None]}
+    assert "prefilter_change" in VALID_LOG_STAGES
+
+    # 2. 可疑遥信按工程单位换算（kA 下 0.01 kA = 10 A > 0.005 kA 应命中；0.002 kA = 2 A 不应误报）
+    suspects_ka = detect_suspect_statuses(
+        {"Model": [{"i_unit": "kA", "p_unit": "MW"}], "ACBreak": [{"idx": 1, "name": "CB1", "status": 1}, {"idx": 2, "name": "CB2", "status": 1}]},
+        {"ACBreak": []},
+        {("ACBreak", 1, "ia"): {"meas_value": 0.01}, ("ACBreak", 2, "ia"): {"meas_value": 0.002}},
+        {"ACBreak": {1: {"status": 0}, 2: {"status": 0}}},
+    )
+    assert [s["device_name"] for s in suspects_ka] == ["CB1"]
+    assert "kA" in suspects_ka[0]["evidence"]
+
+    # 3. 僵尸 running 任务回收 + se_topology_snapshot + high_residual_only + CSV 全量导出 + /api/health?lite=1
+    app, repo = _make_dummy_app(tmp_path)
+    try:
+        sid = repo.upsert_schedule("se", True, 60, {})
+        z_run = repo.start_run(sid, "se", "2026-11-25T00:00:00Z", "k", "fp", "schedule")
+        assert repo.get_run(z_run)["status"] == "running"
+        repo.initialize()
+        assert repo.get_run(z_run)["status"] == "failed"
+
+        run_id = repo.start_run(sid, "se", "2026-11-25T01:00:00Z", "k", "fp", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run_id,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 3,
+                    "measurements": [
+                        {
+                            "idx": 1, "name": "ACNode.1.uab", "device_type": "ACNode", "device_idx": 1,
+                            "device_name": "Bus1", "metric": "uab", "meas_type": "V", "unit": "V",
+                            "value": 380.0, "estimated_value": 379.5, "residual": 0.5,
+                            "normalized_residual": 0.4, "valid": True, "source": "normal",
+                        },
+                        {
+                            "idx": 2, "name": "ACNode.2.uab", "device_type": "ACNode", "device_idx": 2,
+                            "device_name": "Bus2", "metric": "uab", "meas_type": "V", "unit": "V",
+                            "value": 395.0, "estimated_value": 380.0, "residual": 15.0,
+                            "normalized_residual": 2.6, "valid": True, "source": "normal",
+                        },
+                    ],
+                    "device_tables": {"ACNode": [{"idx": 1, "name": "Bus1", "uab_meas": 380.0, "uab_se": 379.5}, {"idx": 2, "name": "Bus2", "uab_meas": 395.0, "uab_se": 380.0}]},
+                    "se_statistics": {"meas_count": 2, "valid_meas_count": 2, "good_meas_count": 2, "pass_rate": 1.0},
+                },
+            )
+        snap = repo.se_topology_snapshot()
+        assert len(snap["measurements"]) == 2
+        assert len(snap["devices_by_type"]["ACNode"]) == 2
+
+        hr = app.api_get("/api/se/measurements?source=normal&high_residual_only=1")
+        assert hr["ok"] is True
+        assert hr["data"]["meta"]["total"] == 1
+        assert hr["data"]["rows"][0]["device_name"] == "Bus2"
+        assert hr["data"]["counts"]["high_residual"] == 1
+
+        csv_bytes = repo.se_measurements_export_csv(source="normal", high_residual_only=True)
+        csv_str = csv_bytes.decode("utf-8-sig")
+        assert "Bus2" in csv_str and "Bus1" not in csv_str
+
+        h_lite = app.api_get("/api/health?lite=1")
+        assert h_lite["ok"] is True
+        assert "databases" in h_lite["data"]
+    finally:
+        repo.close()

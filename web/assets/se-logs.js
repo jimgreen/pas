@@ -282,12 +282,12 @@
             <tr data-log-id="${r.log_id}" style="cursor:pointer">
               <td class="tabular">${r.log_id}</td>
               <td class="tabular">${esc(fmtTime(r.calc_time))}</td>
-              <td class="tabular">${r.run_id != null ? `#${r.run_id}` : '--'}</td>
+              <td class="tabular">${r.run_id != null ? `#${r.run_id}` : '—'}</td>
               <td><span class="se-level ${esc(r.level)}">${esc(r.level)}</span></td>
               <td><span class="se-tag">${esc(r.stage)}</span></td>
               <td>${esc(r.source)}</td>
-              <td class="tabular">${r.elapsed_ms != null ? fmtNum(r.elapsed_ms, 1) : '--'}</td>
-              <td>${esc(r.message)}</td>
+              <td class="tabular">${r.elapsed_ms != null ? fmtNum(r.elapsed_ms, 1) : '—'}</td>
+              <td class="se-cell-msg" title="${esc(r.message)}">${esc(r.message)}</td>
             </tr>
             ${state.expandedId === r.log_id ? `
               <tr class="se-detail-row">
@@ -405,7 +405,7 @@
           ${rows.map((r) => `
             <tr>
               <td class="tabular"><a href="/analysis/se.html?run=${r.run_id}">#${r.run_id}</a></td>
-              <td><span class="se-pill ${r.status === 'succeeded' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td>
+              <td><span class="se-pill ${r.status === 'succeeded' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(t(`status.${r.status}`))}</span></td>
               <td class="tabular">${esc(fmtTime(r.started_at))}</td>
               <td class="tabular">${r.pass_rate != null ? (Number(r.pass_rate) * 100).toFixed(2) + '%' : '—'}</td>
               <td class="tabular">${r.bad_data_count ?? '—'}</td>
@@ -436,8 +436,9 @@
     ['log-level-filter', 'log-stage-filter', 'log-source-filter', 'log-window-filter'].forEach((id) => {
       document.getElementById(id).addEventListener('change', () => { state.logs.offset = 0; loadLogs(); });
     });
+    const debouncedLoadLogs = common.debounce(() => { state.logs.offset = 0; loadLogs(); }, 200);
     ['log-runid-input', 'log-search-input'].forEach((id) => {
-      document.getElementById(id).addEventListener('input', () => { state.logs.offset = 0; loadLogs(); });
+      document.getElementById(id).addEventListener('input', debouncedLoadLogs);
     });
 
     document.getElementById('log-table-wrap').addEventListener('click', (e) => {

@@ -290,6 +290,13 @@ def detect_suspect_statuses(
     overrides = topology_overrides or {}
     suspects: list[dict[str, Any]] = []
 
+    # 按模型物理量纲换算阈值（基准：电流 5.0 A，功率 5.0 kW）
+    units_row = ((snapshot.get("Model") or snapshot.get("PowerBase")) or [{}])[0]
+    i_unit = str(units_row.get("i_unit") or "A")
+    p_unit = str(units_row.get("p_unit") or "kW")
+    i_thresh = {"A": 5.0, "kA": 0.005}.get(i_unit, 5.0)
+    p_thresh = {"W": 5000.0, "kW": 5.0, "MW": 0.005}.get(p_unit, 5.0)
+
     # 1. 检查断路器：SCADA 报分位(0)但实测或估计电流显著非零；或 SCADA 与静态模型不一致且电流异常
     for brk_table, cur_metric in (("ACBreak", "ia"), ("DCBreak", "i")):
         se_by_idx = {int(r["idx"]): r for r in (device_tables.get(brk_table) or ())}
@@ -305,7 +312,7 @@ def detect_suspect_statuses(
             meas_i = meas_entry.get("meas_value")
             se_i = se_rec.get(f"{cur_metric}_se")
             if scada_status == 0:
-                if isinstance(meas_i, (int, float)) and abs(meas_i) > 5.0:
+                if isinstance(meas_i, (int, float)) and abs(meas_i) > i_thresh:
                     suspects.append(
                         {
                             "device_type": brk_table,
@@ -315,11 +322,11 @@ def detect_suspect_statuses(
                             "scada_status": 0,
                             "model_status": model_status,
                             "se_inferred_status": 1,
-                            "evidence": f"{cur_metric}_meas={meas_i:.2f} A",
+                            "evidence": f"{cur_metric}_meas={meas_i:.3f} {i_unit}",
                             "reason": "breaker_open_with_live_current",
                         }
                     )
-                elif isinstance(se_i, (int, float)) and abs(se_i) > 5.0:
+                elif isinstance(se_i, (int, float)) and abs(se_i) > i_thresh:
                     suspects.append(
                         {
                             "device_type": brk_table,
@@ -329,7 +336,7 @@ def detect_suspect_statuses(
                             "scada_status": 0,
                             "model_status": model_status,
                             "se_inferred_status": 1,
-                            "evidence": f"{cur_metric}_se={se_i:.2f} A",
+                            "evidence": f"{cur_metric}_se={se_i:.3f} {i_unit}",
                             "reason": "breaker_open_with_se_current",
                         }
                     )
@@ -355,7 +362,7 @@ def detect_suspect_statuses(
                 continue
             for m in p_metrics:
                 m_val = (device_meas.get((tbl, dev_idx, m)) or {}).get("meas_value")
-                if isinstance(m_val, (int, float)) and abs(m_val) > 5.0:
+                if isinstance(m_val, (int, float)) and abs(m_val) > p_thresh:
                     suspects.append(
                         {
                             "device_type": tbl,
@@ -365,7 +372,7 @@ def detect_suspect_statuses(
                             "scada_status": 0,
                             "model_status": model_run,
                             "se_inferred_status": 1,
-                            "evidence": f"{m}_meas={m_val:.2f}",
+                            "evidence": f"{m}_meas={m_val:.3f} {p_unit}",
                             "reason": "device_stopped_with_live_power",
                         }
                     )
@@ -452,7 +459,13 @@ def bad_overview(conn: sqlite3.Connection) -> dict[str, Any]:
     notuse_count = int(
         conn.execute("SELECT COUNT(*) FROM se_measurement WHERE valid = 0").fetchone()[0] or 0
     )
-    nomeas_count = int(conn.execute("SELECT COUNT(*) FROM pas_se_nomeas").fetchone()[0] or 0)
+    latest_nomeas_time = conn.execute("SELECT MAX(meas_time) FROM pas_se_nomeas").fetchone()[0]
+    if latest_nomeas_time is not None:
+        nomeas_count = int(
+            conn.execute("SELECT COUNT(*) FROM pas_se_nomeas WHERE meas_time = ?", (latest_nomeas_time,)).fetchone()[0] or 0
+        )
+    else:
+        nomeas_count = 0
     return {
         "bad_total": bad_total,
         "unacked_count": unacked,
@@ -535,11 +548,14 @@ def list_abnormal_measurements(
         return {"category": cat, "rows": rows, "total": total, "limit": int(limit), "offset": int(offset)}
 
     if cat == "nomeas":
-        clauses, params = [], []
+        latest_t = conn.execute("SELECT MAX(meas_time) FROM pas_se_nomeas").fetchone()[0]
+        if latest_t is None:
+            return {"category": cat, "rows": [], "total": 0, "limit": int(limit), "offset": int(offset)}
+        clauses, params = ["meas_time = ?"], [latest_t]
         if search:
             clauses.append("(dev_name LIKE ? OR meas_name LIKE ? OR COALESCE(filter_reason,'') LIKE ?)")
             params.extend([like, like, like])
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        where = "WHERE " + " AND ".join(clauses)
         total = int(conn.execute(f"SELECT COUNT(*) FROM pas_se_nomeas {where}", params).fetchone()[0] or 0)
         rows = [
             dict(r)

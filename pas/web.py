@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import mimetypes
 import threading
 from http import HTTPStatus
@@ -33,6 +34,17 @@ def _int_path(value: str) -> int | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _sanitize_json(value: Any) -> Any:
+    """递归将非有限浮点数（NaN/Inf）清洗为 None，确保输出严格合法的 JSON。"""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _sanitize_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_json(item) for item in value]
+    return value
 
 
 class PasWebApp:
@@ -214,20 +226,16 @@ class PasWebApp:
             prefix = se_code.split("_", 1)[0]
             return {"V": units["u_unit"], "I": units["i_unit"], "Q": units["q_unit"]}.get(prefix, units["p_unit"])
 
-        overview = repo.se_overview(
-            getattr(se_task, "parameter_file", None),
-            do_cycle=getattr(se_task, "period_seconds", 60),
-        )
-        bad_list = overview.get("bad_data") or []
+        # 单次锁内聚合最新断面全部设备表、全部量测与坏数据（消除 N+1 查询与 500 条截断）
+        snap = repo.se_topology_snapshot()
+        bad_list = snap.get("bad_data") or []
         bad_lookup: dict[tuple[str, int, str], dict[str, Any]] = {}
         for item in bad_list:
             if item.get("device_idx") is not None:
                 bad_lookup[(str(item["device_type"]), int(item["device_idx"]), str(item.get("metric") or ""))] = item
 
-        # 从最新 se_measurement 获取标准化残差等扩展信息
         meas_ext: dict[tuple[str, int, str], dict[str, Any]] = {}
-        meas_page = repo.se_measurements_browse(source="all", limit=500, offset=0)
-        for item in meas_page.get("rows") or ():
+        for item in snap.get("measurements") or ():
             if item.get("device_idx") is not None and item.get("metric"):
                 meas_ext[(str(item["device_type"]), int(item["device_idx"]), str(item["metric"]))] = item
 
@@ -245,11 +253,11 @@ class PasWebApp:
             "DCBreak": {"current": ("i",)},
         }
 
+        devices_by_type = snap.get("devices_by_type") or {}
         devices_out: dict[str, dict[str, Any]] = {}
         node_records: dict[tuple[str, int], dict[str, Any]] = {}
         for dev_type, metric_map in input_store.SE_DEVICE_RESULT_METRICS.items():
-            table_data = repo.se_devices(dev_type)
-            for row in table_data.get("rows") or ():
+            for row in devices_by_type.get(dev_type) or ():
                 idx = int(row["idx"])
                 dev_id = f"{dev_type}-{idx}"
                 metrics_dict: dict[str, dict[str, Any]] = {}
@@ -324,7 +332,7 @@ class PasWebApp:
                 }
 
         return {
-            "latest": overview.get("latest"),
+            "latest": snap.get("latest"),
             "units": units,
             "svg_available": self._se_svg_path() is not None,
             "bad_data": bad_list,
@@ -374,6 +382,7 @@ class PasWebApp:
                             q=query.get("q", [""])[0],
                             sort=query.get("sort", ["abs_residual"])[0],
                             direction=query.get("direction", ["desc"])[0],
+                            high_residual_only=query.get("high_residual_only", ["0"])[0] in {"1", "true"},
                             limit=_int_query(query, "limit", 50, 1, 500),
                             offset=_int_query(query, "offset", 0, 0, 1_000_000),
                         ),
@@ -467,11 +476,12 @@ class PasWebApp:
                         ),
                     }
                 if parsed.path == "/api/se/bad/history":
+                    bad_hist = se_repo.se_history_bad_data(_int_query(query, "limit", 100, 1, 500))
                     return {
                         "ok": True,
                         "data": {
-                            "history": se_repo.se_history_bad_data(_int_query(query, "limit", 100, 1, 500)),
-                            "trend": se_repo.se_history_stats(_int_query(query, "limit", 100, 1, 500)),
+                            "history": bad_hist,
+                            "trend": bad_hist.get("series") or [],
                         },
                     }
                 # --- 预过滤量测模块 API ---
@@ -545,8 +555,17 @@ class PasWebApp:
             scheduler_status.update({"daemon_running": bool(self._daemon_thread and self._daemon_thread.is_alive()), "web_running": True})
             return {"ok": True, "data": scheduler_status}
         if parsed.path == "/api/health":
+            query = parse_qs(parsed.query)
+            lite = query.get("lite", ["0"])[0] in {"1", "true"}
             scheduler_status = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
-            raw_databases = self.repository.health() if callable(getattr(self.repository, "health", None)) else {}
+            health_fn = getattr(self.repository, "health", None)
+            if callable(health_fn):
+                try:
+                    raw_databases = health_fn(lite=lite)
+                except TypeError:
+                    raw_databases = health_fn()
+            else:
+                raw_databases = {}
             databases = {"pas": raw_databases} if "sqlite" in raw_databases else raw_databases
             tasks = {}
             all_ready = True
@@ -557,7 +576,7 @@ class PasWebApp:
                     "ca": ("model_file", "limit_file"),
                 }.get(name, ())
                 missing = [field for field in required if not getattr(task, field, None) or not Path(getattr(task, field)).is_file()]
-                latest = self.repository.list_runs(1, name) if callable(getattr(self.repository, "list_runs", None)) else []
+                latest = self.repository.list_runs(1, name) if (not lite and callable(getattr(self.repository, "list_runs", None))) else []
                 tasks[name] = {
                     "enabled": bool(getattr(task, "enabled", False)),
                     "inputs_ready": not missing,
@@ -565,7 +584,7 @@ class PasWebApp:
                     "latest_run": latest[0] if latest else None,
                 }
                 input_path=getattr(task,'measurement_file' if name=='se' else 'limit_file',None)
-                if name in ('se','ca') and input_path and Path(input_path).suffix.lower() in input_store.SQLITE_SUFFIXES and Path(input_path).is_file():
+                if not lite and name in ('se','ca') and input_path and Path(input_path).suffix.lower() in input_store.SQLITE_SUFFIXES and Path(input_path).is_file():
                     try:
                         stats=input_store.browse_inputs(self.config,'measurements' if name=='se' else 'limits',size=1)['stats']
                         tasks[name]['input_statistics']=stats
@@ -851,10 +870,30 @@ class PasWebApp:
             if task in ("se", "lf", "ca"):
                 trigger = getattr(self.scheduler, "trigger_task", None)
                 ok = bool(trigger(task)) if callable(trigger) else bool(self.scheduler.run_task(task))
-                return {"ok": ok, "data": {"task": task, "success": ok, "execution_source": "manual"}}
+                err_msg = None
+                if not ok:
+                    st = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
+                    jobs = [j for j in (st.get("jobs") or ()) if j.get("task") == task]
+                    if jobs and jobs[-1].get("error_message"):
+                        err_msg = str(jobs[-1]["error_message"])
+                    elif callable(getattr(self.repository, "list_runs", None)):
+                        recent = self.repository.list_runs(1, task)
+                        if recent and recent[0].get("error_message"):
+                            err_msg = str(recent[0]["error_message"])
+                    err_msg = err_msg or f"{task.upper()} 计算执行失败"
+                return {
+                    "ok": ok,
+                    "error": err_msg,
+                    "data": {"task": task, "success": ok, "execution_source": "manual", "error_message": err_msg},
+                }
             trigger_all = getattr(self.scheduler, "trigger_all", None)
             result = trigger_all() if callable(trigger_all) else self.scheduler.run_once()
-            return {"ok": bool(result) and all(result.values()), "data": {"results": result, "execution_source": "manual"}}
+            all_ok = bool(result) and all(result.values())
+            return {
+                "ok": all_ok,
+                "error": None if all_ok else "部分分析任务执行失败",
+                "data": {"results": result, "execution_source": "manual"},
+            }
         if path == "/api/actions/daemon/start":
             return {"ok": True, "data": {"running": self.start_daemon()}}
         if path == "/api/actions/daemon/stop":
@@ -960,7 +999,7 @@ class PasWebApp:
                     stream.close()
 
             def _send_json(self, payload: dict[str, Any], status: int = 200):
-                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                body = json.dumps(_sanitize_json(payload), ensure_ascii=False, allow_nan=False, default=str).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -978,6 +1017,24 @@ class PasWebApp:
                     body = svg_path.read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", "image/svg+xml; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/se/measurements/export":
+                    query = parse_qs(parsed_get.query)
+                    body = app._se_repo().se_measurements_export_csv(
+                        source=query.get("source", ["all"])[0],
+                        device_type=query.get("device_type", [""])[0],
+                        q=query.get("q", [""])[0],
+                        sort=query.get("sort", ["abs_residual"])[0],
+                        direction=query.get("direction", ["desc"])[0],
+                        high_residual_only=query.get("high_residual_only", ["0"])[0] in {"1", "true"},
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="se-measurements.csv"')
                     self.send_header("Content-Length", str(len(body)))
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()

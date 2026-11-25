@@ -463,10 +463,10 @@
     });
 
     document.getElementById('pf-res-type').addEventListener('change', () => { state.results.offset = 0; loadResults(); });
-    document.getElementById('pf-res-search').addEventListener('input', () => { state.results.offset = 0; loadResults(); });
+    document.getElementById('pf-res-search').addEventListener('input', common.debounce(() => { state.results.offset = 0; loadResults(); }, 200));
     document.getElementById('pf-rule-type-filter').addEventListener('change', loadRules);
     document.getElementById('pf-rule-kind-filter').addEventListener('change', loadRules);
-    document.getElementById('pf-rule-search').addEventListener('input', loadRules);
+    document.getElementById('pf-rule-search').addEventListener('input', common.debounce(loadRules, 200));
     document.getElementById('pf-trend-limit').addEventListener('change', loadAnalysis);
 
     document.getElementById('fr-scope').addEventListener('change', syncRuleDialogVisibility);
@@ -575,5 +575,21 @@
 
   common.initShell({ onRefresh: refreshAll, afterRunSE: refreshAll });
   bindEvents();
-  refreshAll();
+  refreshAll().then(() => {
+    const qp = new URLSearchParams(window.location.search);
+    const pType = qp.get('prefill_type');
+    const pName = qp.get('prefill_name');
+    const pMetric = qp.get('prefill_metric');
+    if (pType && pMetric) {
+      document.querySelector('#pf-tabs .se-tab[data-view="rules"]')?.click();
+      openRuleDialog({
+        scope: pName ? 'device' : 'device_type',
+        device_type: pType,
+        device_name: pName || '*',
+        metric: pMetric,
+        rule_type: 'range',
+        enabled: 1,
+      });
+    }
+  });
 })();

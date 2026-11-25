@@ -207,6 +207,9 @@ class Scheduler:
                     auto_purge()
             with self._lock:
                 job.update(status="succeeded", kernel_seconds=kernel_seconds)
+                if not hasattr(self, "_consecutive_failures"):
+                    self._consecutive_failures = {}
+                self._consecutive_failures[name] = 0
             self._record_log("INFO", "分析任务执行成功", task=name, run_id=run_id, execution_source=source)
             return True
         except Exception as exc:
@@ -231,8 +234,17 @@ class Scheduler:
                         )
                     except Exception:
                         logger.exception("failed to persist se run error log")
+                auto_purge = getattr(repo, "se_logs_maybe_auto_purge", None)
+                if callable(auto_purge):
+                    try:
+                        auto_purge()
+                    except Exception:
+                        logger.exception("failed to auto purge se run logs after failure")
             with self._lock:
                 job.update(status="failed", error_type=type(exc).__name__, error_message=str(exc))
+                if not hasattr(self, "_consecutive_failures"):
+                    self._consecutive_failures = {}
+                self._consecutive_failures[name] = self._consecutive_failures.get(name, 0) + 1
             self._record_log("ERROR", "分析任务执行失败", task=name, run_id=run_id, execution_source=source, error_message=str(exc))
             return False
         finally:
@@ -379,8 +391,15 @@ class Scheduler:
                             break
                         if self._enabled(name) and now_mono >= self._next_due.get(name, float("inf")):
                             self._submit(name, "schedule")
-                            # Coalesce missed ticks; never enqueue a backlog for a slow task.
-                            self._set_next_due(name, now_mono + self.config.tasks[name].period_seconds)
+                            # 连续失败时按 retry_seconds 阶梯退避（上限 4 倍周期），避免无效轮询刷爆日志与磁盘
+                            base_period = float(self.config.tasks[name].period_seconds)
+                            fails = getattr(self, "_consecutive_failures", {}).get(name, 0)
+                            if fails >= 3:
+                                retry_step = float(getattr(self.config, "retry_seconds", 30.0) or 30.0)
+                                next_interval = min(max(base_period * 4.0, retry_step * 4.0), base_period + retry_step * min(fails - 2, 4))
+                            else:
+                                next_interval = base_period
+                            self._set_next_due(name, now_mono + next_interval)
                 if now_mono >= next_log_purge_check:
                     next_log_purge_check = now_mono + 60.0
                     se_repo = self.repositories.get("se")

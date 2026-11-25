@@ -139,6 +139,17 @@ class Repository:
             ensure_se_log_policy(conn)
             if "snapshot_version" not in {row[1] for row in conn.execute("PRAGMA table_info(pas_dbdef_run)")}:
                 conn.execute("ALTER TABLE pas_dbdef_run ADD COLUMN snapshot_version INTEGER NOT NULL DEFAULT 0")
+            # 回收服务异常退出遗留的僵尸 running 任务，避免前端长期显示假运行态
+            conn.execute(
+                """UPDATE calculation_run
+                   SET status = 'failed',
+                       finished_at = COALESCE(finished_at, ?),
+                       return_code = COALESCE(return_code, 1),
+                       error_type = COALESCE(error_type, 'InterruptedError'),
+                       error_message = COALESCE(error_message, '服务重启，已自动回收未完成的历史任务')
+                   WHERE status = 'running'""",
+                (utc_now(),),
+            )
             conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
 
     @synchronized
@@ -169,7 +180,10 @@ class Repository:
         *,
         do_cycle: int | float = 60,
     ) -> dict[str, Any]:
-        """读取 pas_se_para 当前生效的 SE 算法参数；若表为空则先从 para_file 初始化。"""
+        """优先只读查询 pas_se_para 当前生效的 SE 算法参数；仅当表为空时从 para_file 幂等初始化。"""
+        rows = self._rows("SELECT * FROM pas_se_para ORDER BY id LIMIT 1")
+        if rows:
+            return rows[0]
         return self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
 
     @synchronized
@@ -270,7 +284,7 @@ class Repository:
         for dev_type in SE_DEVICE_RESULT_METRICS:
             table_name = f"se_dev_{dev_type}"
             device_counts[dev_type] = int(conn.execute(f"SELECT COUNT(*) FROM [{table_name}]").fetchone()[0] or 0)
-        params = self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+        params = self.get_se_parameters(para_file, do_cycle=do_cycle)
         recent_runs = self._rows(
             """SELECT r.run_id, r.status, r.started_at, r.finished_at, r.elapsed_seconds,
                       r.execution_source, r.error_type, r.error_message,
@@ -286,6 +300,28 @@ class Repository:
             "device_counts": device_counts,
             "params": params,
             "recent_runs": recent_runs,
+        }
+
+    @synchronized
+    def se_topology_snapshot(self) -> dict[str, Any]:
+        """单次锁内聚合最新断面全部设备表、全部量测与坏数据，彻底消除潮流图 N+1 查询与 500 条截断。"""
+        latest_rows = self._rows("SELECT * FROM se_statistics ORDER BY run_id DESC LIMIT 1")
+        latest = latest_rows[0] if latest_rows else None
+        bad_data = self._rows(
+            "SELECT * FROM se_bad_data ORDER BY ABS(COALESCE(normalized_residual, 0)) DESC, id ASC"
+        )
+        measurements = self._rows(
+            """SELECT device_type, device_idx, metric, unit, residual, normalized_residual, is_bad, source
+               FROM se_measurement"""
+        )
+        devices_by_type: dict[str, list[dict[str, Any]]] = {}
+        for dev_type in SE_DEVICE_RESULT_METRICS:
+            devices_by_type[dev_type] = self._rows(f"SELECT * FROM [se_dev_{dev_type}] ORDER BY idx ASC")
+        return {
+            "latest": latest,
+            "bad_data": bad_data,
+            "measurements": measurements,
+            "devices_by_type": devices_by_type,
         }
 
     @synchronized
@@ -323,7 +359,7 @@ class Repository:
         pf_ov = prefilter_overview(conn)
         ps_ov = pseudo_overview(conn)
         bd_ov = bad_overview(conn)
-        params = self.sync_se_parameters(para_file, do_cycle=do_cycle, overwrite=False)
+        params = self.get_se_parameters(para_file, do_cycle=do_cycle)
         sched_rows = self._rows("SELECT * FROM schedule WHERE task_type = 'se' LIMIT 1")
         schedule = sched_rows[0] if sched_rows else None
 
@@ -538,10 +574,11 @@ class Repository:
         q: str = "",
         sort: str = "abs_residual",
         direction: str = "desc",
+        high_residual_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
-        """分页筛选最新断面 se_measurement，支持坏数据/正常/预过滤/伪量测过滤与残差排序。"""
+        """分页筛选最新断面 se_measurement，支持坏数据/正常/预过滤/伪量测、大残差过滤与多字段排序。"""
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
         direction = "asc" if str(direction).lower() == "asc" else "desc"
@@ -557,6 +594,8 @@ class Repository:
         if device_type:
             clauses.append("device_type = ?")
             params.append(device_type)
+        if high_residual_only:
+            clauses.append("(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR is_bad = 1)")
         search = str(q or "").strip()
         if search:
             clauses.append("(meas_name LIKE ? OR device_name LIKE ? OR device_type LIKE ? OR metric LIKE ? OR meas_type LIKE ?)")
@@ -586,14 +625,85 @@ class Repository:
                       COALESCE(SUM(is_bad = 1), 0) AS bad_data,
                       COALESCE(SUM(source = 'normal'), 0) AS normal,
                       COALESCE(SUM(source = 'prefiltered'), 0) AS prefiltered,
-                      COALESCE(SUM(source = 'pseudo'), 0) AS pseudo
+                      COALESCE(SUM(source = 'pseudo'), 0) AS pseudo,
+                      COALESCE(SUM(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR is_bad = 1), 0) AS high_residual
                FROM se_measurement"""
         )[0]
         return {
             "rows": rows,
             "counts": {k: int(v or 0) for k, v in counts.items()},
-            "meta": {"total": total, "limit": limit, "offset": offset, "source": source, "sort": sort, "direction": direction},
+            "meta": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "source": source,
+                "sort": sort,
+                "direction": direction,
+                "high_residual_only": bool(high_residual_only),
+            },
         }
+
+    @synchronized
+    def se_measurements_export_csv(
+        self,
+        *,
+        source: str = "all",
+        device_type: str = "",
+        q: str = "",
+        sort: str = "abs_residual",
+        direction: str = "desc",
+        high_residual_only: bool = False,
+    ) -> bytes:
+        """导出当前筛选条件下的全量匹配 se_measurement 为 UTF-8 BOM CSV。"""
+        direction = "asc" if str(direction).lower() == "asc" else "desc"
+        clauses: list[str] = []
+        params: list[Any] = []
+        if source == "bad_data":
+            clauses.append("(is_bad = 1 OR source = 'bad_data')")
+        elif source in {"normal", "prefiltered", "pseudo"}:
+            clauses.append("source = ?")
+            params.append(source)
+        elif source != "all":
+            raise ValueError(f"无效的量测来源筛选: {source}")
+        if device_type:
+            clauses.append("device_type = ?")
+            params.append(device_type)
+        if high_residual_only:
+            clauses.append("(ABS(COALESCE(normalized_residual, 0)) >= 2.0 OR is_bad = 1)")
+        search = str(q or "").strip()
+        if search:
+            clauses.append("(meas_name LIKE ? OR device_name LIKE ? OR device_type LIKE ? OR metric LIKE ? OR meas_type LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like, like, like])
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        sort_map = {
+            "abs_residual": "ABS(residual)",
+            "abs_norm_residual": "ABS(normalized_residual)",
+            "meas_value": "meas_value",
+            "se_value": "se_value",
+            "residual": "residual",
+            "normalized_residual": "normalized_residual",
+            "meas_id": "meas_id",
+            "device_name": "device_name",
+        }
+        expr = sort_map.get(sort, "ABS(residual)")
+        order = f"{expr} IS NULL, {expr} {direction}, meas_id ASC"
+        rows = self._rows(f"SELECT * FROM se_measurement{where} ORDER BY {order} LIMIT 20000", tuple(params))
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "meas_id", "device_type", "device_idx", "device_name", "metric", "meas_type",
+            "unit", "meas_value", "se_value", "residual", "normalized_residual", "weight",
+            "source", "is_bad", "reason", "calc_time",
+        ])
+        for r in rows:
+            writer.writerow([
+                r.get("meas_id"), r.get("device_type"), r.get("device_idx"), r.get("device_name"),
+                r.get("metric"), r.get("meas_type"), r.get("unit"), r.get("meas_value"),
+                r.get("se_value"), r.get("residual"), r.get("normalized_residual"), r.get("weight"),
+                r.get("source"), r.get("is_bad"), r.get("reason"), r.get("calc_time"),
+            ])
+        return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
     @synchronized
     def se_pseudo_overview(self) -> dict[str, Any]:
@@ -1003,11 +1113,19 @@ class Repository:
 
     @synchronized
     def record_log(self, level: str, component: str, message: str, context: dict[str, Any] | None = None) -> None:
-        self._connection().execute(
+        conn = self._connection()
+        conn.execute(
             "INSERT INTO pas_log(created_at, level, component, message, context_json) VALUES (?, ?, ?, ?, ?)",
             (utc_now(), str(level).upper(), str(component), str(message), json.dumps(context or {}, ensure_ascii=False, default=str)),
         )
-        self._connection().commit()
+        # 轻量上限保护：防止 pas_log 长期运行无限膨胀（超 10,000 行保留最新 8,000 行）
+        total = int(conn.execute("SELECT COUNT(*) FROM pas_log").fetchone()[0] or 0)
+        if total > 10000:
+            conn.execute(
+                "DELETE FROM pas_log WHERE log_id IN (SELECT log_id FROM pas_log ORDER BY log_id ASC LIMIT ?)",
+                (total - 8000,),
+            )
+        conn.commit()
 
     @synchronized
     def list_logs(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
@@ -1035,11 +1153,15 @@ class Repository:
         return self._rows("SELECT * FROM schedule ORDER BY task_type")
 
     @synchronized
-    def health(self) -> dict[str, Any]:
+    def health(self, *, lite: bool = False) -> dict[str, Any]:
         """Return a lightweight SQLite readiness check for the operations page."""
         conn = self._connection()
         try:
-            check = str(conn.execute("PRAGMA quick_check").fetchone()[0])
+            if lite:
+                conn.execute("SELECT 1").fetchone()
+                check = "ok"
+            else:
+                check = str(conn.execute("PRAGMA quick_check").fetchone()[0])
         except sqlite3.DatabaseError as exc:
             check = str(exc)
         return {
@@ -1700,11 +1822,11 @@ class RepositoryHub:
             rows.extend(repository.list_schedules())
         return sorted(rows, key=lambda row: row["task_type"])
 
-    def health(self) -> dict[str, Any]:
+    def health(self, *, lite: bool = False) -> dict[str, Any]:
         databases = {}
         if self.control is not None:
-            databases["pas"] = self.control.health()
-        databases.update({name: repository.health() for name, repository in self.repositories.items()})
+            databases["pas"] = self.control.health(lite=lite)
+        databases.update({name: repository.health(lite=lite) for name, repository in self.repositories.items()})
         return databases
 
     def update_schedule_due(self, task_type: str, next_due_at: str | None) -> None:
@@ -1788,6 +1910,9 @@ class RepositoryHub:
     def se_overview(self, para_file=None, do_cycle=60):
         return self.for_task("se").se_overview(para_file, do_cycle)
 
+    def se_topology_snapshot(self):
+        return self.for_task("se").se_topology_snapshot()
+
     def se_home_summary(self, para_file=None, do_cycle=60):
         return self.for_task("se").se_home_summary(para_file, do_cycle)
 
@@ -1796,6 +1921,9 @@ class RepositoryHub:
 
     def se_measurements_browse(self, **kwargs):
         return self.for_task("se").se_measurements_browse(**kwargs)
+
+    def se_measurements_export_csv(self, **kwargs):
+        return self.for_task("se").se_measurements_export_csv(**kwargs)
 
     def se_history_stats(self, limit=100):
         return self.for_task("se").se_history_stats(limit)

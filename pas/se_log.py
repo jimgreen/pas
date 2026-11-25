@@ -28,6 +28,7 @@ VALID_LOG_STAGES = (
     "bad_detect",
     "persist",
     "param_change",
+    "prefilter_change",
     "pseudo_change",
     "bad_change",
     "cleanup",
@@ -372,11 +373,14 @@ def _select_purge_ids(
     overflow_ids: list[int] = []
     if remaining > int(max_rows):
         need_trim = remaining - int(max_rows)
-        # 优先裁剪最旧的非 ERROR 日志，不足时再裁剪最旧的 ERROR 日志
+        # 优先裁剪最旧的非 ERROR 日志，不足时再裁剪最旧的 ERROR 日志；用 LIMIT 避免全表拉取
+        fetch_limit = need_trim + len(expired_ids)
         candidates = conn.execute(
             """SELECT log_id FROM se_run_log
                ORDER BY CASE WHEN level = 'ERROR' THEN 1 ELSE 0 END ASC,
-                        calc_time ASC, log_id ASC"""
+                        calc_time ASC, log_id ASC
+               LIMIT ?""",
+            (fetch_limit,),
         ).fetchall()
         for row in candidates:
             lid = int(row[0])

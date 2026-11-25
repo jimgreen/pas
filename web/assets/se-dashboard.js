@@ -52,6 +52,17 @@
       'action.confirm_reset': '确认恢复',
       'action.locate': '定位',
       'action.curve': '曲线',
+      'action.prefilter': '+预过滤',
+      'action.suppress': '屏蔽',
+      'meas.high_res': '仅大残差',
+      'empty.no_match': '无匹配记录',
+      'bool.off': '关闭',
+      'bool.on': '开启',
+      'topo.zoom_in': '放大',
+      'topo.zoom_out': '缩小',
+      'ui.sidebar_resize': '拖动调整宽度 / 双击隐藏或展开',
+      'ui.sidebar_hide': '隐藏左侧目录树',
+      'ui.sidebar_show': '展开左侧目录树',
       'theme.light': '极简明亮',
       'theme.dark': '精密暗黑',
       'theme.bento': '便当盒网格',
@@ -233,6 +244,17 @@
       'action.confirm_reset': 'Confirm Reset',
       'action.locate': 'Locate',
       'action.curve': 'Trend',
+      'action.prefilter': '+Prefilter',
+      'action.suppress': 'Suppress',
+      'meas.high_res': 'High Res',
+      'empty.no_match': 'No matching records',
+      'bool.off': 'Off',
+      'bool.on': 'On',
+      'topo.zoom_in': 'Zoom in',
+      'topo.zoom_out': 'Zoom out',
+      'ui.sidebar_resize': 'Drag to resize / Double-click to toggle',
+      'ui.sidebar_hide': 'Hide sidebar',
+      'ui.sidebar_show': 'Show sidebar',
       'theme.light': 'Minimalist Light',
       'theme.dark': 'Precision Dark',
       'theme.bento': 'Bento Grid',
@@ -414,6 +436,17 @@
       'action.confirm_reset': 'Сбросить',
       'action.locate': 'На схеме',
       'action.curve': 'График',
+      'action.prefilter': '+Фильтр',
+      'action.suppress': 'Блок.',
+      'meas.high_res': 'Выс. невязка',
+      'empty.no_match': 'Нет совпадений',
+      'bool.off': 'Выкл',
+      'bool.on': 'Вкл',
+      'topo.zoom_in': 'Увеличить',
+      'topo.zoom_out': 'Уменьшить',
+      'ui.sidebar_resize': 'Перетащите ширину / Двойной клик скрыть',
+      'ui.sidebar_hide': 'Скрыть меню',
+      'ui.sidebar_show': 'Показать меню',
       'theme.light': 'Светлая',
       'theme.dark': 'Тёмная',
       'theme.bento': 'Бенто-сетка',
@@ -611,7 +644,7 @@
       pointSeries: null,
     },
     devices: { type: 'ACNode', q: '', badOnly: false, data: null },
-    meas: { source: 'normal', devType: '', sort: 'abs_residual', direction: 'desc', q: '', page: 0, size: 30, data: null },
+    meas: { source: 'normal', devType: '', sort: 'abs_residual', direction: 'desc', highResOnly: false, q: '', page: 0, size: 30, data: null, reqSeq: 0 },
     params: null,
     schedule: null,
     watchingJobId: null,
@@ -698,6 +731,17 @@
     document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
       el.placeholder = t(el.dataset.i18nPlaceholder);
     });
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+      el.title = t(el.dataset.i18nTitle);
+    });
+    const resizer = document.querySelector('.sidebar-resizer');
+    const toggleBtn = resizer?.querySelector('.sidebar-toggle-btn');
+    if (resizer) resizer.title = t('ui.sidebar_resize');
+    if (toggleBtn) {
+      const isCol = resizer.classList.contains('is-collapsed');
+      toggleBtn.title = t(isCol ? 'ui.sidebar_show' : 'ui.sidebar_hide');
+      toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    }
     const titleKeyMap = {
       topology: 'title.flow',
       curves: 'title.curves',
@@ -1506,7 +1550,7 @@
     const measMap = data.meas_type_map || {};
     const wrap = document.getElementById('dev-table-wrap');
     if (!data.rows.length) {
-      wrap.innerHTML = `<div class="se-empty">${esc(t('curves.no_data'))}</div>`;
+      wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
       return;
     }
 
@@ -1515,22 +1559,22 @@
       const badSet = new Set(row.bad_metrics || []);
       const cells = metrics.map((m) => {
         const isBad = badSet.has(m);
-        const cls = isBad ? 'num tabular cell-bad' : 'num tabular';
+        const cls = isBad ? 'num tabular cell-bad se-clickable-cell' : 'num tabular se-clickable-cell';
         const mtype = measMap[m] || '';
-        return `<td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(row[`${m}_meas`])}</td><td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}">${fmtNum(row[`${m}_se`])}</td>`;
+        return `<td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(row[`${m}_meas`])}</td><td class="${cls}" data-open-curve="${esc(data.device_type)}|${esc(row.name)}|${esc(mtype)}" title="${esc(t('action.curve'))}">${fmtNum(row[`${m}_se`])}</td>`;
       }).join('');
       const devId = `${data.device_type}-${row.idx}`;
       return `<tr class="${row.has_bad ? 'row-bad' : ''}">
         <td class="tabular">${row.idx}</td>
-        <td><strong>${esc(row.name)}</strong></td>
+        <td class="se-sticky-left se-cell-ellipsis" title="${esc(row.name)}"><strong>${esc(row.name)}</strong></td>
         ${cells}
-        <td><button type="button" class="se-btn mini" data-locate-dev="${esc(devId)}">${esc(t('action.locate'))}</button></td>
+        <td class="se-sticky-right"><button type="button" class="se-btn mini" data-locate-dev="${esc(devId)}">${esc(t('action.locate'))}</button></td>
       </tr>`;
     }).join('');
 
     wrap.innerHTML = `
       <table class="se-data-table">
-        <thead><tr><th>${esc(t('col.idx'))}</th><th>${esc(t('col.device'))}</th>${headCols}<th>${esc(t('col.actions'))}</th></tr></thead>
+        <thead><tr><th>${esc(t('col.idx'))}</th><th class="se-sticky-left">${esc(t('col.device'))}</th>${headCols}<th class="se-sticky-right">${esc(t('col.actions'))}</th></tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
     `;
@@ -1539,52 +1583,80 @@
   /* ==================== 4. 量测与坏数据明细 ==================== */
   async function loadMeasurementsTab() {
     const m = appState.meas;
+    const reqId = ++m.reqSeq;
     const qs = new URLSearchParams({
       source: m.source,
       device_type: m.devType,
       q: m.q,
       sort: m.sort,
       direction: m.direction,
+      high_residual_only: m.highResOnly ? '1' : '0',
       limit: String(m.size),
       offset: String(m.page * m.size),
     });
     const data = await api(`/api/se/measurements?${qs}`);
+    if (reqId !== m.reqSeq) return; // 丢弃过期的并发搜索响应
+    const total = data.meta?.total || 0;
+    const pages = Math.max(1, Math.ceil(total / m.size));
+    if (m.page >= pages && m.page > 0) {
+      m.page = pages - 1;
+      return loadMeasurementsTab();
+    }
     m.data = data;
 
-    // 填充设备类筛选下拉（首次）
+    // 填充/刷新设备类筛选下拉（切换语言时同步更新）
     const dtSel = document.getElementById('meas-devtype-select');
-    if (dtSel.options.length <= 1) {
+    if (dtSel) {
       const types = Object.keys(appState.overview?.device_counts || {});
       dtSel.innerHTML = `<option value="">${esc(t('devtype.all'))}</option>` + types.map((dt) => `<option value="${esc(dt)}">${esc(devTypeLabel(dt))}</option>`).join('');
       dtSel.value = m.devType;
     }
 
-    // 更新来源数量徽章
+    // 同步排序下拉与方向按钮
+    const sortSel = document.getElementById('meas-sort-select');
+    if (sortSel && sortSel.value !== m.sort) sortSel.value = m.sort;
+    const dirBtn = document.getElementById('btn-meas-dir');
+    if (dirBtn) dirBtn.textContent = m.direction === 'asc' ? '↑' : '↓';
+
+    // 更新来源微芯片数量徽章
     const counts = data.counts || {};
     document.querySelectorAll('#meas-source-seg .seg').forEach((btn) => {
       const key = btn.dataset.msrc;
       const base = t(key === 'bad_data' ? 'meas.bad' : `meas.${key}`);
       const c = key === 'all' ? counts.total : counts[key];
-      btn.textContent = c !== undefined ? `${base} (${c})` : base;
+      btn.classList.toggle('active', key === m.source);
+      btn.innerHTML = `${esc(base)}${c !== undefined ? `<span class="cnt tabular">${c}</span>` : ''}`;
     });
+    const hrBtn = document.getElementById('btn-meas-high-res');
+    if (hrBtn) {
+      hrBtn.classList.toggle('active', m.highResOnly);
+      const hc = counts.high_residual;
+      hrBtn.innerHTML = `${esc(t('meas.high_res'))}${hc !== undefined ? `<span class="cnt tabular">${hc}</span>` : ''}`;
+    }
+
+    const thSort = (colKey, labelKey, numCls = '') => {
+      const active = m.sort === colKey;
+      const arrow = active ? (m.direction === 'asc' ? '▲' : '▼') : '';
+      return `<th class="${numCls} se-th-sort ${active ? 'is-sorted' : ''}" data-meas-sort="${colKey}">${esc(t(labelKey))}${arrow ? `<span class="sort-arrow">${arrow}</span>` : ''}</th>`;
+    };
 
     const wrap = document.getElementById('meas-table-wrap');
     if (!data.rows.length) {
-      wrap.innerHTML = `<div class="se-empty">${esc(t('curves.no_data'))}</div>`;
+      wrap.innerHTML = `<div class="se-empty">${esc(t('empty.no_match'))}</div>`;
     } else {
       wrap.innerHTML = `
         <table class="se-data-table">
           <thead>
             <tr>
-              <th>${esc(t('col.idx'))}</th>
-              <th>${esc(t('col.device'))}</th>
+              ${thSort('meas_id', 'col.idx')}
+              ${thSort('device_name', 'col.device')}
               <th>${esc(t('col.metric'))}</th>
-              <th class="num">${esc(t('col.meas'))}</th>
-              <th class="num">${esc(t('col.se'))}</th>
-              <th class="num">${esc(t('col.residual'))}</th>
-              <th class="num">${esc(t('col.norm_res'))}</th>
+              ${thSort('meas_value', 'col.meas', 'num')}
+              ${thSort('se_value', 'col.se', 'num')}
+              ${thSort('abs_residual', 'col.residual', 'num')}
+              ${thSort('abs_norm_residual', 'col.norm_res', 'num')}
               <th>${esc(t('col.source'))}</th>
-              <th>${esc(t('col.actions'))}</th>
+              <th class="se-sticky-right">${esc(t('col.actions'))}</th>
             </tr>
           </thead>
           <tbody>
@@ -1592,18 +1664,26 @@
               const devId = r.device_idx != null ? `${r.device_type}-${r.device_idx}` : '';
               const srcKey = r.is_bad ? 'meas.bad' : (r.source === 'normal' ? 'meas.normal' : r.source === 'prefiltered' ? 'meas.prefiltered' : 'meas.pseudo');
               const pillCls = r.is_bad ? 'bad' : r.source === 'normal' ? 'ok' : 'neutral';
+              const prefillQs = new URLSearchParams({
+                prefill_type: r.device_type || '',
+                prefill_name: r.device_name || '',
+                prefill_metric: r.metric || '',
+              }).toString();
+              const normWarn = r.is_bad || (r.normalized_residual != null && Math.abs(Number(r.normalized_residual)) >= 2.0);
               return `<tr class="${r.is_bad ? 'row-bad' : ''}">
                 <td class="tabular">${r.meas_id}</td>
-                <td>${esc(r.device_name)} <small class="se-muted">${esc(r.device_type)}</small></td>
+                <td class="se-cell-ellipsis" title="${esc(r.device_name)} (${esc(r.device_type)})"><strong>${esc(r.device_name)}</strong> <small class="se-muted">${esc(r.device_type)}</small></td>
                 <td>${esc(r.metric || r.meas_type)} <small class="se-muted">${esc(r.unit || '')}</small></td>
                 <td class="num tabular">${fmtNum(r.meas_value, 3)}</td>
                 <td class="num tabular">${fmtNum(r.se_value, 3)}</td>
-                <td class="num tabular ${r.is_bad ? 'cell-bad' : ''}">${fmtNum(r.residual, 3)}</td>
-                <td class="num tabular ${r.is_bad ? 'cell-bad' : ''}">${fmtNum(r.normalized_residual, 3)}</td>
+                <td class="num tabular ${normWarn ? 'cell-bad' : ''}">${fmtNum(r.residual, 3)}</td>
+                <td class="num tabular ${normWarn ? 'cell-bad' : ''}">${fmtNum(r.normalized_residual, 3)}</td>
                 <td><span class="se-pill ${pillCls}">${esc(t(srcKey))}</span></td>
-                <td>
+                <td class="se-sticky-right">
                   ${devId ? `<button type="button" class="se-btn mini" data-locate-dev="${esc(devId)}">${esc(t('action.locate'))}</button>` : ''}
                   <button type="button" class="se-btn mini" data-open-curve="${esc(r.device_type)}|${esc(r.device_name)}|${esc(r.meas_type)}">${esc(t('action.curve'))}</button>
+                  ${r.metric ? `<a class="se-btn mini se-link-btn" href="/se-prefilter.html?${prefillQs}">${esc(t('action.prefilter'))}</a>` : ''}
+                  ${r.metric ? `<a class="se-btn mini se-link-btn" href="/se-bad.html?${prefillQs}">${esc(t('action.suppress'))}</a>` : ''}
                 </td>
               </tr>`;
             }).join('')}
@@ -1612,8 +1692,6 @@
       `;
     }
 
-    const total = data.meta?.total || 0;
-    const pages = Math.max(1, Math.ceil(total / m.size));
     document.getElementById('meas-pager').innerHTML = `
       <button type="button" class="se-btn mini" id="btn-meas-prev" ${m.page <= 0 ? 'disabled' : ''}>${esc(t('pager.prev'))}</button>
       <span class="tabular">${esc(t('pager.info', { page: m.page + 1, pages, total }))}</span>
@@ -1625,7 +1703,7 @@
   async function loadParamsTab() {
     const params = await api('/api/se/params');
     appState.params = params;
-    document.getElementById('params-updated-at').textContent = params.updated_at ? fmtTime(params.updated_at) : '--';
+    document.getElementById('params-updated-at').textContent = params.updated_at ? fmtTime(params.updated_at) : '—';
     const form = document.getElementById('se-params-form');
     let html = '';
     PARAM_SCHEMA.forEach((grp) => {
@@ -1638,8 +1716,8 @@
             <label class="se-field">
               <span>${esc(label)}</span>
               <select name="${esc(f.key)}">
-                <option value="0" ${Number(val) === 0 ? 'selected' : ''}>0 (Off)</option>
-                <option value="1" ${Number(val) === 1 ? 'selected' : ''}>1 (On)</option>
+                <option value="0" ${Number(val) === 0 ? 'selected' : ''}>${esc(t('bool.off'))}</option>
+                <option value="1" ${Number(val) === 1 ? 'selected' : ''}>${esc(t('bool.on'))}</option>
               </select>
             </label>
           `;
@@ -1750,7 +1828,12 @@
       await ensureSvgLoaded();
       renderSvgBindings();
       renderTopoBadPanel();
-      selectTopologyDevice(appState.selectedDevId);
+      if (appState.selectedDevId && appState._pendingFocusDev) {
+        appState._pendingFocusDev = false;
+        focusSvgDevice(appState.selectedDevId);
+      } else {
+        selectTopologyDevice(appState.selectedDevId);
+      }
     } else if (viewName === 'curves') {
       await loadCurvesTab();
     } else if (viewName === 'devices') {
@@ -1790,11 +1873,15 @@
           const qName = qp.get('device_name');
           if (qDevId && topology.devices?.[qDevId]) {
             appState.selectedDevId = qDevId;
+            appState._pendingFocusDev = true;
           } else if (qType && qName) {
             const matched = Object.values(topology.devices || {}).find(
               (d) => d.device_type === qType && d.name === qName,
             );
-            if (matched) appState.selectedDevId = matched.dev_id;
+            if (matched) {
+              appState.selectedDevId = matched.dev_id;
+              appState._pendingFocusDev = true;
+            }
           }
         }
       }
@@ -1959,9 +2046,11 @@
       appState.devices.type = e.target.value;
       loadDevicesTab();
     });
+    let devSearchTimer;
     on('dev-search-input', 'input', (e) => {
       appState.devices.q = e.target.value;
-      loadDevicesTab();
+      clearTimeout(devSearchTimer);
+      devSearchTimer = setTimeout(() => loadDevicesTab(), 200);
     });
     on('dev-bad-only', 'change', (e) => {
       appState.devices.badOnly = e.target.checked;
@@ -1974,13 +2063,18 @@
       exportCsv(`se-dev-${d.device_type}.csv`, cols, d.rows.map((r) => cols.map((c) => r[c] ?? '')));
     });
 
-    // 量测明细控件
+    // 量测明细控件（防抖 + 方向切换 + 大残差筛选 + 后端全量导出）
     on('meas-source-seg', 'click', (e) => {
       const btn = e.target.closest('.seg');
       if (!btn) return;
       appState.meas.source = btn.dataset.msrc;
       appState.meas.page = 0;
       document.querySelectorAll('#meas-source-seg .seg').forEach((b) => b.classList.toggle('active', b === btn));
+      loadMeasurementsTab();
+    });
+    on('btn-meas-high-res', 'click', () => {
+      appState.meas.highResOnly = !appState.meas.highResOnly;
+      appState.meas.page = 0;
       loadMeasurementsTab();
     });
     on('meas-devtype-select', 'change', (e) => {
@@ -1990,19 +2084,49 @@
     });
     on('meas-sort-select', 'change', (e) => {
       appState.meas.sort = e.target.value;
+      appState.meas.direction = (e.target.value === 'meas_id' || e.target.value === 'device_name') ? 'asc' : 'desc';
       appState.meas.page = 0;
       loadMeasurementsTab();
     });
+    on('btn-meas-dir', 'click', () => {
+      appState.meas.direction = appState.meas.direction === 'asc' ? 'desc' : 'asc';
+      appState.meas.page = 0;
+      loadMeasurementsTab();
+    });
+    let measSearchTimer;
     on('meas-search-input', 'input', (e) => {
       appState.meas.q = e.target.value;
       appState.meas.page = 0;
-      loadMeasurementsTab();
+      clearTimeout(measSearchTimer);
+      measSearchTimer = setTimeout(() => loadMeasurementsTab(), 200);
     });
     on('btn-export-meas', 'click', () => {
-      const rows = appState.meas.data?.rows || [];
-      if (!rows.length) return;
-      const cols = ['meas_id', 'device_type', 'device_name', 'metric', 'meas_type', 'unit', 'meas_value', 'se_value', 'residual', 'normalized_residual', 'is_bad', 'source'];
-      exportCsv('se-measurements.csv', cols, rows.map((r) => cols.map((c) => r[c] ?? '')));
+      const m = appState.meas;
+      const qs = new URLSearchParams({
+        source: m.source,
+        device_type: m.devType,
+        q: m.q,
+        sort: m.sort,
+        direction: m.direction,
+        high_residual_only: m.highResOnly ? '1' : '0',
+      });
+      window.location.href = `/api/se/measurements/export?${qs.toString()}`;
+    });
+
+    // 快捷键：'/' 聚焦搜索框，'Esc' 清空当前搜索框
+    document.addEventListener('keydown', (e) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (e.key === '/' && tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
+        const box = document.getElementById('meas-search-input') || document.getElementById('dev-search-input');
+        if (box) {
+          e.preventDefault();
+          box.focus();
+          box.select();
+        }
+      } else if (e.key === 'Escape' && document.activeElement?.type === 'search' && document.activeElement.value) {
+        document.activeElement.value = '';
+        document.activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     });
 
     // 算法参数保存与高危重置模态确认
@@ -2068,10 +2192,24 @@
         focusSvgDevice(devId);
         return;
       }
-      const curveEl = e.target.closest('[data-open-curve]');
+      const curveEl = e.target.closest('[data-open-curve],[data-jump-curve]');
       if (curveEl) {
-        const [dt, dn, mt] = curveEl.dataset.openCurve.split('|');
+        const raw = curveEl.dataset.openCurve || curveEl.dataset.jumpCurve || '';
+        const [dt, dn, mt] = raw.split('|');
         if (dt && dn && mt) await jumpToPointCurve(dt, dn, mt);
+        return;
+      }
+      const sortTh = e.target.closest('th[data-meas-sort]');
+      if (sortTh) {
+        const col = sortTh.dataset.measSort;
+        if (appState.meas.sort === col) {
+          appState.meas.direction = appState.meas.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          appState.meas.sort = col;
+          appState.meas.direction = (col === 'meas_id' || col === 'device_name') ? 'asc' : 'desc';
+        }
+        appState.meas.page = 0;
+        await loadMeasurementsTab();
         return;
       }
       if (e.target.id === 'btn-meas-prev' && appState.meas.page > 0) {

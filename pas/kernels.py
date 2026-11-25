@@ -59,7 +59,8 @@ def input_fingerprint(paths: list[Path | None]) -> str:
 
 def _number(value: Any, default: float = 0.0) -> float:
     try:
-        return float(value)
+        num = float(value)
+        return num if math.isfinite(num) else default
     except (TypeError, ValueError):
         return default
 
@@ -72,8 +73,10 @@ def _int(value: Any, default: int = 0) -> int:
 
 
 def _json_value(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, int, bool)):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if hasattr(value, "tolist"):
         return _json_value(value.tolist())
     if isinstance(value, dict):
@@ -679,35 +682,38 @@ def _enrich_se_result(
 
     device_tables = _evaluate_all_device_se_values(estimator, snapshot, converter, device_meas)
 
-    # 1) 对正常量测，将最终收敛状态下的内核估计值回填至设备表；
+    # 1) 对正常量测，将最终收敛状态下的内核估计值回填至设备表（O(1) 哈希索引）；
     # 2) 对坏数据，使用最终收敛状态 x 评估出的干净 se 值更新其 se_value / residual，避免展示被坏数据污染的中间值
+    dev_rec_lookup: dict[tuple[str, int], dict[str, Any]] = {}
     dev_se_lookup: dict[tuple[str, int, str], float | None] = {}
     for dev_type, rows_for_dev in device_tables.items():
+        metrics_for_type = SE_DEVICE_RESULT_METRICS.get(dev_type, ())
         for dev_rec in rows_for_dev:
-            for metric in SE_DEVICE_RESULT_METRICS.get(dev_type, ()):
-                dev_se_lookup[(dev_type, dev_rec["idx"], metric)] = dev_rec.get(f"{metric}_se")
+            d_idx = int(dev_rec["idx"])
+            dev_rec_lookup[(dev_type, d_idx)] = dev_rec
+            for metric in metrics_for_type:
+                dev_se_lookup[(dev_type, d_idx, metric)] = dev_rec.get(f"{metric}_se")
 
     for item in enriched_rows:
         if not item.get("metric") or item.get("device_idx") is None:
             continue
+        d_type = str(item["device_type"])
+        d_idx = int(item["device_idx"])
+        dev_rec = dev_rec_lookup.get((d_type, d_idx))
         if item["source"] == "normal":
-            for dev_rec in device_tables.get(item["device_type"], ()):
-                if dev_rec["idx"] == item["device_idx"]:
-                    if item["value"] is not None:
-                        dev_rec[f"{item['metric']}_meas"] = item["value"]
-                    if item["estimated_value"] is not None:
-                        dev_rec[f"{item['metric']}_se"] = item["estimated_value"]
-                    break
+            if dev_rec is not None:
+                if item["value"] is not None:
+                    dev_rec[f"{item['metric']}_meas"] = item["value"]
+                if item["estimated_value"] is not None:
+                    dev_rec[f"{item['metric']}_se"] = item["estimated_value"]
         elif item["source"] == "bad_data":
-            final_se = dev_se_lookup.get((item["device_type"], int(item["device_idx"]), item["metric"]))
+            final_se = dev_se_lookup.get((d_type, d_idx, item["metric"]))
             if final_se is not None:
                 item["estimated_value"] = final_se
                 if item["value"] is not None:
                     item["residual"] = item["value"] - final_se
-            for dev_rec in device_tables.get(item["device_type"], ()):
-                if dev_rec["idx"] == item["device_idx"] and item["value"] is not None:
-                    dev_rec[f"{item['metric']}_meas"] = item["value"]
-                    break
+            if dev_rec is not None and item["value"] is not None:
+                dev_rec[f"{item['metric']}_meas"] = item["value"]
 
     suspect_statuses = detect_suspect_statuses(
         snapshot,
@@ -825,7 +831,11 @@ def run_se(
                     },
                 )
             topology_overrides = measurement_metadata.get("topology_overrides")
-            with kernel_model(config.model_file, topology_overrides=topology_overrides) as model:
+            with kernel_model(
+                config.model_file,
+                topology_overrides=topology_overrides,
+                raw_tables=raw_model_tables,
+            ) as model:
                 validate_references(model.path, meas_file, measurements=True)
                 patched_snapshot = (
                     {name: block["rows"] for name, block in model.tables.items()}

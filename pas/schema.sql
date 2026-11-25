@@ -1626,6 +1626,8 @@ CREATE TABLE IF NOT EXISTS pas_dbdef_snapshot (
     PRIMARY KEY (run_id, table_name, row_index)
 );
 CREATE INDEX IF NOT EXISTS idx_se_measurement_run ON se_measurement_result(run_id, result_id);
+CREATE INDEX IF NOT EXISTS idx_se_meas_result_point ON se_measurement_result(device_type, device_name, measurement_type, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_se_meas_result_source ON se_measurement_result(source, device_type, device_name, measurement_type);
 CREATE INDEX IF NOT EXISTS idx_lf_device_run ON lf_device_result(run_id, result_id);
 CREATE INDEX IF NOT EXISTS idx_ca_risk_run ON ca_risk(run_id, risk_id);
 CREATE INDEX IF NOT EXISTS idx_calculation_run_time ON calculation_run(started_at DESC, run_id DESC);

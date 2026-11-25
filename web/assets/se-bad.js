@@ -511,10 +511,10 @@
             <tr>
               <td>${esc(devTypeLabel(h.device_type))}</td>
               <td><strong>${esc(h.device_name)}</strong></td>
-              <td class="tabular">${esc(h.measurement_type || h.metric || '')}</td>
-              <td class="tabular"><strong>${h.bad_count ?? h.count ?? 0}</strong></td>
+              <td class="tabular">${esc(h.meas_type || h.measurement_type || h.metric || '—')}</td>
+              <td class="tabular"><strong>${h.bad_hits ?? h.bad_count ?? h.count ?? 0}</strong></td>
               <td class="tabular">${fmtNum(h.max_norm_residual, 2)}</td>
-              <td class="tabular">${esc(fmtTime(h.last_seen || h.last_calc_time))}</td>
+              <td class="tabular">${esc(fmtTime(h.last_seen_at || h.last_seen || h.last_calc_time))}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -589,12 +589,12 @@
 
     document.getElementById('cur-type-filter').addEventListener('change', loadCurrent);
     document.getElementById('cur-ack-filter').addEventListener('change', loadCurrent);
-    document.getElementById('cur-search').addEventListener('input', loadCurrent);
+    document.getElementById('cur-search').addEventListener('input', common.debounce(loadCurrent, 200));
     document.getElementById('pol-type-filter').addEventListener('change', loadPolicies);
     document.getElementById('pol-action-filter').addEventListener('change', loadPolicies);
-    document.getElementById('pol-search').addEventListener('input', loadPolicies);
+    document.getElementById('pol-search').addEventListener('input', common.debounce(loadPolicies, 200));
     document.getElementById('abn-type-filter').addEventListener('change', () => { state.abnormal.offset = 0; loadAbnormal(); });
-    document.getElementById('abn-search').addEventListener('input', () => { state.abnormal.offset = 0; loadAbnormal(); });
+    document.getElementById('abn-search').addEventListener('input', common.debounce(() => { state.abnormal.offset = 0; loadAbnormal(); }, 200));
     document.getElementById('hist-limit').addEventListener('change', loadHistory);
 
     document.querySelectorAll('#abn-cat-seg .seg').forEach((btn) => {
@@ -706,5 +706,14 @@
 
   common.initShell({ onRefresh: refreshAll, afterRunSE: refreshAll });
   bindEvents();
-  refreshAll();
+  refreshAll().then(() => {
+    const qp = new URLSearchParams(window.location.search);
+    const pType = qp.get('prefill_type');
+    const pName = qp.get('prefill_name');
+    const pMetric = qp.get('prefill_metric');
+    if (pType && pName && pMetric) {
+      document.querySelector('#bad-tabs .se-tab[data-view="policies"]')?.click();
+      openPolicyDialog({ device_type: pType, device_name: pName, metric: pMetric, action: 'suppress', enabled: 1, reason: '' });
+    }
+  });
 })();

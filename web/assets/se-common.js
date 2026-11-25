@@ -53,6 +53,15 @@
       'common.empty': '—',
       'common.prev': '上一页',
       'common.next': '下一页',
+      'ui.split_v': '拖动调整宽度 / 双击复位',
+      'ui.split_h': '拖动调整高度 / 双击复位',
+      'ui.sidebar_resize': '拖动调整宽度 / 双击隐藏或展开',
+      'ui.sidebar_hide': '隐藏左侧目录树',
+      'ui.sidebar_show': '展开左侧目录树',
+      'status.succeeded': '成功',
+      'status.failed': '失败',
+      'status.running': '运行中',
+      'status.queued': '排队中',
       'msg.se_submitted': 'SE 计算已提交，正在刷新…',
       'msg.se_done': 'SE 计算完成',
       'devtype.ACNode': '交流节点',
@@ -121,6 +130,15 @@
       'common.empty': '—',
       'common.prev': 'Prev',
       'common.next': 'Next',
+      'ui.split_v': 'Drag to resize / Double-click to reset',
+      'ui.split_h': 'Drag to resize / Double-click to reset',
+      'ui.sidebar_resize': 'Drag to resize / Double-click to toggle',
+      'ui.sidebar_hide': 'Hide sidebar',
+      'ui.sidebar_show': 'Show sidebar',
+      'status.succeeded': 'Succeeded',
+      'status.failed': 'Failed',
+      'status.running': 'Running',
+      'status.queued': 'Queued',
       'msg.se_submitted': 'SE job submitted, refreshing…',
       'msg.se_done': 'SE calculation finished',
       'devtype.ACNode': 'AC Bus',
@@ -189,6 +207,15 @@
       'common.empty': '—',
       'common.prev': 'Назад',
       'common.next': 'Далее',
+      'ui.split_v': 'Перетащите ширину / Двойной клик для сброса',
+      'ui.split_h': 'Перетащите высоту / Двойной клик для сброса',
+      'ui.sidebar_resize': 'Перетащите ширину / Двойной клик скрыть',
+      'ui.sidebar_hide': 'Скрыть меню',
+      'ui.sidebar_show': 'Показать меню',
+      'status.succeeded': 'Успешно',
+      'status.failed': 'Ошибка',
+      'status.running': 'Выполняется',
+      'status.queued': 'В очереди',
       'msg.se_submitted': 'Расчёт SE запущен…',
       'msg.se_done': 'Расчёт SE завершён',
       'devtype.ACNode': 'Узел AC',
@@ -236,7 +263,7 @@
     }
 
     function devTypeLabel(dtype) {
-      if (!dtype) return '--';
+      if (!dtype) return '—';
       const key = `devtype.${dtype}`;
       const val = t(key);
       return val === key ? dtype : val;
@@ -264,6 +291,17 @@
       document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
         el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
       });
+      document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+        el.setAttribute('title', t(el.dataset.i18nTitle));
+      });
+      const resizer = document.querySelector('.sidebar-resizer');
+      const toggleBtn = resizer?.querySelector('.sidebar-toggle-btn');
+      if (resizer) resizer.title = t('ui.sidebar_resize');
+      if (toggleBtn) {
+        const isCol = resizer.classList.contains('is-collapsed');
+        toggleBtn.title = t(isCol ? 'ui.sidebar_show' : 'ui.sidebar_hide');
+        toggleBtn.setAttribute('aria-label', toggleBtn.title);
+      }
       if (triggerCallback && typeof onLangChange === 'function') onLangChange(lang);
     }
 
@@ -274,16 +312,24 @@
     }
 
     function fmtNum(v, digits = 3) {
-      if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
+      if (v === null || v === undefined || Number.isNaN(Number(v))) return '—';
       return Number(v).toFixed(digits);
     }
 
     function fmtTime(iso) {
-      if (!iso) return '--';
+      if (!iso) return '—';
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return String(iso).slice(0, 19).replace('T', ' ');
       const pad = (n) => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function debounce(fn, wait = 200) {
+      let tid;
+      return (...args) => {
+        clearTimeout(tid);
+        tid = setTimeout(() => fn(...args), wait);
+      };
     }
 
     function notify(msg, isError = false) {
@@ -303,14 +349,15 @@
       });
       const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
       if (!res.ok || json.ok === false) {
-        throw new Error(json.error || `HTTP ${res.status}`);
+        const msg = json.error || (json.data && json.data.error_message) || `HTTP ${res.status}`;
+        throw new Error(msg);
       }
       return json.data;
     }
 
     async function refreshHealth() {
       try {
-        const h = await api('/api/health');
+        const h = await api('/api/health?lite=1');
         const dot = document.getElementById('service-dot');
         const txt = document.getElementById('service-state');
         const ok = h && h.status === 'ok';
@@ -381,6 +428,7 @@
       esc,
       fmtNum,
       fmtTime,
+      debounce,
       notify,
       api,
       openConfirm,

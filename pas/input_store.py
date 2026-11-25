@@ -157,17 +157,34 @@ def _default_metric_unit(se_code: str, units: dict[str, Any]) -> str:
     return str(units.get("p_unit", "kW"))
 
 
+_CATALOG_UNIT_CACHE: dict[tuple[str, int, int], dict[tuple[str, str], str]] = {}
+
+
 def _catalog_units(point_catalog_path: Path | None) -> dict[tuple[str, str], str]:
-    if point_catalog_path is None or not Path(point_catalog_path).is_file():
+    if point_catalog_path is None:
+        return {}
+    p = Path(point_catalog_path)
+    if not p.is_file():
         return {}
     try:
-        catalog = json.loads(Path(point_catalog_path).read_text(encoding="utf-8-sig"))
+        st = p.stat()
+        key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return {}
+    cached = _CATALOG_UNIT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        catalog = json.loads(p.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     result: dict[tuple[str, str], str] = {}
     for point in catalog.get("points", ()):
         if point.get("kind") == "yc" and point.get("unit"):
             result.setdefault((str(point.get("model_table", "")), str(point.get("metric", ""))), str(point["unit"]))
+    if len(_CATALOG_UNIT_CACHE) >= 8:
+        _CATALOG_UNIT_CACHE.clear()
+    _CATALOG_UNIT_CACHE[key] = result
     return result
 
 
@@ -554,15 +571,24 @@ def measurement_input(
         yield task.measurement_file, {'source':str(task.measurement_file),'format':'file'}
         return
     model = model if model is not None else model_records(task.model_file)
-    units = (model.get('Model') or model.get('PowerBase'))[0]
+    units_raw = (model.get('Model') or model.get('PowerBase') or [{}])[0]
+    units = {
+        'u_unit': str(units_raw.get('u_unit') or 'V'),
+        'i_unit': str(units_raw.get('i_unit') or 'A'),
+        'p_unit': str(units_raw.get('p_unit') or 'kW'),
+    }
     wide_mode = is_scdfe_d_wide_db(task.measurement_file)
+    active_pseudos = [
+        p for p in (pseudo_meas_defines or ())
+        if int(p.get("meas_useflag", 1)) and str(p.get("device_type") or "") in SE_SOLVER_METRICS
+    ]
     if scada_snapshot or wide_mode:
         selected, metadata = read_scada_snapshot(
             task.measurement_file,
             model,
             point_catalog_path=getattr(task, "point_catalog_file", None),
         )
-        if not selected and not pseudo_meas_defines:
+        if not selected and not active_pseudos:
             reasons = ", ".join(f"{reason}={count}" for reason, count in sorted(metadata["rejected"].items()))
             batch_tag = f"批次 #{metadata['refresh_id']}，" if "refresh_id" in metadata else ""
             raise ValueError(
@@ -572,7 +598,7 @@ def measurement_input(
     else:
         batch = refresh_measurements(task)
         selected = [r for r in batch['rows'] if r['valid'] and r['se_enabled'] and r['se_type']]
-        if not selected and not pseudo_meas_defines:
+        if not selected and not active_pseudos:
             raise ValueError(f"无有效 SE 实时量测：已采集 {batch['total']} 个点，请检查质量、时间及点关联；不使用给定回读代替实测。")
         metadata = {k:v for k,v in batch.items() if k!='rows'}
         metadata.update(source=str(task.measurement_file), format='scada_sqlite')
@@ -607,10 +633,6 @@ def measurement_input(
         suppress_map[(str(pol.get("device_type") or ""), str(pol.get("device_name") or ""), str(pol.get("metric") or ""))] = pol
 
     active_rules = [r for r in (prefilter_rules or ()) if int(r.get("enabled", 1))]
-    active_pseudos = [
-        p for p in (pseudo_meas_defines or ())
-        if int(p.get("meas_useflag", 1)) and str(p.get("device_type") or "") in SE_SOLVER_METRICS
-    ]
     use_status_col = bool(suppress_map or active_rules or active_pseudos)
     header = (
         '<Measurement>\n@ idx name dev_type dev_name meas_type weight valid value status\n'
@@ -717,6 +739,9 @@ def measurement_input(
         }
         user_pseudo_injected += 1
 
+    if not selected and user_pseudo_injected == 0:
+        raise ValueError("无有效 SE 实时量测且已启用的伪量测均未匹配当前模型设备，已终止计算。")
+
     parts.append('</Measurement>\n')
     text=''.join(parts)
     metadata["snapshot_sha256"] = hashlib.sha256(text.encode()).hexdigest()
@@ -732,7 +757,8 @@ def measurement_input(
 
 def seed_limits(task):
     model=model_records(task.model_file)
-    units=(model.get('Model') or model.get('PowerBase'))[0]
+    units_raw=(model.get('Model') or model.get('PowerBase') or [{}])[0]
+    units={'u_unit':str(units_raw.get('u_unit') or 'V'),'i_unit':str(units_raw.get('i_unit') or 'A'),'p_unit':str(units_raw.get('p_unit') or 'kW')}
     nodes={side:{r['idx']:r for r in model.get(side+'Node',[])} for side in ('AC','DC')}
     candidates=[]
     for table,fields in CA_FIELDS.items():

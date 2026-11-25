@@ -222,9 +222,9 @@ def build_dbdef_rows(task_type: str, result: dict[str, Any], run_id: int, starte
             if "pseudo" in source.lower() or "pseudo" in reason.lower():
                 pseudo = {**base, "meas_weight": _number(item.get("weight")), "meas_time": record_time}
                 rows.setdefault("pas_se_psemeas", []).append(pseudo)
-        # 将外部采集库扫描到的缺测/坏质量/置不参与点写入 pas_se_nomeas
+        # 将外部采集库扫描到的缺测/坏质量/置不参与点写入 pas_se_nomeas（偏移 500_000 避免与 value=None 行主键冲突）
         for m_seq, miss in enumerate(result.get("missing_measurements") or [], 1):
-            m_row_id = run_id * 1_000_000 + m_seq
+            m_row_id = run_id * 1_000_000 + 500_000 + m_seq
             rows.setdefault("pas_se_nomeas", []).append(
                 {
                     "id": m_row_id,

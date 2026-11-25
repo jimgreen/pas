@@ -382,10 +382,11 @@
     setVal('h-converters', String(ctrl.converter_count ?? 0));
     setVal('h-dev-total', String(ctrl.total_devices ?? 0));
 
-    // 中栏：计算控制
+    // 中栏：计算控制（仅控制 SE 周期调度开关，不误停 LF/CA 全站服务）
+    const sePeriodicOn = Boolean(sched.enabled);
     const btnToggle = document.getElementById('btn-home-toggle-daemon');
-    btnToggle.dataset.running = rt.daemon_running ? '1' : '0';
-    btnToggle.textContent = rt.daemon_running ? t('btn.pause_calc') : t('btn.resume_calc');
+    btnToggle.dataset.running = sePeriodicOn ? '1' : '0';
+    btnToggle.textContent = sePeriodicOn ? t('btn.pause_calc') : t('btn.resume_calc');
 
     document.getElementById('h-snap-time').textContent = latest ? fmtTime(latest.calc_time) : '—';
     document.getElementById('h-model-scene').textContent = rt.scenario ? `${rt.runtime || 'realtime'} / ${rt.scenario}` : '—';
@@ -470,8 +471,12 @@
 
     document.getElementById('btn-home-toggle-daemon').addEventListener('click', async (e) => {
       const running = e.currentTarget.dataset.running === '1';
+      const periodSec = Number(homeData?.schedule?.period_seconds ?? homeData?.params?.do_cycle ?? 60);
       try {
-        await api(running ? '/api/actions/daemon/stop' : '/api/actions/daemon/start', { method: 'POST', body: '{}' });
+        await api('/api/schedules/se', {
+          method: 'POST',
+          body: JSON.stringify({ period_seconds: periodSec, enabled: !running }),
+        });
         notify(running ? t('msg.daemon_off') : t('msg.daemon_on'));
         await refreshAll();
       } catch (err) {
