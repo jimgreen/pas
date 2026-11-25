@@ -1296,9 +1296,11 @@
 }
 
 .se-home-grid {
+  --col1: 248px;
+  --col2: 252px;
   display: grid;
-  grid-template-columns: 248px 252px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: var(--col1) 8px var(--col2) 8px minmax(340px, 1fr);
+  gap: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -1469,9 +1471,10 @@
 .se-ctrl-stamp .val { font-size: 12px; font-weight: 700; color: var(--text-primary); }
 
 .se-home-right {
+  --bottom-h: auto;
   display: grid;
-  grid-template-rows: minmax(280px, 1fr) auto;
-  gap: 8px;
+  grid-template-rows: minmax(180px, 1fr) 8px var(--bottom-h);
+  gap: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1540,18 +1543,88 @@
 .se-home-chart-legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
 
 .se-home-bottom-cards {
+  --bot-left: calc(50% - 4px);
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: var(--bot-left) 8px minmax(160px, 1fr);
+  gap: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 .se-home-bottom-cards .se-home-panel-body {
-  flex: 0 0 auto;
-  overflow: visible;
-  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 0;
   padding: 6px 10px 7px;
+}
+
+/* ==================== 主画面可拖拽分割符 ==================== */
+.se-splitter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+  z-index: 6;
+}
+
+.se-splitter.is-v {
+  cursor: col-resize;
+  width: 8px;
+  height: 100%;
+}
+
+.se-splitter.is-h {
+  cursor: row-resize;
+  height: 8px;
+  width: 100%;
+}
+
+.se-splitter::before {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  transition: background 0.14s ease, opacity 0.14s ease;
+}
+
+.se-splitter.is-v::before {
+  width: 2px;
+  height: 36px;
+}
+
+.se-splitter.is-h::before {
+  height: 2px;
+  width: 44px;
+}
+
+.se-splitter:hover::before,
+.se-splitter.is-active::before {
+  background: var(--accent);
+}
+
+.se-splitter.is-v:hover::before,
+.se-splitter.is-v.is-active::before {
+  width: 3px;
+  height: 64px;
+}
+
+.se-splitter.is-h:hover::before,
+.se-splitter.is-h.is-active::before {
+  height: 3px;
+  width: 72px;
+}
+
+body.se-splitting-v {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.se-splitting-h {
+  cursor: row-resize !important;
+  user-select: none !important;
 }
 
 /* ==================== 主题自适应细滚动条（主工作区） ==================== */
@@ -1601,13 +1674,14 @@
 .se-home-footer .msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 1160px) {
-  .se-home-grid { grid-template-columns: 220px 220px minmax(0, 1fr); }
+  .se-home-grid { --col1: 220px; --col2: 220px; }
 }
 
 @media (max-width: 960px) {
-  .se-home-grid { grid-template-columns: 1fr; overflow-y: auto; }
-  .se-home-right { grid-template-rows: 260px auto; }
-  .se-home-bottom-cards { grid-template-columns: 1fr; }
+  .se-home-grid { grid-template-columns: 1fr; gap: 8px; overflow-y: auto; }
+  .se-home-right { grid-template-rows: 260px auto; gap: 8px; }
+  .se-home-bottom-cards { grid-template-columns: 1fr; gap: 8px; }
+  .se-splitter { display: none !important; }
 }
 
 /* 响应式 */

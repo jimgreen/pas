@@ -87,7 +87,7 @@
 
       <div class="se-workspace">
         <div class="se-home-shell">
-          <div class="se-home-grid">
+          <div class="se-home-grid" id="se-home-grid">
             <!-- 左栏：量测分析与控制 -->
             <div class="se-home-col">
               <section class="se-home-panel accent-meas grow">
@@ -143,6 +143,8 @@
               </section>
             </div>
 
+            <div class="se-splitter is-v" id="split-col1" role="separator" aria-orientation="vertical" title="拖动调整宽度 / 双击复位"></div>
+
             <!-- 中栏：计算控制 -->
             <div class="se-home-col">
               <section class="se-home-panel accent-ctrl grow">
@@ -191,8 +193,10 @@
               </section>
             </div>
 
+            <div class="se-splitter is-v" id="split-col2" role="separator" aria-orientation="vertical" title="拖动调整宽度 / 双击复位"></div>
+
             <!-- 右栏：上方合格率曲线 + 下方计算结果 & 指标统计 -->
-            <div class="se-home-right">
+            <div class="se-home-right" id="se-home-right">
               <section class="se-home-panel accent-stat">
                 <div class="se-home-rate-bar">
                   <div class="se-home-rate-items">
@@ -209,7 +213,9 @@
                 </div>
               </section>
 
-              <div class="se-home-bottom-cards">
+              <div class="se-splitter is-h" id="split-right-h" role="separator" aria-orientation="horizontal" title="拖动调整高度 / 双击复位"></div>
+
+              <div class="se-home-bottom-cards" id="se-home-bottom">
                 <section class="se-home-panel accent-stat">
                   <div class="se-home-panel-head">
                     <h2 data-i18n="sec.result">计算结果</h2>
@@ -225,6 +231,8 @@
                     <div class="se-kv-row"><span class="k" data-i18n="res.bad">大误差点数</span><span class="v tabular" id="h-res-bad">—</span></div>
                   </div>
                 </section>
+
+                <div class="se-splitter is-v" id="split-bottom-v" role="separator" aria-orientation="vertical" title="拖动调整比例 / 双击复位"></div>
 
                 <section class="se-home-panel accent-stat">
                   <div class="se-home-panel-head">

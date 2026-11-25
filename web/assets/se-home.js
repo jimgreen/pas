@@ -488,7 +488,147 @@
     });
   }
 
+  /**
+   * 绑定主画面 4 处可拖拽分割符（左/中列宽、右栏上下高度、右下两卡比例），支持双击复位与持久化。
+   */
+  function initHomeSplitters() {
+    const grid = document.getElementById('se-home-grid');
+    const right = document.getElementById('se-home-right');
+    const bottom = document.getElementById('se-home-bottom');
+    const sCol1 = document.getElementById('split-col1');
+    const sCol2 = document.getElementById('split-col2');
+    const sRightH = document.getElementById('split-right-h');
+    const sBotV = document.getElementById('split-bottom-v');
+    if (!grid || !right || !bottom) return;
+
+    const LAYOUT_KEY = 'pas_se_home_layout';
+    const DEFAULTS = { col1: 248, col2: 252, bottomH: null, botRatio: 0.5 };
+
+    let layout = { ...DEFAULTS };
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}');
+      if (saved && typeof saved === 'object') {
+        if (Number.isFinite(saved.col1)) layout.col1 = Math.max(180, Math.min(460, Number(saved.col1)));
+        if (Number.isFinite(saved.col2)) layout.col2 = Math.max(180, Math.min(460, Number(saved.col2)));
+        if (Number.isFinite(saved.bottomH) && saved.bottomH >= 140) layout.bottomH = Number(saved.bottomH);
+        if (Number.isFinite(saved.botRatio)) layout.botRatio = Math.max(0.28, Math.min(0.72, Number(saved.botRatio)));
+      }
+    } catch (_) {
+      layout = { ...DEFAULTS };
+    }
+
+    let rafId = 0;
+    const scheduleChartRedraw = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        if (homeData) renderPassChart(homeData.pass_rate_series);
+      });
+    };
+
+    const applyLayout = (redraw = false) => {
+      grid.style.setProperty('--col1', `${Math.round(layout.col1)}px`);
+      grid.style.setProperty('--col2', `${Math.round(layout.col2)}px`);
+      right.style.setProperty('--bottom-h', layout.bottomH != null ? `${Math.round(layout.bottomH)}px` : 'auto');
+      bottom.style.setProperty('--bot-left', `calc(${(layout.botRatio * 100).toFixed(2)}% - 4px)`);
+      if (redraw) scheduleChartRedraw();
+    };
+
+    const saveLayout = () => {
+      try {
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+      } catch (_) {}
+    };
+
+    const bindDrag = (el, orientation, onMove, onReset) => {
+      if (!el) return;
+      let dragging = false;
+      const bodyCls = orientation === 'v' ? 'se-splitting-v' : 'se-splitting-h';
+
+      el.addEventListener('dblclick', () => {
+        onReset();
+        applyLayout(true);
+        saveLayout();
+      });
+
+      el.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        dragging = true;
+        el.setPointerCapture(e.pointerId);
+        el.classList.add('is-active');
+        document.body.classList.add(bodyCls);
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        onMove(e);
+        applyLayout(true);
+      });
+
+      const end = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (e && el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+        el.classList.remove('is-active');
+        document.body.classList.remove(bodyCls);
+        saveLayout();
+        scheduleChartRedraw();
+      };
+
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
+    };
+
+    bindDrag(
+      sCol1,
+      'v',
+      (e) => {
+        const rect = grid.getBoundingClientRect();
+        const maxCol1 = Math.max(180, Math.min(460, rect.width - layout.col2 - 340 - 16));
+        layout.col1 = Math.max(180, Math.min(maxCol1, e.clientX - rect.left - 4));
+      },
+      () => { layout.col1 = DEFAULTS.col1; },
+    );
+
+    bindDrag(
+      sCol2,
+      'v',
+      (e) => {
+        const rect = grid.getBoundingClientRect();
+        const maxCol2 = Math.max(180, Math.min(460, rect.width - layout.col1 - 340 - 16));
+        layout.col2 = Math.max(180, Math.min(maxCol2, e.clientX - rect.left - layout.col1 - 12));
+      },
+      () => { layout.col2 = DEFAULTS.col2; },
+    );
+
+    bindDrag(
+      sRightH,
+      'h',
+      (e) => {
+        const rect = right.getBoundingClientRect();
+        const maxBottom = Math.max(140, rect.height - 188);
+        layout.bottomH = Math.max(140, Math.min(maxBottom, rect.bottom - e.clientY - 4));
+      },
+      () => { layout.bottomH = DEFAULTS.bottomH; },
+    );
+
+    bindDrag(
+      sBotV,
+      'v',
+      (e) => {
+        const rect = bottom.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const ratio = (e.clientX - rect.left) / rect.width;
+        layout.botRatio = Math.max(0.28, Math.min(0.72, ratio));
+      },
+      () => { layout.botRatio = DEFAULTS.botRatio; },
+    );
+
+    applyLayout(false);
+  }
+
   common.initShell({ onRefresh: refreshAll, afterRunSE: refreshAll });
+  initHomeSplitters();
   bindEvents();
   refreshAll();
 })();
