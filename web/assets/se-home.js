@@ -13,20 +13,27 @@
       'sub.prefilter': '预处理信息',
       'sub.control': '量测控制',
       'sub.params': '参数管理',
-      'm.bus_count': '母线总数',
+      'm.bus_count': '母线总数（交/直）',
       'm.meas_count': '量测总数',
       'm.valid_meas': '有效量测数',
+      'm.state_count': '状态变量数',
+      'm.rank': '雅可比矩阵秩',
       'm.deficiency': '不可观测点数',
+      'm.redundancy': '量测冗余度',
       'm.pf_total': '预过滤总数',
+      'm.pf_rate': '预过滤占比',
       'm.pf_rule': '越限规则命中',
       'm.pf_kernel': '内核预过滤',
+      'm.pf_rules': '预过滤规则（启/总）',
       'm.nomeas': '缺测 / 坏质量',
       'm.suspect': '可疑遥信数',
-      'm.pseudo_stat': '伪遥信数',
-      'm.pseudo_meas': '伪遥测数',
-      'm.policy': '遥测屏蔽数',
-      'm.bad_total': '坏量测数',
-      'm.devices': '建模设备数',
+      'm.pseudo_stat': '伪遥信（启/总）',
+      'm.pseudo_meas': '伪遥测（配/生）',
+      'm.policy': '遥测屏蔽（启/总）',
+      'm.bad_total': '坏量测（未确/总）',
+      'm.branches': '交直流支路数',
+      'm.converters': '换流器数',
+      'm.devices': '建模设备总数',
       'btn.start_calc': '启动计算',
       'btn.pause_calc': '暂停周期',
       'btn.resume_calc': '启动周期',
@@ -38,10 +45,16 @@
       'p.trigger': '触发方式',
       'p.flat': '平启动',
       'p.tol': '收敛精度判据',
+      'p.diffstep': '数值差分步长',
+      'p.maxiter': '最大迭代次数',
       'p.badeps': '坏数据门槛',
       'p.badmax': '坏数据上限',
+      'p.badstep': '坏数据单步上限',
       'p.pweight': '伪量测权重',
-      'p.maxiter': '最大迭代次数',
+      'p.pmax': '定向伪量测上限',
+      'p.vfloor': '电压下限保护',
+      'p.pftol': '初值潮流容差',
+      'p.pfiter': '初值潮流迭代',
       'r.cur_pass': '当前合格率',
       'r.today_avg': '今日平均',
       'r.yest_avg': '对比日平均',
@@ -83,19 +96,26 @@
       'sub.prefilter': 'Prefilter Summary',
       'sub.control': 'Measurement Control',
       'sub.params': 'Parameters',
-      'm.bus_count': 'Total Buses',
+      'm.bus_count': 'Buses (AC/DC)',
       'm.meas_count': 'Total Meas',
       'm.valid_meas': 'Valid Meas',
+      'm.state_count': 'State Vars',
+      'm.rank': 'Jacobian Rank',
       'm.deficiency': 'Unobservable',
+      'm.redundancy': 'Redundancy',
       'm.pf_total': 'Prefiltered',
+      'm.pf_rate': 'Prefilter Rate',
       'm.pf_rule': 'Rule Hits',
       'm.pf_kernel': 'Kernel Filter',
+      'm.pf_rules': 'Rules (On/All)',
       'm.nomeas': 'Missing / Bad Qual',
       'm.suspect': 'Suspect Status',
-      'm.pseudo_stat': 'Pseudo Status',
-      'm.pseudo_meas': 'Pseudo Meas',
-      'm.policy': 'Suppressed',
-      'm.bad_total': 'Bad Data',
+      'm.pseudo_stat': 'Pseudo Stat (On/All)',
+      'm.pseudo_meas': 'Pseudo Meas (Cfg/Eff)',
+      'm.policy': 'Policy (On/All)',
+      'm.bad_total': 'Bad (Unack/All)',
+      'm.branches': 'AC/DC Branches',
+      'm.converters': 'Converters',
       'm.devices': 'Model Devices',
       'btn.start_calc': 'Run SE Now',
       'btn.pause_calc': 'Pause Cycle',
@@ -108,10 +128,16 @@
       'p.trigger': 'Trigger Mode',
       'p.flat': 'Flat Start',
       'p.tol': 'Tolerance',
+      'p.diffstep': 'Diff Step',
+      'p.maxiter': 'Max Iterations',
       'p.badeps': 'Bad Threshold',
       'p.badmax': 'Bad Max Count',
+      'p.badstep': 'Bad Step Limit',
       'p.pweight': 'Pseudo Weight',
-      'p.maxiter': 'Max Iterations',
+      'p.pmax': 'Targeted Pseudo Max',
+      'p.vfloor': 'Voltage Floor',
+      'p.pftol': 'Init PF Tol',
+      'p.pfiter': 'Init PF Max Iter',
       'r.cur_pass': 'Current Pass',
       'r.today_avg': 'Today Avg',
       'r.yest_avg': 'Compare Avg',
@@ -153,19 +179,26 @@
       'sub.prefilter': 'Предфильтр',
       'sub.control': 'Контроль изм.',
       'sub.params': 'Параметры',
-      'm.bus_count': 'Узлов',
+      'm.bus_count': 'Узлы (AC/DC)',
       'm.meas_count': 'Измерений',
       'm.valid_meas': 'Валидных ТИ',
+      'm.state_count': 'Перем. сост.',
+      'm.rank': 'Ранг матрицы',
       'm.deficiency': 'Ненаблюдаемых',
+      'm.redundancy': 'Избыточность',
       'm.pf_total': 'Отфильтровано',
+      'm.pf_rate': 'Доля фильтра',
       'm.pf_rule': 'По правилам',
       'm.pf_kernel': 'Ядро SE',
+      'm.pf_rules': 'Правила (вкл/все)',
       'm.nomeas': 'Пропуски',
       'm.suspect': 'Подозр. ТС',
       'm.pseudo_stat': 'Псевдо-ТС',
       'm.pseudo_meas': 'Псевдо-ТИ',
-      'm.policy': 'Заблокир.',
+      'm.policy': 'Блок. (вкл/все)',
       'm.bad_total': 'Плохие ТИ',
+      'm.branches': 'Ветви AC/DC',
+      'm.converters': 'Преобразоват.',
       'm.devices': 'Оборудование',
       'btn.start_calc': 'Запустить SE',
       'btn.pause_calc': 'Пауза цикла',
@@ -178,10 +211,16 @@
       'p.trigger': 'Триггер',
       'p.flat': 'Плоский старт',
       'p.tol': 'Точность',
+      'p.diffstep': 'Шаг дифф.',
+      'p.maxiter': 'Макс. итераций',
       'p.badeps': 'Порог сбоя',
       'p.badmax': 'Макс. плохих',
+      'p.badstep': 'Лимит за шаг',
       'p.pweight': 'Вес псевдо-ТИ',
-      'p.maxiter': 'Макс. итераций',
+      'p.pmax': 'Макс. псевдо-ТИ',
+      'p.vfloor': 'Мин. напр.',
+      'p.pftol': 'Точность УР',
+      'p.pfiter': 'Итерац. УР',
       'r.cur_pass': 'Текущ. годн.',
       'r.today_avg': 'Сред. сегодня',
       'r.yest_avg': 'Сред. вчера',
@@ -316,21 +355,31 @@
     }
 
     // 左栏：量测分析与控制
-    setVal('h-bus-count', String(obs.bus_count ?? 0));
+    const busText = obs.ac_bus_count != null && obs.dc_bus_count != null
+      ? `${obs.bus_count ?? 0} (${obs.ac_bus_count}/${obs.dc_bus_count})`
+      : String(obs.bus_count ?? 0);
+    setVal('h-bus-count', busText);
     setVal('h-meas-count', String(obs.meas_count ?? 0));
     setVal('h-valid-meas', String(obs.valid_meas_count ?? 0));
+    setVal('h-state-count', String(obs.state_count ?? 0));
+    setVal('h-rank', String(obs.rank ?? 0));
     setVal('h-deficiency', String(obs.deficiency ?? 0), (obs.deficiency || 0) > 0 ? 'bad' : 'ok');
+    setVal('h-redundancy', obs.redundancy != null ? `${Number(obs.redundancy).toFixed(2)}x` : '—');
 
     setVal('h-pf-total', String(pf.total ?? 0), (pf.total || 0) > 0 ? 'warn' : '');
+    setVal('h-pf-rate', pf.prefilter_rate != null ? `${Number(pf.prefilter_rate).toFixed(1)}%` : '—');
     setVal('h-pf-rule', String(pf.by_rule ?? 0));
     setVal('h-pf-kernel', String(pf.by_kernel ?? 0));
+    setVal('h-pf-rules', `${pf.rule_enabled ?? 0} / ${pf.rule_total ?? 0}`);
     setVal('h-nomeas', String(pf.nomeas_count ?? 0), (pf.nomeas_count || 0) > 0 ? 'warn' : '');
     setVal('h-suspect', String(pf.suspect_count ?? 0), (pf.suspect_count || 0) > 0 ? 'bad' : '');
 
-    setVal('h-pseudo-stat', String(ctrl.pseudo_stat_enabled ?? 0));
+    setVal('h-pseudo-stat', `${ctrl.pseudo_stat_enabled ?? 0} / ${ctrl.pseudo_stat_total ?? 0}`);
     setVal('h-pseudo-meas', `${ctrl.pseudo_meas_enabled ?? 0} / ${ctrl.pseudo_result_total ?? 0}`);
-    setVal('h-policy', String(ctrl.policy_enabled ?? 0));
-    setVal('h-bad-left', String(ctrl.bad_total ?? 0), (ctrl.bad_total || 0) > 0 ? 'bad' : 'ok');
+    setVal('h-policy', `${ctrl.policy_enabled ?? 0} / ${ctrl.policy_total ?? 0}`);
+    setVal('h-bad-left', `${ctrl.bad_unacked ?? 0} / ${ctrl.bad_total ?? 0}`, (ctrl.bad_total || 0) > 0 ? 'bad' : 'ok');
+    setVal('h-branches', String(ctrl.branch_count ?? 0));
+    setVal('h-converters', String(ctrl.converter_count ?? 0));
     setVal('h-dev-total', String(ctrl.total_devices ?? 0));
 
     // 中栏：计算控制
@@ -346,10 +395,16 @@
     setVal('h-p-trigger', String(params.calc_trigger ?? 1));
     setVal('h-p-flat', params.flat_start ? t('yes') : t('no'));
     setVal('h-p-tol', params.tol != null ? Number(params.tol).toExponential(1) : '—');
+    setVal('h-p-diffstep', params.diff_step != null ? Number(params.diff_step).toExponential(1) : '—');
+    setVal('h-p-maxiter', params.max_iterator != null ? String(params.max_iterator) : '—');
     setVal('h-p-badeps', params.baderr_eps != null ? String(params.baderr_eps) : '—');
     setVal('h-p-badmax', params.badnum_max != null ? String(params.badnum_max) : '—');
-    setVal('h-p-pweight', params.pseudo_weight != null ? String(params.pseudo_weight) : '—');
-    setVal('h-p-maxiter', params.max_iterator != null ? String(params.max_iterator) : '—');
+    setVal('h-p-badstep', params.badnum_step != null ? String(params.badnum_step) : '—');
+    setVal('h-p-pweight', params.pseudo_measurement_weight != null ? Number(params.pseudo_measurement_weight).toExponential(1) : '—');
+    setVal('h-p-pmax', params.targeted_pseudo_measurement_max != null ? String(params.targeted_pseudo_measurement_max) : '—');
+    setVal('h-p-vfloor', params.voltage_floor != null ? String(params.voltage_floor) : '—');
+    setVal('h-p-pftol', params.power_flow_tol != null ? Number(params.power_flow_tol).toExponential(1) : '—');
+    setVal('h-p-pfiter', params.power_flow_max_iter != null ? String(params.power_flow_max_iter) : '—');
 
     // 右上：合格率摘要 + 双曲线
     document.getElementById('h-r-cur').textContent = ts.current_pass_rate != null ? `${ts.current_pass_rate.toFixed(2)}%` : '—';

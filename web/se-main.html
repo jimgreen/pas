@@ -24,7 +24,7 @@
           <span data-i18n="nav.analysis">分析功能</span>
           <a href="/se-main.html" data-route="se-root" class="nav-parent-active" data-i18n="nav.se_root">状态估计 SE</a>
           <div class="nav-sub">
-            <a href="/se-main.html" data-route="se-main" class="active" data-i18n="nav.se_main">状态估计主画面</a>
+            <a href="/se-main.html" data-route="se-main" class="active" data-i18n="nav.se_main">主画面</a>
             <a href="/se-flow.html" data-route="se-flow" data-i18n="nav.se_flow">潮流图</a>
             <a href="/se-curves.html" data-route="se-curves" data-i18n="nav.se_curves">历史曲线</a>
             <a href="/se-devices.html" data-route="se-devices" data-i18n="nav.se_devices">设备对比</a>
@@ -98,10 +98,13 @@
                   <div class="se-home-sub grow">
                     <div class="se-home-sub-title" data-i18n="sub.obs">可观测性分析</div>
                     <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="m.bus_count">母线总数</span><span class="v tabular" id="h-bus-count">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.bus_count">母线总数（交/直）</span><span class="v tabular" id="h-bus-count">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.meas_count">量测总数</span><span class="v tabular" id="h-meas-count">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.valid_meas">有效量测数</span><span class="v tabular" id="h-valid-meas">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.state_count">状态变量数</span><span class="v tabular" id="h-state-count">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.rank">雅可比矩阵秩</span><span class="v tabular" id="h-rank">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.deficiency">不可观测点数</span><span class="v tabular" id="h-deficiency">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.redundancy">量测冗余度</span><span class="v tabular" id="h-redundancy">—</span></div>
                     </div>
                     <a class="se-more-link" href="/se-measurements.html" data-i18n="link.more">更多…</a>
                   </div>
@@ -110,8 +113,10 @@
                     <div class="se-home-sub-title" data-i18n="sub.prefilter">预处理信息</div>
                     <div class="se-kv-list">
                       <div class="se-kv-row"><span class="k" data-i18n="m.pf_total">预过滤总数</span><span class="v tabular" id="h-pf-total">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rate">预过滤占比</span><span class="v tabular" id="h-pf-rate">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.pf_rule">越限规则命中</span><span class="v tabular" id="h-pf-rule">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.pf_kernel">内核预过滤</span><span class="v tabular" id="h-pf-kernel">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rules">预过滤规则（启/总）</span><span class="v tabular" id="h-pf-rules">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.nomeas">缺测 / 坏质量</span><span class="v tabular" id="h-nomeas">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="m.suspect">可疑遥信数</span><span class="v tabular" id="h-suspect">—</span></div>
                     </div>
@@ -121,11 +126,13 @@
                   <div class="se-home-sub grow">
                     <div class="se-home-sub-title" data-i18n="sub.control">量测控制</div>
                     <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_stat">伪遥信数</span><span class="v tabular" id="h-pseudo-stat">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_meas">伪遥测数</span><span class="v tabular" id="h-pseudo-meas">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.policy">遥测屏蔽数</span><span class="v tabular" id="h-policy">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.bad_total">坏量测数</span><span class="v tabular" id="h-bad-left">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.devices">建模设备数</span><span class="v tabular" id="h-dev-total">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_stat">伪遥信（启/总）</span><span class="v tabular" id="h-pseudo-stat">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_meas">伪遥测（配/生）</span><span class="v tabular" id="h-pseudo-meas">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.policy">遥测屏蔽（启/总）</span><span class="v tabular" id="h-policy">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.bad_total">坏量测（未确/总）</span><span class="v tabular" id="h-bad-left">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.branches">交直流支路数</span><span class="v tabular" id="h-branches">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.converters">换流器数</span><span class="v tabular" id="h-converters">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="m.devices">建模设备总数</span><span class="v tabular" id="h-dev-total">—</span></div>
                     </div>
                     <div class="se-sub-links">
                       <a class="se-more-link" href="/se-pseudo.html" data-i18n="link.pseudo">伪量测…</a>
@@ -167,10 +174,16 @@
                       <div class="se-kv-row"><span class="k" data-i18n="p.trigger">触发方式</span><span class="v tabular" id="h-p-trigger">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="p.flat">平启动</span><span class="v" id="h-p-flat">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="p.tol">收敛精度判据</span><span class="v tabular" id="h-p-tol">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.diffstep">数值差分步长</span><span class="v tabular" id="h-p-diffstep">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.maxiter">最大迭代次数</span><span class="v tabular" id="h-p-maxiter">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="p.badeps">坏数据门槛</span><span class="v tabular" id="h-p-badeps">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="p.badmax">坏数据上限</span><span class="v tabular" id="h-p-badmax">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.badstep">坏数据单步上限</span><span class="v tabular" id="h-p-badstep">—</span></div>
                       <div class="se-kv-row"><span class="k" data-i18n="p.pweight">伪量测权重</span><span class="v tabular" id="h-p-pweight">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.maxiter">最大迭代次数</span><span class="v tabular" id="h-p-maxiter">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.pmax">定向伪量测上限</span><span class="v tabular" id="h-p-pmax">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.vfloor">电压下限保护</span><span class="v tabular" id="h-p-vfloor">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.pftol">初值潮流容差</span><span class="v tabular" id="h-p-pftol">—</span></div>
+                      <div class="se-kv-row"><span class="k" data-i18n="p.pfiter">初值潮流迭代</span><span class="v tabular" id="h-p-pfiter">—</span></div>
                     </div>
                     <a class="se-more-link" href="/se-params.html" data-i18n="link.more">更多…</a>
                   </div>

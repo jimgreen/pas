@@ -310,6 +310,14 @@ class Repository:
             table_name = f"se_dev_{dev_type}"
             device_counts[dev_type] = int(conn.execute(f"SELECT COUNT(*) FROM [{table_name}]").fetchone()[0] or 0)
         bus_count = device_counts.get("ACNode", 0) + device_counts.get("DCNode", 0)
+        ac_bus_count = device_counts.get("ACNode", 0)
+        dc_bus_count = device_counts.get("DCNode", 0)
+        branch_count = (
+            device_counts.get("ACBranch", 0)
+            + device_counts.get("DCBranch", 0)
+            + device_counts.get("ACZeroBranch", 0)
+        )
+        converter_count = device_counts.get("DCDCConverter", 0) + device_counts.get("DCACConverter", 0)
         total_devices = sum(device_counts.values())
 
         pf_ov = prefilter_overview(conn)
@@ -406,31 +414,51 @@ class Repository:
         if not was_in_tx and conn.in_transaction:
             conn.commit()
 
+        meas_count_val = int(latest.get("meas_count") or 0) if latest else 0
+        valid_meas_val = int(latest.get("valid_meas_count") or 0) if latest else 0
+        state_count_val = int(latest.get("state_count") or 0) if latest else 0
+        rank_val = int(latest.get("rank") or 0) if latest else 0
+        redundancy = round(valid_meas_val / state_count_val, 2) if state_count_val > 0 else None
+        prefilter_rate = round(pf_ov["total"] / meas_count_val * 100.0, 2) if meas_count_val > 0 else 0.0
+
         return {
             "latest": latest,
             "observability": {
                 "bus_count": bus_count,
+                "ac_bus_count": ac_bus_count,
+                "dc_bus_count": dc_bus_count,
                 "total_devices": total_devices,
-                "meas_count": int(latest.get("meas_count") or 0) if latest else 0,
-                "valid_meas_count": int(latest.get("valid_meas_count") or 0) if latest else 0,
+                "meas_count": meas_count_val,
+                "valid_meas_count": valid_meas_val,
                 "good_meas_count": int(latest.get("good_meas_count") or 0) if latest else 0,
+                "state_count": state_count_val,
+                "rank": rank_val,
+                "redundancy": redundancy,
                 "deficiency": int(latest.get("deficiency") or 0) if latest else 0,
                 "observable": bool(latest.get("observable")) if latest else False,
             },
             "prefilter": {
                 "total": pf_ov["total"],
+                "prefilter_rate": prefilter_rate,
                 "by_rule": pf_ov["by_rule"],
                 "by_kernel": pf_ov["by_kernel"],
                 "rule_enabled": pf_ov["rule_enabled"],
+                "rule_total": pf_ov["rule_total"],
                 "nomeas_count": bd_ov["nomeas_count"],
                 "suspect_count": bd_ov["suspect_count"],
             },
             "control": {
                 "pseudo_stat_enabled": ps_ov["stat_enabled"],
+                "pseudo_stat_total": ps_ov["stat_total"],
                 "pseudo_meas_enabled": ps_ov["defined_enabled"],
+                "pseudo_meas_total": ps_ov["defined_total"],
                 "pseudo_result_total": ps_ov["result_total"],
                 "policy_enabled": bd_ov["policy_enabled"],
+                "policy_total": bd_ov["policy_total"],
                 "bad_total": bd_ov["bad_total"],
+                "bad_unacked": bd_ov["unacked_count"],
+                "branch_count": branch_count,
+                "converter_count": converter_count,
                 "total_devices": total_devices,
             },
             "params": params,
