@@ -759,3 +759,110 @@ def test_se_interactive_enhancements_weights_balance_batch_and_replay(tmp_path: 
         assert "summary" in bal["data"] and "rows" in bal["data"]
     finally:
         repo.close()
+
+
+def _build_rtdb_model_db(path: Path, tables: dict[str, tuple[list[str], list[tuple]]]) -> Path:
+    """构造内嵌 RTDB 格式的测试模型 SQLite 库，供 read_model_tables 只读读取。"""
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE rtdb_schema_tables (ordinal INTEGER, table_name TEXT)")
+        conn.execute("CREATE TABLE rtdb_schema_columns (table_name TEXT, ordinal INTEGER, eng_name TEXT)")
+        for t_ord, (tname, (cols, rows)) in enumerate(tables.items()):
+            conn.execute("INSERT INTO rtdb_schema_tables VALUES (?, ?)", (t_ord, tname))
+            for c_ord, cname in enumerate(cols):
+                conn.execute("INSERT INTO rtdb_schema_columns VALUES (?, ?, ?)", (tname, c_ord, cname))
+            col_defs = ", ".join(f"c{i}" for i in range(len(cols)))
+            conn.execute(f'CREATE TABLE "rtdb_data_{tname}" (_pos INTEGER, {col_defs})')
+            placeholders = ", ".join("?" for _ in range(len(cols) + 1))
+            for pos, r in enumerate(rows):
+                conn.execute(f'INSERT INTO "rtdb_data_{tname}" VALUES ({placeholders})', (pos, *r))
+        conn.commit()
+    return path
+
+
+def test_se_balance_topological_bus_merge_and_history(tmp_path: Path) -> None:
+    """验证母线 KCL 平衡按合位断路器归并拓扑母线（消除端节点假不平衡）并支持历史 run_id 回放。"""
+    model_db = _build_rtdb_model_db(
+        tmp_path / "devices.sqlite3",
+        {
+            "Model": (["u_unit", "p_unit", "i_unit"], [("V", "kW", "A")]),
+            "ACNode": (["idx", "name"], [(1, "BusNode"), (2, "GenNode"), (3, "LoadNode")]),
+            "ACRealBs": (["idx", "name", "node"], [(10, "380V主母线", 1)]),
+            "ACBreak": (["idx", "name", "i_node", "j_node", "status"], [(1, "CB_Gen", 2, 1, 1), (2, "CB_Load", 1, 3, 1)]),
+            "ACGenerator": (["idx", "name", "node"], [(1, "Gen1", 2)]),
+            "ACLoad": (["idx", "name", "node"], [(1, "Load1", 3)]),
+        },
+    )
+
+    app, repo = _make_dummy_app(tmp_path)
+    app.config.tasks["se"].model_file = model_db
+    try:
+        sid = repo.upsert_schedule("se", True, 60, {})
+        run1 = repo.start_run(sid, "se", "2026-11-26T01:00:00Z", "k", "fp-bal1", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run1,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 2,
+                    "measurements": [
+                        {"idx": 1, "name": "ACNode.1.uab", "device_type": "ACNode", "device_idx": 1, "device_name": "BusNode", "metric": "uab", "meas_type": "V", "unit": "V", "value": 380.0, "estimated_value": 380.0, "valid": True, "source": "normal"},
+                        {"idx": 2, "name": "ACGenerator.1.p", "device_type": "ACGenerator", "device_idx": 1, "device_name": "Gen1", "metric": "p", "meas_type": "P_GEN", "unit": "kW", "value": 100.0, "estimated_value": 100.0, "valid": True, "source": "normal"},
+                        {"idx": 3, "name": "ACLoad.1.p", "device_type": "ACLoad", "device_idx": 1, "device_name": "Load1", "metric": "p", "meas_type": "P_LOAD", "unit": "kW", "value": 99.5, "estimated_value": 100.0, "valid": True, "source": "normal"},
+                    ],
+                    "device_tables": {
+                        "ACNode": [{"idx": 1, "name": "BusNode", "uab_meas": 380.0, "uab_se": 380.0}, {"idx": 2, "name": "GenNode", "uab_meas": 380.0, "uab_se": 380.0}, {"idx": 3, "name": "LoadNode", "uab_meas": 380.0, "uab_se": 380.0}],
+                        "ACGenerator": [{"idx": 1, "name": "Gen1", "p_meas": 100.0, "p_se": 100.0}],
+                        "ACLoad": [{"idx": 1, "name": "Load1", "p_meas": 99.5, "p_se": 100.0}],
+                    },
+                    "se_statistics": {"meas_count": 3, "valid_meas_count": 3, "good_meas_count": 3, "pass_rate": 1.0},
+                },
+            )
+        repo.finish_run(run1, "succeeded", "2026-11-26T01:00:01Z", 0.5, 0)
+
+        # 再写入一次存在真实实测不平衡的新断面 run2，用于对比最新 vs 历史回放
+        run2 = repo.start_run(sid, "se", "2026-11-26T01:05:00Z", "k", "fp-bal2", "manual")
+        with repo.result_transaction():
+            repo.store_se_result(
+                run2,
+                {
+                    "converged": True,
+                    "observable": True,
+                    "iterations": 2,
+                    "measurements": [
+                        {"idx": 1, "name": "ACNode.1.uab", "device_type": "ACNode", "device_idx": 1, "device_name": "BusNode", "metric": "uab", "meas_type": "V", "unit": "V", "value": 380.0, "estimated_value": 380.0, "valid": True, "source": "normal"},
+                        {"idx": 2, "name": "ACGenerator.1.p", "device_type": "ACGenerator", "device_idx": 1, "device_name": "Gen1", "metric": "p", "meas_type": "P_GEN", "unit": "kW", "value": 120.0, "estimated_value": 100.0, "valid": True, "source": "normal"},
+                        {"idx": 3, "name": "ACLoad.1.p", "device_type": "ACLoad", "device_idx": 1, "device_name": "Load1", "metric": "p", "meas_type": "P_LOAD", "unit": "kW", "value": 95.0, "estimated_value": 100.0, "valid": True, "source": "normal"},
+                    ],
+                    "device_tables": {
+                        "ACNode": [{"idx": 1, "name": "BusNode", "uab_meas": 380.0, "uab_se": 380.0}, {"idx": 2, "name": "GenNode", "uab_meas": 380.0, "uab_se": 380.0}, {"idx": 3, "name": "LoadNode", "uab_meas": 380.0, "uab_se": 380.0}],
+                        "ACGenerator": [{"idx": 1, "name": "Gen1", "p_meas": 120.0, "p_se": 100.0}],
+                        "ACLoad": [{"idx": 1, "name": "Load1", "p_meas": 95.0, "p_se": 100.0}],
+                    },
+                    "se_statistics": {"meas_count": 3, "valid_meas_count": 3, "good_meas_count": 3, "pass_rate": 1.0},
+                },
+            )
+        repo.finish_run(run2, "succeeded", "2026-11-26T01:05:01Z", 0.5, 0)
+
+        # 最新断面 run2：3 个节点归并为 1 条“380V主母线”，SE 估计 ΔP=0，实测 ΔP=+25 kW 被准确识别为不平衡
+        latest_bal = app.api_get("/api/se/balance")
+        assert latest_bal["ok"] is True
+        assert latest_bal["data"]["summary"]["bus_total"] == 1
+        assert latest_bal["data"]["summary"]["raw_node_total"] == 3
+        assert latest_bal["data"]["summary"]["imbalanced_count"] == 1
+        row = latest_bal["data"]["rows"][0]
+        assert row["name"] == "380V主母线"
+        assert row["focus_dev_id"] == "ACRealBs-10"
+        assert row["node_cnt"] == 3
+        assert abs(row["dp_se"]) < 1e-6
+        assert abs(row["dp_meas"] - 25.0) < 1e-6
+
+        # 历史断面 run1 回放：实测 ΔP=+0.5 kW，正常平衡（无误报）
+        hist_bal = app.api_get(f"/api/se/balance?run_id={run1}")
+        assert hist_bal["ok"] is True
+        assert hist_bal["data"]["is_history"] is True
+        assert hist_bal["data"]["run_id"] == run1
+        assert hist_bal["data"]["summary"]["imbalanced_count"] == 0
+        assert abs(hist_bal["data"]["rows"][0]["dp_meas"] - 0.5) < 1e-6
+    finally:
+        repo.close()

@@ -373,12 +373,17 @@ class PasWebApp:
             "devices": devices_out,
         }
 
-    def _build_se_balance(self) -> dict[str, Any]:
-        """计算全网交流/直流母线 KCL 功率平衡（实测与估计）及量测覆盖/可观测诊断。"""
+    def _build_se_balance(self, *, run_id: int | None = None) -> dict[str, Any]:
+        """按合位开关归并拓扑计算母线，计算全网交/直流母线 KCL 功率平衡（实测与估计）及可观测诊断，支持历史断面回放。"""
         repo = self._se_repo()
         se_task = getattr(self.config, "tasks", {}).get("se")
         model_file = getattr(se_task, "model_file", None)
+        meas_file = getattr(se_task, "measurement_file", None)
         snap = repo.se_topology_snapshot()
+        latest_stat = snap.get("latest")
+        latest_rid = int(latest_stat["run_id"]) if latest_stat and latest_stat.get("run_id") is not None else None
+        is_history = run_id is not None and (latest_rid is None or int(run_id) != latest_rid)
+
         devices_by_type = snap.get("devices_by_type") or {}
         units = {"u_unit": "V", "p_unit": "kW", "i_unit": "A", "q_unit": "kvar"}
         model_tables: dict[str, dict] = {}
@@ -398,54 +403,216 @@ class PasWebApp:
             except (ValueError, OSError, input_store.sqlite3.Error):
                 pass
 
-        # 构造母线容器
-        buses: dict[tuple[str, int], dict[str, Any]] = {}
+        # 1. 构建各设备 (device_type, idx) -> 实测/估计指标字典（兼容历史断面回放）
+        dev_se_map: dict[tuple[str, int], dict[str, Any]] = {}
+        bad_dev_set: set[tuple[str, int]] = set()
+        if is_history:
+            hist_pack = repo.se_run_measurements_raw(int(run_id))
+            if hist_pack.get("stat"):
+                latest_stat = hist_pack["stat"]
+            hist_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+            for hrow in hist_pack.get("rows") or ():
+                hist_by_key[(str(hrow.get("device_type") or ""), str(hrow.get("device_name") or ""), str(hrow.get("meas_type") or ""))] = hrow
+            for dt, metric_map in input_store.SE_DEVICE_RESULT_METRICS.items():
+                for r in devices_by_type.get(dt) or ():
+                    if r.get("idx") is None:
+                        continue
+                    idx = int(r["idx"])
+                    dname = str(r.get("name", ""))
+                    rec: dict[str, Any] = {"idx": idx, "name": dname}
+                    for mk, se_code in metric_map.items():
+                        hrow = hist_by_key.get((dt, dname, se_code))
+                        rec[f"{mk}_meas"] = hrow.get("meas_value") if hrow else None
+                        rec[f"{mk}_se"] = hrow.get("se_value") if hrow else None
+                        if hrow and str(hrow.get("source") or "") == "bad_data":
+                            bad_dev_set.add((dt, idx))
+                    dev_se_map[(dt, idx)] = rec
+        else:
+            dev_se_map = {
+                (dt, int(r["idx"])): r
+                for dt, rlist in devices_by_type.items()
+                for r in rlist
+                if r.get("idx") is not None
+            }
+            bad_dev_set = {
+                (str(b.get("device_type") or ""), int(b["device_idx"]))
+                for b in (snap.get("bad_data") or ())
+                if b.get("device_idx") is not None
+            }
+
+        # 2. 收集物理节点集合（来自最新设备表 + 模型表）
+        node_info: dict[tuple[str, int], dict[str, Any]] = {}
         for node_tbl, domain, v_key in (("ACNode", "AC", "uab"), ("DCNode", "DC", "u")):
             for row in devices_by_type.get(node_tbl) or ():
                 idx = int(row["idx"])
-                buses[(node_tbl, idx)] = {
-                    "dev_id": f"{node_tbl}-{idx}",
+                rec = dev_se_map.get((node_tbl, idx)) or row
+                node_info[(node_tbl, idx)] = {
                     "device_type": node_tbl,
                     "domain": domain,
                     "idx": idx,
                     "name": str(row.get("name", "")),
-                    "v_meas": row.get(f"{v_key}_meas"),
-                    "v_se": row.get(f"{v_key}_se"),
-                    "p_in_meas": 0.0,
-                    "p_out_meas": 0.0,
-                    "p_in_se": 0.0,
-                    "p_out_se": 0.0,
-                    "q_in_meas": 0.0,
-                    "q_out_meas": 0.0,
-                    "q_in_se": 0.0,
-                    "q_out_se": 0.0,
-                    "p_meas_cnt": 0,
-                    "q_meas_cnt": 0,
-                    "meas_cnt": 1 if row.get(f"{v_key}_meas") is not None else 0,
-                    "branch_cnt": 0,
-                    "bad_cnt": 0,
+                    "v_meas": rec.get(f"{v_key}_meas"),
+                    "v_se": rec.get(f"{v_key}_se"),
                 }
+            for mrow in (model_tables.get(node_tbl) or {}).get("rows") or ():
+                if mrow.get("idx") is None:
+                    continue
+                idx = int(mrow["idx"])
+                if (node_tbl, idx) not in node_info:
+                    node_info[(node_tbl, idx)] = {
+                        "device_type": node_tbl,
+                        "domain": domain,
+                        "idx": idx,
+                        "name": str(mrow.get("name", "")),
+                        "v_meas": None,
+                        "v_se": None,
+                    }
 
-        # 建立设备 idx -> 最新 se_dev_* 记录索引
-        dev_se_map: dict[tuple[str, int], dict[str, Any]] = {
-            (dt, int(r["idx"])): r
-            for dt, rlist in devices_by_type.items()
-            for r in rlist
-            if r.get("idx") is not None
-        }
-        bad_dev_set = {
-            (str(b.get("device_type") or ""), int(b["device_idx"]))
-            for b in (snap.get("bad_data") or ())
-            if b.get("device_idx") is not None
-        }
-        for key, b in buses.items():
-            if key in bad_dev_set:
-                b["bad_cnt"] += 1
+        # 3. 收集开关实时状态（优先级：人工伪状态 > SCADA 遥信 > 模型默认 status）并用并查集归并拓扑母线
+        scada_brk_status: dict[tuple[str, int], int] = {}
+        if meas_file and input_store.is_scdfe_d_wide_db(meas_file):
+            try:
+                with input_store.connect(meas_file, readonly=True) as conn:
+                    conn.execute("PRAGMA query_only=ON")
+                    for brk_tbl in ("ACBreak", "DCBreak"):
+                        cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{brk_tbl}")')}
+                        if {"idx", "position", "position_qual"} <= cols:
+                            notuse_expr = '"position_notuse"' if "position_notuse" in cols else "0"
+                            for r in conn.execute(f'SELECT idx, position, position_qual, {notuse_expr} AS nu FROM "{brk_tbl}"'):
+                                if r["position"] is not None and r["position_qual"] == 0 and not r["nu"]:
+                                    scada_brk_status[(brk_tbl, int(r["idx"]))] = int(r["position"])
+            except (OSError, input_store.sqlite3.Error):
+                pass
 
-        def _add_flow(node_tbl: str, node_idx: Any, *, sign: float, p_m: Any, p_s: Any, q_m: Any = None, q_s: Any = None, is_branch: bool = False, has_bad: bool = False):
+        pseudo_stat_by_idx: dict[tuple[str, int], int] = {}
+        pseudo_stat_by_name: dict[tuple[str, str], int] = {}
+        try:
+            for ps in repo.se_pseudo_stat_list(enabled_only=True):
+                dt = str(ps.get("device_type") or "")
+                sv = int(ps.get("stat_value", 1))
+                if ps.get("device_idx") is not None:
+                    pseudo_stat_by_idx[(dt, int(ps["device_idx"]))] = sv
+                if ps.get("dev_name"):
+                    pseudo_stat_by_name[(dt, str(ps["dev_name"]))] = sv
+        except (OSError, input_store.sqlite3.Error, AttributeError):
+            pass
+
+        parent: dict[tuple[str, int], tuple[str, int]] = {k: k for k in node_info}
+
+        def _find(k: tuple[str, int]) -> tuple[str, int]:
+            while parent[k] != k:
+                parent[k] = parent[parent[k]]
+                k = parent[k]
+            return k
+
+        def _union(a: tuple[str, int], b: tuple[str, int]) -> None:
+            if a in parent and b in parent:
+                ra, rb = _find(a), _find(b)
+                if ra != rb:
+                    if ra[1] < rb[1]:
+                        parent[rb] = ra
+                    else:
+                        parent[ra] = rb
+
+        for sw_tbl, node_tbl in (("ACBreak", "ACNode"), ("ACSwitch", "ACNode"), ("DCBreak", "DCNode"), ("DCSwitch", "DCNode")):
+            for mrow in (model_tables.get(sw_tbl) or {}).get("rows") or ():
+                i_n = mrow.get("i_node")
+                j_n = mrow.get("j_node")
+                if i_n is None or j_n is None:
+                    continue
+                d_idx = int(mrow["idx"]) if mrow.get("idx") is not None else None
+                d_name = str(mrow.get("name") or "")
+                raw_st = mrow.get("status", mrow.get("run_stat", 1))
+                st = int(raw_st) if raw_st is not None else 1
+                if d_idx is not None and (sw_tbl, d_idx) in scada_brk_status:
+                    st = scada_brk_status[(sw_tbl, d_idx)]
+                if d_idx is not None and (sw_tbl, d_idx) in pseudo_stat_by_idx:
+                    st = pseudo_stat_by_idx[(sw_tbl, d_idx)]
+                elif d_name and (sw_tbl, d_name) in pseudo_stat_by_name:
+                    st = pseudo_stat_by_name[(sw_tbl, d_name)]
+                if st != 0:
+                    _union((node_tbl, int(i_n)), (node_tbl, int(j_n)))
+
+        # 收集实母线映射（用于命名计算母线与潮流图定位）
+        real_bus_by_node: dict[tuple[str, int], list[tuple[str, str]]] = {}
+        for bs_tbl, node_tbl in (("ACRealBs", "ACNode"), ("DCRealBs", "DCNode")):
+            for mrow in (model_tables.get(bs_tbl) or {}).get("rows") or ():
+                if mrow.get("idx") is not None and mrow.get("node") is not None:
+                    real_bus_by_node.setdefault((node_tbl, int(mrow["node"])), []).append(
+                        (f"{bs_tbl}-{int(mrow['idx'])}", str(mrow.get("name") or f"{bs_tbl}#{mrow['idx']}"))
+                    )
+
+        # 按根归组生成拓扑计算母线容器
+        groups: dict[tuple[str, int], list[tuple[str, int]]] = {}
+        for nk in node_info:
+            groups.setdefault(_find(nk), []).append(nk)
+
+        buses: dict[tuple[str, int], dict[str, Any]] = {}
+        for root, members in groups.items():
+            members.sort(key=lambda x: x[1])
+            node_tbl = root[0]
+            domain = "AC" if node_tbl == "ACNode" else "DC"
+            real_hits: list[tuple[str, str, tuple[str, int]]] = []
+            for mk in members:
+                for rb_id, rb_name in real_bus_by_node.get(mk, ()):
+                    real_hits.append((rb_id, rb_name, mk))
+
+            rep_key = real_hits[0][2] if real_hits else members[0]
+            rep_info = node_info[rep_key]
+            bus_name = " / ".join(dict.fromkeys(h[1] for h in real_hits)) if real_hits else rep_info["name"]
+            focus_dev_id = real_hits[0][0] if real_hits else f"{node_tbl}-{rep_info['idx']}"
+
+            v_meas = rep_info["v_meas"]
+            v_se = rep_info["v_se"]
+            v_cnt = 0
+            bad_cnt = 0
+            for mk in members:
+                ni = node_info[mk]
+                if ni["v_meas"] is not None:
+                    v_cnt += 1
+                    if v_meas is None:
+                        v_meas = ni["v_meas"]
+                if ni["v_se"] is not None and v_se is None:
+                    v_se = ni["v_se"]
+                if mk in bad_dev_set:
+                    bad_cnt += 1
+
+            buses[root] = {
+                "dev_id": f"{node_tbl}-{rep_info['idx']}",
+                "focus_dev_id": focus_dev_id,
+                "member_node_ids": [f"{mk[0]}-{mk[1]}" for mk in members],
+                "node_cnt": len(members),
+                "device_type": node_tbl,
+                "domain": domain,
+                "idx": rep_info["idx"],
+                "name": bus_name,
+                "v_meas": v_meas,
+                "v_se": v_se,
+                "p_in_meas": 0.0,
+                "p_out_meas": 0.0,
+                "p_in_se": 0.0,
+                "p_out_se": 0.0,
+                "q_in_meas": 0.0,
+                "q_out_meas": 0.0,
+                "q_in_se": 0.0,
+                "q_out_se": 0.0,
+                "p_meas_cnt": 0,
+                "q_meas_cnt": 0,
+                "meas_cnt": v_cnt,
+                "branch_cnt": 0,
+                "bad_cnt": bad_cnt,
+            }
+
+        def _bus_of(node_tbl: str, node_idx: Any) -> tuple[str, int] | None:
             if node_idx is None:
+                return None
+            key = (node_tbl, int(node_idx))
+            return _find(key) if key in parent else None
+
+        def _add_flow(root_key: tuple[str, int] | None, *, sign: float, p_m: Any, p_s: Any, q_m: Any = None, q_s: Any = None, is_branch: bool = False, has_bad: bool = False):
+            if root_key is None:
                 return
-            bus = buses.get((node_tbl, int(node_idx)))
+            bus = buses.get(root_key)
             if bus is None:
                 return
             if is_branch:
@@ -455,29 +622,33 @@ class PasWebApp:
             if isinstance(p_m, (int, float)) and math.isfinite(p_m):
                 bus["p_meas_cnt"] += 1
                 bus["meas_cnt"] += 1
-                if sign > 0:
-                    bus["p_in_meas"] += float(p_m)
+                net_pm = sign * float(p_m)
+                if net_pm >= 0:
+                    bus["p_in_meas"] += net_pm
                 else:
-                    bus["p_out_meas"] += float(p_m)
+                    bus["p_out_meas"] += -net_pm
             if isinstance(p_s, (int, float)) and math.isfinite(p_s):
-                if sign > 0:
-                    bus["p_in_se"] += float(p_s)
+                net_ps = sign * float(p_s)
+                if net_ps >= 0:
+                    bus["p_in_se"] += net_ps
                 else:
-                    bus["p_out_se"] += float(p_s)
+                    bus["p_out_se"] += -net_ps
             if isinstance(q_m, (int, float)) and math.isfinite(q_m):
                 bus["q_meas_cnt"] += 1
                 bus["meas_cnt"] += 1
-                if sign > 0:
-                    bus["q_in_meas"] += float(q_m)
+                net_qm = sign * float(q_m)
+                if net_qm >= 0:
+                    bus["q_in_meas"] += net_qm
                 else:
-                    bus["q_out_meas"] += float(q_m)
+                    bus["q_out_meas"] += -net_qm
             if isinstance(q_s, (int, float)) and math.isfinite(q_s):
-                if sign > 0:
-                    bus["q_in_se"] += float(q_s)
+                net_qs = sign * float(q_s)
+                if net_qs >= 0:
+                    bus["q_in_se"] += net_qs
                 else:
-                    bus["q_out_se"] += float(q_s)
+                    bus["q_out_se"] += -net_qs
 
-        # 汇总电源（注入 +1）与负荷（汇出 -1）
+        # 4. 汇总电源（注入 +1）与负荷（汇出 -1）
         for dev_tbl, node_tbl, sign, has_q in (
             ("ACGenerator", "ACNode", +1.0, True),
             ("DCGenerator", "DCNode", +1.0, False),
@@ -490,8 +661,7 @@ class PasWebApp:
                     continue
                 rec = dev_se_map.get((dev_tbl, int(d_idx))) or {}
                 _add_flow(
-                    node_tbl,
-                    mrow.get("node"),
+                    _bus_of(node_tbl, mrow.get("node")),
                     sign=sign,
                     p_m=rec.get("p_meas"),
                     p_s=rec.get("p_se"),
@@ -500,7 +670,7 @@ class PasWebApp:
                     has_bad=(dev_tbl, int(d_idx)) in bad_dev_set,
                 )
 
-        # 汇总支路与 DC/DC 换流器（离开母线为汇出 -1）
+        # 5. 汇总支路与 DC/DC 换流器（离开母线为汇出 -1；忽略两端归并到同一母线的内部环）
         for dev_tbl, node_tbl, has_q in (
             ("ACBranch", "ACNode", True),
             ("ACZeroBranch", "ACNode", True),
@@ -511,20 +681,24 @@ class PasWebApp:
                 d_idx = mrow.get("idx")
                 if d_idx is None:
                     continue
+                ri = _bus_of(node_tbl, mrow.get("i_node"))
+                rj = _bus_of(node_tbl, mrow.get("j_node"))
+                if ri is not None and ri == rj:
+                    continue
                 rec = dev_se_map.get((dev_tbl, int(d_idx))) or {}
                 hb = (dev_tbl, int(d_idx)) in bad_dev_set
-                _add_flow(node_tbl, mrow.get("i_node"), sign=-1.0, p_m=rec.get("i_p_meas"), p_s=rec.get("i_p_se"), q_m=rec.get("i_q_meas") if has_q else None, q_s=rec.get("i_q_se") if has_q else None, is_branch=True, has_bad=hb)
-                _add_flow(node_tbl, mrow.get("j_node"), sign=-1.0, p_m=rec.get("j_p_meas"), p_s=rec.get("j_p_se"), q_m=rec.get("j_q_meas") if has_q else None, q_s=rec.get("j_q_se") if has_q else None, is_branch=True, has_bad=hb)
+                _add_flow(ri, sign=-1.0, p_m=rec.get("i_p_meas"), p_s=rec.get("i_p_se"), q_m=rec.get("i_q_meas") if has_q else None, q_s=rec.get("i_q_se") if has_q else None, is_branch=True, has_bad=hb)
+                _add_flow(rj, sign=-1.0, p_m=rec.get("j_p_meas"), p_s=rec.get("j_p_se"), q_m=rec.get("j_q_meas") if has_q else None, q_s=rec.get("j_q_se") if has_q else None, is_branch=True, has_bad=hb)
 
-        # 汇总交直流换流器 DCACConverter
+        # 6. 汇总交直流换流器 DCACConverter
         for mrow in (model_tables.get("DCACConverter") or {}).get("rows") or ():
             d_idx = mrow.get("idx")
             if d_idx is None:
                 continue
             rec = dev_se_map.get(("DCACConverter", int(d_idx))) or {}
             hb = ("DCACConverter", int(d_idx)) in bad_dev_set
-            _add_flow("ACNode", mrow.get("ac_node"), sign=-1.0, p_m=rec.get("ac_p_meas"), p_s=rec.get("ac_p_se"), q_m=rec.get("ac_q_meas"), q_s=rec.get("ac_q_se"), is_branch=True, has_bad=hb)
-            _add_flow("DCNode", mrow.get("dc_node"), sign=-1.0, p_m=rec.get("dc_p_meas"), p_s=rec.get("dc_p_se"), is_branch=True, has_bad=hb)
+            _add_flow(_bus_of("ACNode", mrow.get("ac_node")), sign=-1.0, p_m=rec.get("ac_p_meas"), p_s=rec.get("ac_p_se"), q_m=rec.get("ac_q_meas"), q_s=rec.get("ac_q_se"), is_branch=True, has_bad=hb)
+            _add_flow(_bus_of("DCNode", mrow.get("dc_node")), sign=-1.0, p_m=rec.get("dc_p_meas"), p_s=rec.get("dc_p_se"), is_branch=True, has_bad=hb)
 
         p_thresh = {"W": 5000.0, "kW": 5.0, "MW": 0.005}.get(units["p_unit"], 5.0)
         out_rows = []
@@ -556,10 +730,13 @@ class PasWebApp:
             })
         out_rows.sort(key=lambda r: (0 if r["imbalanced"] else 1, -(abs(r["dp_meas"]) if r["dp_meas"] is not None else -1.0), r["device_type"], r["idx"]))
         return {
-            "latest": snap.get("latest"),
+            "latest": latest_stat,
+            "run_id": int(run_id) if is_history else latest_rid,
+            "is_history": is_history,
             "units": units,
             "summary": {
                 "bus_total": len(out_rows),
+                "raw_node_total": len(node_info),
                 "imbalanced_count": imbalanced_cnt,
                 "low_obs_count": low_obs_cnt,
                 "max_dp_meas": round(max_dp_meas, 3),
@@ -624,7 +801,9 @@ class PasWebApp:
                 if parsed.path == "/api/se/runs/converged":
                     return {"ok": True, "data": se_repo.se_converged_runs(_int_query(query, "limit", 30, 1, 200))}
                 if parsed.path == "/api/se/balance":
-                    return {"ok": True, "data": self._build_se_balance()}
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {"ok": True, "data": self._build_se_balance(run_id=rid_val)}
                 if parsed.path == "/api/se/weights":
                     return {
                         "ok": True,

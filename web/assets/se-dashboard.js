@@ -1365,8 +1365,13 @@
       imbBtn.innerHTML = `${esc(t('topo.imb_overlay'))}<span class="cnt tabular">${imbRows.length}</span>`;
     }
     if (appState.topoImbOverlay && imbRows.length) {
-      const imbNodeSet = new Set(imbRows.map((r) => r.dev_id));
-      const targetSvgIds = new Set(imbNodeSet);
+      const imbNodeSet = new Set();
+      const targetSvgIds = new Set();
+      imbRows.forEach((r) => {
+        if (r.focus_dev_id) targetSvgIds.add(r.focus_dev_id);
+        if (r.dev_id) { imbNodeSet.add(r.dev_id); targetSvgIds.add(r.dev_id); }
+        (r.member_node_ids || []).forEach((mid) => { imbNodeSet.add(mid); targetSvgIds.add(mid); });
+      });
       Object.values(devices).forEach((dev) => {
         if (dev.linked_node) {
           const nid = `${dev.linked_node.device_type}-${dev.linked_node.idx}`;
@@ -1428,11 +1433,12 @@
         if (d.linked_node) nodeToBusId[`${d.linked_node.device_type}-${d.linked_node.idx}`] = d.dev_id;
       });
       host.innerHTML = imbList.map((r) => {
-        const focusId = nodeToBusId[r.dev_id] || r.dev_id;
+        const focusId = r.focus_dev_id || nodeToBusId[r.dev_id] || r.dev_id;
+        const nTag = r.node_cnt > 1 ? ` · ${r.node_cnt}N` : '';
         return `
           <button type="button" class="se-imb-item" data-focus-dev="${esc(focusId)}">
             <div class="top">
-              <span>${esc(r.name)} <small class="se-muted">${esc(r.domain)}</small></span>
+              <span>${esc(r.name)} <small class="se-muted">${esc(r.domain)}${nTag}</small></span>
               <span class="tabular">ΔP=${fmtNum(r.dp_meas, 2)} ${esc(pu)}</span>
             </div>
             <div class="vals tabular">
@@ -2178,7 +2184,10 @@
   }
 
   async function loadBalanceTab() {
-    const data = await api('/api/se/balance');
+    const url = appState.selectedRunId
+      ? `/api/se/balance?run_id=${encodeURIComponent(appState.selectedRunId)}`
+      : '/api/se/balance';
+    const data = await api(url);
     appState.balance.data = data;
     renderBalanceTable();
   }
@@ -2242,7 +2251,7 @@
               se_value: r.v_se,
             }));
             return `<tr class="${r.imbalanced ? 'row-bad' : ''}">
-              <td class="se-cell-ellipsis" title="${esc(r.name)}"><strong>${esc(r.name)}</strong> <small class="se-muted">#${r.idx}</small></td>
+              <td class="se-cell-ellipsis" title="${esc(r.name)}"><strong>${esc(r.name)}</strong> <small class="se-muted">${r.node_cnt > 1 ? `${r.node_cnt}N` : `#${r.idx}`}</small></td>
               <td><span class="se-pill neutral">${esc(r.domain)}</span></td>
               <td class="num tabular">${fmtNum(r.v_meas, 2)} / ${fmtNum(r.v_se, 2)}</td>
               <td class="num tabular">${fmtNum(r.p_in_meas, 2)}</td>
@@ -2253,7 +2262,7 @@
               <td class="num tabular">${r.meas_cnt}</td>
               <td><span class="se-pill ${stCls}">${esc(stLbl)}</span></td>
               <td class="se-sticky-right">
-                <button type="button" class="se-btn mini" data-locate-dev="${esc(r.dev_id)}">${esc(t('action.locate'))}</button>
+                <button type="button" class="se-btn mini" data-locate-dev="${esc(r.focus_dev_id || r.dev_id)}">${esc(t('action.locate'))}</button>
                 <button type="button" class="se-btn mini" data-qa-mode="pseudo" data-qa="${qaPayload}">${esc(t('action.pseudo'))}</button>
               </td>
             </tr>`;
@@ -2609,11 +2618,14 @@
       const topoUrl = appState.selectedRunId
         ? `/api/se/topology-values?run_id=${encodeURIComponent(appState.selectedRunId)}`
         : '/api/se/topology-values';
+      const balUrl = appState.selectedRunId
+        ? `/api/se/balance?run_id=${encodeURIComponent(appState.selectedRunId)}`
+        : '/api/se/balance';
       const [overview, topology, converged, balData] = await Promise.all([
         api('/api/se/overview'),
         appState.view === 'topology' ? api(topoUrl) : Promise.resolve(null),
         needRuns ? api('/api/se/runs/converged?limit=30').catch(() => []) : Promise.resolve(null),
-        appState.view === 'topology' ? api('/api/se/balance').catch(() => null) : Promise.resolve(null),
+        appState.view === 'topology' ? api(balUrl).catch(() => null) : Promise.resolve(null),
       ]);
       appState.overview = overview;
       if (balData) appState.balance.data = balData;
@@ -2719,7 +2731,12 @@
           const url = appState.selectedRunId
             ? `/api/se/topology-values?run_id=${encodeURIComponent(appState.selectedRunId)}`
             : '/api/se/topology-values';
-          appState.topology = await api(url);
+          const bUrl = appState.selectedRunId
+            ? `/api/se/balance?run_id=${encodeURIComponent(appState.selectedRunId)}`
+            : '/api/se/balance';
+          const [topoData, bData] = await Promise.all([api(url), api(bUrl).catch(() => null)]);
+          appState.topology = topoData;
+          if (bData) appState.balance.data = bData;
           populateDeviceJumpSelect();
           renderSvgBindings();
           renderTopoBadPanel();
