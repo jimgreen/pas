@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS device_measurement (
 );
 CREATE TABLE IF NOT EXISTS scada_point_mapping (
  measurement_id INTEGER PRIMARY KEY REFERENCES device_measurement(measurement_id),
- source_database TEXT NOT NULL DEFAULT 'scdfe_c.sqlite3', rtu_id INTEGER NOT NULL CHECK(rtu_id>0),
+ source_database TEXT NOT NULL DEFAULT 'scdfe_c.db', rtu_id INTEGER NOT NULL CHECK(rtu_id>0),
  pnt_no INTEGER NOT NULL CHECK(pnt_no>=0), enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
  scale REAL NOT NULL DEFAULT 1, offset REAL NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1,
  updated_at TEXT NOT NULL, UNIQUE(source_database,rtu_id,pnt_no,measurement_id)

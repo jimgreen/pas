@@ -113,7 +113,7 @@ SE_SOLVER_METRICS: dict[str, dict[str, str]] = {
     },
 }
 
-# 需要落库到 se.sqlite3 各类设备表 (se_dev_*) 的设备与量测字段定义
+# 需要落库到 se.db 各类设备表 (se_dev_*) 的设备与量测字段定义
 SE_DEVICE_RESULT_METRICS: dict[str, dict[str, str]] = {
     **SE_SOLVER_METRICS,
     "ACBreak": {"ia": "I_FROM"},
@@ -194,7 +194,7 @@ def read_scdfe_d_wide_snapshot(
     *,
     point_catalog_path: Path | None = None,
 ) -> tuple[list[dict], dict]:
-    """在单只读事务中读取 scdfe_d.sqlite3 宽表量测与有效遥信，绝不修改源库。"""
+    """在单只读事务中读取 scdfe_d.db 宽表量测与有效遥信，绝不修改源库。"""
     source_path = Path(path).resolve()
     units = (model.get("Model") or model.get("PowerBase") or [{}])[0]
     catalog_unit_map = _catalog_units(point_catalog_path)
@@ -388,7 +388,7 @@ def initialize_inputs(config):
     se, ca = config.tasks['se'], config.tasks['ca']
     if se.measurement_file and se.measurement_file.suffix.lower() in SQLITE_SUFFIXES:
         # scdfe_d 宽表库为外部采集库，只读访问，禁止建表或写入
-        if not is_scdfe_d_wide_db(se.measurement_file) and se.measurement_file.name.lower() != "scdfe_d.sqlite3":
+        if not is_scdfe_d_wide_db(se.measurement_file) and se.measurement_file.name.lower() not in {"scdfe_d.db", "scdfe_d.sqlite3"}:
             with connect(se.measurement_file) as c:
                 with schema_transaction(c, se.measurement_file):
                     execute_schema(c, Path(__file__).with_name('measurement_schema.sql').read_text(encoding='utf-8'))

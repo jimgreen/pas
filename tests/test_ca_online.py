@@ -195,7 +195,7 @@ def _sample_ca_result(*, source_lf_run_id: int = 21, source_se_run_id: int = 11,
 
 def _make_full_app(tmp_path: Path):
     model_db = _write_rtdb_model(
-        tmp_path / "model" / "devices.sqlite3",
+        tmp_path / "model" / "devices.db",
         {
             "Model": (["path", "name", "p_base", "u_unit", "p_unit", "i_unit"], [("t", "demo", 100.0, "V", "kW", "A")]),
             "ACNode": (["idx", "name", "vbase", "run_stat"], [(1, "交流母线1", 380.0, 1), (2, "交流母线2", 380.0, 1)]),
@@ -212,23 +212,23 @@ def _make_full_app(tmp_path: Path):
         encoding="utf-8",
     )
 
-    control_repo = Repository(tmp_path / "pas.sqlite3")
-    se_repo = Repository(tmp_path / "se.sqlite3")
-    lf_repo = Repository(tmp_path / "lf.sqlite3")
-    ca_repo = Repository(tmp_path / "ca.sqlite3")
+    control_repo = Repository(tmp_path / "pas.db")
+    se_repo = Repository(tmp_path / "se.db")
+    lf_repo = Repository(tmp_path / "lf.db")
+    ca_repo = Repository(tmp_path / "ca.db")
     hub = RepositoryHub({"se": se_repo, "lf": lf_repo, "ca": ca_repo}, control_repo)
     hub.initialize()
 
     cfg = SimpleNamespace(
         kernel_root=tmp_path,
-        database=tmp_path / "pas.sqlite3",
-        databases={"se": tmp_path / "se.sqlite3", "lf": tmp_path / "lf.sqlite3", "ca": tmp_path / "ca.sqlite3"},
+        database=tmp_path / "pas.db",
+        databases={"se": tmp_path / "se.db", "lf": tmp_path / "lf.db", "ca": tmp_path / "ca.db"},
         tick_seconds=1.0,
         retry_seconds=10.0,
         tasks={
             "se": SimpleNamespace(name="se", enabled=True, period_seconds=60, model_file=model_db, measurement_file=None, parameter_file=None, limit_file=None),
             "lf": SimpleNamespace(name="lf", enabled=True, period_seconds=60, model_file=model_db, parameter_file=None),
-            "ca": SimpleNamespace(name="ca", enabled=True, period_seconds=300, model_file=model_db, limit_file=tmp_path / "ca.sqlite3", scan_n1=True),
+            "ca": SimpleNamespace(name="ca", enabled=True, period_seconds=300, model_file=model_db, limit_file=tmp_path / "ca.db", scan_n1=True),
         },
         workspace_root=str(tmp_path),
         runtime="realtime",
@@ -329,7 +329,7 @@ def test_ca_risk_evaluator_and_scoring() -> None:
 
 def test_ca_params_contingencies_storage_and_logs(tmp_path: Path) -> None:
     """验证 CA 参数校验/重置、预想故障同步与 CRUD、多断面历史回放与日志清理。"""
-    repo = Repository(tmp_path / "ca.sqlite3")
+    repo = Repository(tmp_path / "ca.db")
     repo.initialize()
     try:
         p = repo.ca_params_get(do_cycle=180)

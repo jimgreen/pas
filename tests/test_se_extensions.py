@@ -46,7 +46,7 @@ def _build_temp_wide_scada(path: Path) -> Path:
 
 
 def _make_dummy_app(tmp_path: Path) -> tuple[PasWebApp, Repository]:
-    db_path = tmp_path / "se.sqlite3"
+    db_path = tmp_path / "se.db"
     repo = Repository(db_path)
     repo.initialize()
     cfg = SimpleNamespace(
@@ -78,7 +78,7 @@ def _make_dummy_app(tmp_path: Path) -> tuple[PasWebApp, Repository]:
 
 def test_pseudo_meas_and_stat_crud_and_legacy_cleanup(tmp_path: Path) -> None:
     """验证伪量测/伪状态 CRUD、历史污染清理以及 dbdef 不再污染配置表。"""
-    repo = Repository(tmp_path / "se.sqlite3")
+    repo = Repository(tmp_path / "se.db")
     repo.initialize()
     try:
         # 模拟历史上 dbdef 误写入 pas_se_psemeas_define 的脏数据（id >= 1_000_000 且无 device_type）
@@ -164,7 +164,7 @@ def test_pseudo_meas_and_stat_crud_and_legacy_cleanup(tmp_path: Path) -> None:
 
 def test_measurement_input_applies_bad_policy_and_pseudo_injection(tmp_path: Path) -> None:
     """验证坏量测屏蔽策略与人工伪量测/伪状态能够正确生成带 status 列的 .meas 与内存拓扑覆盖。"""
-    scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d.sqlite3")
+    scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d.db")
     model = {
         "Model": [{"u_unit": "V", "p_unit": "kW", "i_unit": "A"}],
         "ACNode": [{"idx": 1, "name": "Bus1"}, {"idx": 2, "name": "Bus2"}],
@@ -198,7 +198,7 @@ def test_measurement_input_applies_bad_policy_and_pseudo_injection(tmp_path: Pat
 
 def test_bad_data_workflow_ack_suppress_convert_and_suspect_status(tmp_path: Path) -> None:
     """验证坏量测确认、屏蔽策略、一键转伪量测、跨运行保留确认状态以及可疑遥信识别。"""
-    repo = Repository(tmp_path / "se.sqlite3")
+    repo = Repository(tmp_path / "se.db")
     repo.initialize()
     try:
         sid = repo.upsert_schedule("se", True, 60, {})
@@ -308,7 +308,7 @@ def test_bad_data_workflow_ack_suppress_convert_and_suspect_status(tmp_path: Pat
 
 def test_se_run_log_storage_query_retention_and_auto_purge(tmp_path: Path) -> None:
     """验证 SE 运行日志的级别过滤、多维检索、CSV 导出以及按天数与条数上限的定期自动删除。"""
-    repo = Repository(tmp_path / "se.sqlite3")
+    repo = Repository(tmp_path / "se.db")
     repo.initialize()
     try:
         now_dt = datetime(2026, 11, 25, 12, 0, 0, tzinfo=timezone.utc)
@@ -467,7 +467,7 @@ def test_prefilter_rules_input_exclusion_persistence_and_api(tmp_path: Path) -> 
         assert created["data"]["device_name"] == "*"
 
         # 2. 验证 measurement_input 命中规则并将 Bus1.uab=380.0 标为 valid=0 status=1
-        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_pf.sqlite3")
+        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_pf.db")
         model = {
             "Model": [{"u_unit": "V", "p_unit": "kW", "i_unit": "A"}],
             "ACNode": [{"idx": 1, "name": "Bus1"}, {"idx": 2, "name": "Bus2"}],
@@ -638,7 +638,7 @@ def test_se_interactive_enhancements_weights_balance_batch_and_replay(tmp_path: 
         listed = app.api_get("/api/se/weights?device_type=ACNode")
         assert listed["ok"] is True and len(listed["data"]) == 2
 
-        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_wt.sqlite3")
+        scada_db = _build_temp_wide_scada(tmp_path / "scdfe_d_wt.db")
         with sqlite3.connect(scada_db) as sc_conn:
             sc_conn.execute("UPDATE ACNode SET uab = 379.0, uab_qual = 0 WHERE idx = 2")
             sc_conn.commit()
@@ -782,7 +782,7 @@ def _build_rtdb_model_db(path: Path, tables: dict[str, tuple[list[str], list[tup
 def test_se_balance_topological_bus_merge_and_history(tmp_path: Path) -> None:
     """验证母线 KCL 平衡按合位断路器归并拓扑母线（消除端节点假不平衡）并支持历史 run_id 回放。"""
     model_db = _build_rtdb_model_db(
-        tmp_path / "devices.sqlite3",
+        tmp_path / "devices.db",
         {
             "Model": (["u_unit", "p_unit", "i_unit"], [("V", "kW", "A")]),
             "ACNode": (["idx", "name"], [(1, "BusNode"), (2, "GenNode"), (3, "LoadNode")]),

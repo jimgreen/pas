@@ -170,6 +170,19 @@ def _component(value: Any, field: str) -> str:
     return text
 
 
+def _resolve_external_db(path: Path | None) -> Path | None:
+    """外部只读源库优先使用 *.db；若磁盘上尚未迁移而同名 *.sqlite3 存在，则自动兼容回退。"""
+    if path is None:
+        return None
+    if path.is_file():
+        return path
+    if path.suffix.lower() == ".db":
+        legacy = path.with_suffix(".sqlite3")
+        if legacy.is_file():
+            return legacy.resolve()
+    return path
+
+
 def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                 runtime: str | None = None, scenario: str | None = None) -> AppConfig:
     source = Path(path).expanduser().resolve()
@@ -197,14 +210,14 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
     kernel_root = _discover_kernel_root(configured_kernel_root) if configured_kernel_root is not None else None
     if kernel_root is None:
         raise ConfigError("kernel_root is required")
-    database = (workspace / "sqldb/pas/pas.sqlite3").resolve() if workspace else _path(raw.get("database", "runs.db"), base)
+    database = (workspace / "sqldb/pas/pas.db").resolve() if workspace else _path(raw.get("database", "runs.db"), base)
     assert database is not None
     raw_databases = raw.get("databases") or {}
     if not isinstance(raw_databases, dict):
         raise ConfigError("databases must be an object")
     databases: dict[str, Path] = {}
     for name in TASK_NAMES:
-        configured = (workspace / f"sqldb/pas/{name}.sqlite3").resolve() if workspace else _path(raw_databases.get(name), base)
+        configured = (workspace / f"sqldb/pas/{name}.db").resolve() if workspace else _path(raw_databases.get(name), base)
         if configured is None:
             suffix = database.suffix or ".db"
             configured = database.with_name(f"{database.stem}.{name}{suffix}")
@@ -230,17 +243,27 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
         def input_path(field: str) -> Path | None:
             if workspace is not None:
                 if field == "model_file":
-                    model = (workspace / "sqldb/model/devices.sqlite3").resolve()
+                    model = _resolve_external_db((workspace / "sqldb/model/devices.db").resolve())
+                    assert model is not None
                     if not model.is_relative_to(workspace):
                         raise ConfigError("model path must stay inside workspace directory")
                     return model
-                defaults = {"measurement_file": "sqldb/scada/devices.sqlite3", "parameter_file": f"config/{name}.para", "limit_file": "sqldb/pas/ca.sqlite3",
-                            "scada_source_file": "sqldb/fes/scdfe_c.sqlite3", "point_catalog_file": "sqldb/scada/point_catalog.json"}
-                if field == "measurement_file" and field not in values and (workspace / "sqldb/scada/scdfe_d.sqlite3").is_file():
-                    return (workspace / "sqldb/scada/scdfe_d.sqlite3").resolve()
-                if field == "scada_source_file" and field not in values and not (workspace / "sqldb/fes/scdfe_c.sqlite3").is_file() and (workspace / "sqldb/scada/scdfe_c.sqlite3").is_file():
-                    return (workspace / "sqldb/scada/scdfe_c.sqlite3").resolve()
-                return _path(values.get(field, defaults[field]), workspace)
+                defaults = {"measurement_file": "sqldb/scada/devices.db", "parameter_file": f"config/{name}.para", "limit_file": "sqldb/pas/ca.db",
+                            "scada_source_file": "sqldb/fes/scdfe_c.db", "point_catalog_file": "sqldb/scada/point_catalog.json"}
+                if field == "measurement_file" and field not in values:
+                    for cand_rel in ("sqldb/scada/scdfe_d.db", "sqldb/scada/scdfe_d.sqlite3"):
+                        cand = (workspace / cand_rel).resolve()
+                        if cand.is_file():
+                            return cand
+                if field == "scada_source_file" and field not in values:
+                    for cand_rel in ("sqldb/fes/scdfe_c.db", "sqldb/fes/scdfe_c.sqlite3", "sqldb/scada/scdfe_c.db", "sqldb/scada/scdfe_c.sqlite3"):
+                        cand = (workspace / cand_rel).resolve()
+                        if cand.is_file():
+                            return cand
+                resolved = _path(values.get(field, defaults[field]), workspace)
+                if field in ("measurement_file", "scada_source_file"):
+                    resolved = _resolve_external_db(resolved)
+                return resolved
             return _relocated_path(values.get(field), base, configured_kernel_root or kernel_root, kernel_root)
 
         task = TaskConfig(
@@ -264,7 +287,7 @@ def load_config(path: str | Path, *, workspace_root: str | Path | None = None,
                     raise ConfigError(f"tasks.{name}.{field} is required")
                 if not candidate.is_file():
                     managed = workspace is not None and (
-                        name == 'se' and field == 'measurement_file' and candidate == workspace / 'sqldb/scada/devices.sqlite3' or
+                        name == 'se' and field == 'measurement_file' and candidate in (workspace / 'sqldb/scada/devices.db', workspace / 'sqldb/scada/devices.sqlite3') or
                         name == 'ca' and field == 'limit_file' and candidate == databases['ca'])
                     if managed:
                         continue  # Created by initialize_inputs before scheduler startup.

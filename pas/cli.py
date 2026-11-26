@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         for path in paths:
             if path is None or path.suffix.lower() not in SQLITE_SUFFIXES:
                 continue
-            if is_scdfe_d_wide_db(path) or path.name.lower() == "scdfe_d.sqlite3":
+            if is_scdfe_d_wide_db(path) or path.name.lower() in {"scdfe_d.db", "scdfe_d.sqlite3"}:
                 logging.info("Skipping read-only external SCADA database %s", path)
                 continue
             if not path.is_file():

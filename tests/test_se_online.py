@@ -71,8 +71,8 @@ def _create_wide_table(
 def _build_minimal_hybrid_scenario(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     """构造最小可收敛 2 节点交流 + 1 台发电机 + 1 台负荷 + 1 条支路 + 1 台断路器的完整测试场景。"""
     work = tmp_path / "workspace/realtime/demo"
-    model_db = work / "sqldb/model/devices.sqlite3"
-    scada_db = work / "sqldb/scada/scdfe_d.sqlite3"
+    model_db = work / "sqldb/model/devices.db"
+    scada_db = work / "sqldb/scada/scdfe_d.db"
     config_file = tmp_path / "config.json"
 
     # 380V 基准, p_base=100 kW, 支路阻抗 r=0.01, x=0.02 (p.u.)
@@ -110,7 +110,7 @@ def _build_minimal_hybrid_scenario(tmp_path: Path) -> tuple[Path, Path, Path, Pa
         },
     )
 
-    # 创建 scdfe_d.sqlite3 宽表：开关1断开(position=0)，备用柴发停运(run=0)，并在负荷1有功上注入显著坏数据(250kW vs 真实约50kW)
+    # 创建 scdfe_d.db 宽表：开关1断开(position=0)，备用柴发停运(run=0)，并在负荷1有功上注入显著坏数据(250kW vs 真实约50kW)
     scada_db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(scada_db)
     now_ms = 1795538377717
@@ -203,7 +203,7 @@ def _build_minimal_hybrid_scenario(tmp_path: Path) -> tuple[Path, Path, Path, Pa
                     "se": {
                         "enabled": True,
                         "period_seconds": 60,
-                        "measurement_file": "sqldb/scada/scdfe_d.sqlite3",
+                        "measurement_file": "sqldb/scada/scdfe_d.db",
                         "parameter_file": str(SE_PARA),
                     }
                 },
@@ -211,11 +211,11 @@ def _build_minimal_hybrid_scenario(tmp_path: Path) -> tuple[Path, Path, Path, Pa
         ),
         encoding="utf-8",
     )
-    return config_file, model_db, scada_db, work / "sqldb/pas/se.sqlite3"
+    return config_file, model_db, scada_db, work / "sqldb/pas/se.db"
 
 
 def test_se_para_extraction_persistence_and_override(tmp_path: Path):
-    se_db = tmp_path / "se.sqlite3"
+    se_db = tmp_path / "se.db"
     repo = Repository(se_db)
     repo.initialize()
     params = repo.sync_se_parameters(SE_PARA, do_cycle=45)
@@ -268,7 +268,7 @@ def test_online_se_wide_scdfe_d_end_to_end_and_four_table_outputs(tmp_path: Path
     assert meta["topology_overrides"]["ACGenerator"][2]["run_stat"] == 0
     assert len(selected) > 0
 
-    # 执行一次完整在线 SE 计算并回写 se.sqlite3
+    # 执行一次完整在线 SE 计算并回写 se.db
     config = load_config(config_file)
     exit_code = run_se_snapshot(config)
     assert exit_code == 0

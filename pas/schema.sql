@@ -2052,7 +2052,7 @@ CREATE TABLE IF NOT EXISTS se_weight_rule (
 CREATE INDEX IF NOT EXISTS idx_se_weight_rule_lookup ON se_weight_rule(enabled, device_type, metric);
 
 -- ============================================================================
--- 在线潮流分析（LF）扩展表（独立于 lf.sqlite3，完整追踪 SE 源断面与历史回放）
+-- 在线潮流分析（LF）扩展表（独立于 lf.db，完整追踪 SE 源断面与历史回放）
 -- ============================================================================
 
 -- 潮流计算运行统计历史表（每次收敛/失败留存一行，驱动主画面 24h 曲线与历史回放）

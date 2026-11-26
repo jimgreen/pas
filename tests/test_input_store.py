@@ -12,7 +12,7 @@ from pas.input_store import (initialize_inputs,connect,sync_measurements,refresh
 
 
 def environment(tmp_path):
-    model=tmp_path/'model.sqlite3'
+    model=tmp_path/'model.db'
     tables={'Model':[{'name':'test','p_base':100,'u_unit':'V','p_unit':'kW','i_unit':'A'}],
             'ACNode':[{'idx':1,'name':'母线','vbase':380}],
             'ACGenerator':[{'idx':1,'name':'机组','node':1,'p_min':0,'p_max':10,'v_min':.9,'v_max':1.1}]}
@@ -28,13 +28,13 @@ def environment(tmp_path):
     points=[dict(model_table='ACGenerator',model_idx=1,device_name='机组',dev_id=11,kind='yc',metric=metric,
         unit='kW',rtu_id=1,pnt_no=i,name=metric,seed_origin='template') for i,metric in enumerate(('p','p_set_readback'),1)]
     catalog.write_text(json.dumps({'points':points}),encoding='utf-8')
-    source=tmp_path/'scdfe_c.sqlite3'
+    source=tmp_path/'scdfe_c.db'
     with sqlite3.connect(source) as c:
         c.execute('CREATE TABLE fes_yc_define(rtu_id,pnt_no,value,status,raw_time,refresh_time,iflock,dev_id)')
         c.execute('CREATE TABLE fes_yx_define(rtu_id,pnt_no,value,status,refresh_time,iflock,dev_id)')
         c.executemany('INSERT INTO fes_yc_define VALUES(?,?,?,?,?,?,?,?)',[(1,i,3.,0,time.time()*1000,time.time()*1000,0,11) for i in (1,2)])
-    se=TaskConfig('se',model_file=model,measurement_file=tmp_path/'devices.sqlite3',scada_source_file=source,point_catalog_file=catalog)
-    ca=TaskConfig('ca',model_file=model,limit_file=tmp_path/'ca.sqlite3')
+    se=TaskConfig('se',model_file=model,measurement_file=tmp_path/'devices.db',scada_source_file=source,point_catalog_file=catalog)
+    ca=TaskConfig('ca',model_file=model,limit_file=tmp_path/'ca.db')
     config=SimpleNamespace(tasks={'se':se,'ca':ca})
     initialize_inputs(config)
     return config

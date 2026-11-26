@@ -20,7 +20,7 @@ from pas.web import PasWebApp
 
 
 def _write_rtdb_model(path: Path, tables: dict[str, tuple[list[str], list[tuple]]]) -> Path:
-    """构造最小 RTDB 格式 devices.sqlite3（仅用于单测，绝不修改外部实库）。"""
+    """构造最小 RTDB 格式 devices.db（仅用于单测，绝不修改外部实库）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     try:
@@ -237,7 +237,7 @@ def _sample_lf_result(
 def _make_lf_app(tmp_path: Path) -> tuple[PasWebApp, RepositoryHub, Path]:
     """构建带 se/lf 独立库的 PasWebApp 测试实例与配套 SVG/模型文件。"""
     model_db = _write_rtdb_model(
-        tmp_path / "model" / "devices.sqlite3",
+        tmp_path / "model" / "devices.db",
         {
             "Model": (["path", "name", "p_base", "u_unit", "p_unit", "i_unit"], [("t", "demo", 100.0, "V", "kW", "A")]),
             "ACNode": (["idx", "name", "vbase", "run_stat"], [(1, "交流母线1", 380.0, 1), (2, "交流母线2", 380.0, 1)]),
@@ -266,16 +266,16 @@ def _make_lf_app(tmp_path: Path) -> tuple[PasWebApp, RepositoryHub, Path]:
         encoding="utf-8",
     )
 
-    control_repo = Repository(tmp_path / "pas.sqlite3")
-    se_repo = Repository(tmp_path / "se.sqlite3")
-    lf_repo = Repository(tmp_path / "lf.sqlite3")
+    control_repo = Repository(tmp_path / "pas.db")
+    se_repo = Repository(tmp_path / "se.db")
+    lf_repo = Repository(tmp_path / "lf.db")
     hub = RepositoryHub({"se": se_repo, "lf": lf_repo}, control_repo)
     hub.initialize()
 
     cfg = SimpleNamespace(
         kernel_root=tmp_path,
-        database=tmp_path / "pas.sqlite3",
-        databases={"se": tmp_path / "se.sqlite3", "lf": tmp_path / "lf.sqlite3"},
+        database=tmp_path / "pas.db",
+        databases={"se": tmp_path / "se.db", "lf": tmp_path / "lf.db"},
         tasks={
             "se": SimpleNamespace(
                 name="se",
@@ -318,7 +318,7 @@ def test_lf_params_parse_save_validate_reset_and_render(tmp_path: Path) -> None:
     assert parsed["min_voltage"] == pytest.approx(0.02)
     assert parsed["use_se_base"] == DEFAULT_LF_PARAMS["use_se_base"]
 
-    repo = Repository(tmp_path / "lf.sqlite3")
+    repo = Repository(tmp_path / "lf.db")
     repo.initialize()
     try:
         initial = repo.lf_params_get(para_file, do_cycle=120)
@@ -465,7 +465,7 @@ def _record_lf_run(repo: Repository, result: dict, source: str = "manual") -> in
 
 def test_lf_repository_storage_history_replay_overrides_and_logs(tmp_path: Path) -> None:
     """验证 LF 扩展表入库、多断面历史回放、筛选分页、CSV 导出、方式调整与审计日志清理。"""
-    repo = Repository(tmp_path / "lf.sqlite3")
+    repo = Repository(tmp_path / "lf.db")
     repo.initialize()
     try:
         r1 = _record_lf_run(

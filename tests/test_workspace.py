@@ -30,11 +30,11 @@ def test_workspace_parameters_determine_model_and_isolated_outputs(tmp_path):
     config = load_config(source)
     work = tmp_path / "workspace/realtime/qinling"
     assert config.workspace_directory == work
-    assert config.database == work / "sqldb/pas/pas.sqlite3"
-    assert all(config.databases[t] == work / f"sqldb/pas/{t}.sqlite3" for t in ('se','lf','ca'))
-    assert all(task.model_file == work / "sqldb/model/devices.sqlite3" for task in config.tasks.values())
-    assert config.tasks['se'].measurement_file == work / "sqldb/scada/devices.sqlite3"
-    assert config.tasks['se'].scada_source_file == work / "sqldb/scada/scdfe_c.sqlite3"
+    assert config.database == work / "sqldb/pas/pas.db"
+    assert all(config.databases[t] == work / f"sqldb/pas/{t}.db" for t in ('se','lf','ca'))
+    assert all(task.model_file == work / "sqldb/model/devices.db" for task in config.tasks.values())
+    assert config.tasks['se'].measurement_file == work / "sqldb/scada/devices.db"
+    assert config.tasks['se'].scada_source_file == work / "sqldb/fes/scdfe_c.db"
     assert config.tasks['ca'].limit_file == config.databases['ca']
     other = load_config(source, runtime="study", scenario="other")
     assert other.workspace_directory == tmp_path / "workspace/study/other"
@@ -53,7 +53,7 @@ def test_workspace_rejects_path_components(tmp_path, component):
 
 
 def test_sqlite_snapshot_sees_committed_wal_and_never_writes_model(tmp_path):
-    path = tmp_path / 'devices.sqlite3'
+    path = tmp_path / 'devices.db'
     writer = make_model(path)
     writer.execute('PRAGMA wal_checkpoint(TRUNCATE)')
     disk_before = path.read_bytes()
@@ -77,7 +77,7 @@ def test_sqlite_snapshot_sees_committed_wal_and_never_writes_model(tmp_path):
 
 
 def test_bad_embedded_schema_is_rejected_without_fallback(tmp_path):
-    path = tmp_path / 'devices.sqlite3'
+    path = tmp_path / 'devices.db'
     writer = make_model(path)
     writer.execute("UPDATE rtdb_schema_tables SET table_name='ACNode; DROP TABLE x'")
     writer.commit()
@@ -87,7 +87,7 @@ def test_bad_embedded_schema_is_rejected_without_fallback(tmp_path):
 
 
 def test_snapshot_rejects_null_instead_of_inventing_defaults(tmp_path):
-    path = tmp_path / 'devices.sqlite3'
+    path = tmp_path / 'devices.db'
     writer = make_model(path)
     writer.execute('UPDATE rtdb_data_ACNode SET c2=NULL')
     writer.commit()
@@ -98,7 +98,7 @@ def test_snapshot_rejects_null_instead_of_inventing_defaults(tmp_path):
 
 def test_snapshot_keeps_one_transaction_during_concurrent_commit(tmp_path, monkeypatch):
     from pas import model_input
-    path = tmp_path / 'devices.sqlite3'
+    path = tmp_path / 'devices.db'
     writer = make_model(path)
     writer.execute("INSERT INTO rtdb_data_ACNode VALUES(2,2,'母线2',380)")
     writer.commit()
@@ -119,7 +119,7 @@ def test_snapshot_keeps_one_transaction_during_concurrent_commit(tmp_path, monke
 
 
 def test_missing_physical_column_is_not_read_as_sqlite_string_literal(tmp_path):
-    path = tmp_path / 'devices.sqlite3'
+    path = tmp_path / 'devices.db'
     writer = make_model(path)
     writer.execute('ALTER TABLE rtdb_data_ACNode RENAME COLUMN c2 TO wrong')
     writer.commit()
@@ -138,3 +138,37 @@ def test_web_exposes_effective_workspace_parameters(tmp_path):
     assert response['scenario'] == 'qinling'
     assert response['workspace_directory'] == str(tmp_path / 'realtime/qinling')
     app.repository.close()
+
+
+def test_external_readonly_dbs_prefer_db_and_fallback_to_sqlite3(tmp_path):
+    """外部只读源库优先使用 *.db；若仅存在旧 *.sqlite3 则自动兼容回退，而 PAS 自管库固定为 *.db。"""
+    work = tmp_path / "workspace/realtime/qinling"
+    for rel in ("sqldb/model/devices.sqlite3", "sqldb/scada/scdfe_d.sqlite3", "sqldb/fes/scdfe_c.sqlite3"):
+        p = work / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"")
+    source = tmp_path / "config.json"
+    source.write_text(json.dumps({
+        "kernel_root": str(tmp_path),
+        "workspace_root": str(tmp_path / "workspace"),
+        "runtime": "realtime",
+        "scenario": "qinling",
+        "tasks": {
+            "se": {"measurement_file": "sqldb/scada/scdfe_d.db", "scada_source_file": "sqldb/fes/scdfe_c.db"},
+            "ca": {"limit_file": "sqldb/pas/ca.db"},
+        },
+    }))
+    cfg_fb = load_config(source)
+    assert cfg_fb.database == work / "sqldb/pas/pas.db"
+    assert all(cfg_fb.databases[t] == work / f"sqldb/pas/{t}.db" for t in ("se", "lf", "ca"))
+    assert cfg_fb.tasks["se"].model_file == work / "sqldb/model/devices.sqlite3"
+    assert cfg_fb.tasks["se"].measurement_file == work / "sqldb/scada/scdfe_d.sqlite3"
+    assert cfg_fb.tasks["se"].scada_source_file == work / "sqldb/fes/scdfe_c.sqlite3"
+
+    # 当外部源库同步迁移为 *.db 后，自动优先使用 *.db
+    for rel in ("sqldb/model/devices.db", "sqldb/scada/scdfe_d.db", "sqldb/fes/scdfe_c.db"):
+        (work / rel).write_bytes(b"")
+    cfg_db = load_config(source)
+    assert cfg_db.tasks["se"].model_file == work / "sqldb/model/devices.db"
+    assert cfg_db.tasks["se"].measurement_file == work / "sqldb/scada/scdfe_d.db"
+    assert cfg_db.tasks["se"].scada_source_file == work / "sqldb/fes/scdfe_c.db"

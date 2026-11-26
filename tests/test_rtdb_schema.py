@@ -18,7 +18,7 @@ def _tables(connection):
 
 
 def test_schema_changes_update_definitions_and_preserve_existing_rows(tmp_path):
-    path = tmp_path / 'analysis.sqlite3'
+    path = tmp_path / 'analysis.db'
     with closing(sqlite3.connect(path)) as connection:
         with schema_transaction(connection, path):
             connection.execute('CREATE TABLE reading (id INTEGER PRIMARY KEY, value REAL)')
@@ -59,7 +59,7 @@ def test_schema_changes_update_definitions_and_preserve_existing_rows(tmp_path):
 
 
 def test_schema_and_catalog_roll_back_together(tmp_path):
-    path = tmp_path / 'analysis.sqlite3'
+    path = tmp_path / 'analysis.db'
     with closing(sqlite3.connect(path)) as connection:
         with schema_transaction(connection, path):
             connection.execute('CREATE TABLE reading (id INTEGER PRIMARY KEY, value REAL)')
@@ -84,7 +84,7 @@ def test_schema_and_catalog_roll_back_together(tmp_path):
 
 
 def test_registry_is_idempotent_and_uses_original_tables(tmp_path):
-    path = tmp_path / 'analysis.sqlite3'
+    path = tmp_path / 'analysis.db'
     with closing(sqlite3.connect(path)) as connection:
         with schema_transaction(connection, path):
             connection.execute("CREATE TABLE reading (id INTEGER PRIMARY KEY, label TEXT DEFAULT 'normal')")
@@ -102,7 +102,7 @@ def test_registry_is_idempotent_and_uses_original_tables(tmp_path):
 
 
 def test_unkeyed_table_rolls_back_without_publishing_partial_schema(tmp_path):
-    path = tmp_path / 'analysis.sqlite3'
+    path = tmp_path / 'analysis.db'
     with closing(sqlite3.connect(path)) as connection:
         with pytest.raises(ValueError, match='needs a primary key'):
             with schema_transaction(connection, path):
