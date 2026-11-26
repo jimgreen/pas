@@ -1,25 +1,174 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="minimalist-light">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>PAS 在线分析平台</title><link rel="stylesheet" href="/assets/app.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>运行总览 · PAS 在线分析平台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
   <link rel="icon" href="data:,">
 </head>
-<body data-page="/overview">
+<body data-page="/overview" class="se-main-body">
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">P</span><div><strong>PAS</strong><small>在线分析平台</small></div></div>
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><strong>PAS</strong><small data-i18n="brand.subtitle">在线分析平台</small></div>
+      </div>
       <nav>
-        <a href="/overview.html" data-route="overview">总览</a>
-        <div class="nav-group"><span>分析功能</span><a href="/se-main.html" data-route="se-root">状态估计 SE</a><a href="/analysis/lf.html" data-route="lf">潮流分析 LF</a><a href="/analysis/ca.html" data-route="ca">静态安全 CA</a></div>
-        <div class="nav-group"><span>运行管理</span><a href="/runs.html" data-route="runs">运行历史</a><a href="/measurements.html" data-route="measurements">设备量测</a><a href="/limits.html" data-route="limits">安全限值</a><a href="/workspace.html" data-route="workspace">工作目录</a><a href="/settings.html" data-route="settings">系统设置</a></div>
+        <a href="/overview.html" data-route="overview" class="active" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.ops">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
       </nav>
-      <div class="sidebar-foot"><span class="status-dot"></span><span id="service-state">服务检查中</span></div>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
     </aside>
-    <main class="main"><header class="topbar"><div><span class="eyebrow">POWER ANALYSIS SERVICE</span><h1 id="page-title">运行总览</h1></div><div class="top-actions"><button class="ghost" data-action="refresh">刷新</button><button class="primary" data-action="run-all">立即执行全部</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="app" class="content"></div></main>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.overview">SE → LF → CA 全平台联动态势</h1>
+            <span id="ov-sync-pill" class="se-pill neutral">—</span>
+            <span id="ov-scenario-meta" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <label class="pas-cascade-chip" title="SE 收敛后自动触发 LF">
+            <input type="checkbox" id="chk-se-lf">
+            <span>SE→LF</span>
+          </label>
+          <label class="pas-cascade-chip" title="LF 收敛后自动触发 CA">
+            <input type="checkbox" id="chk-lf-ca">
+            <span>LF→CA</span>
+          </label>
+          <button type="button" class="se-btn primary" id="btn-run-chain" data-i18n="action.run_chain">串联执行 SE→LF→CA</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="ov-chain-banner" class="se-trial-banner" hidden></div>
+
+      <div class="se-workspace" style="gap:10px">
+        <!-- 核心 SE → LF → CA 三段实时数据流看板 -->
+        <section class="pas-chain-grid" aria-label="SE LF CA Pipeline">
+          <article class="se-home-card">
+            <div class="se-home-card-head">
+              <h2>1. <span data-i18n="nav.se">状态估计 SE</span></h2>
+              <span id="ov-se-pill" class="se-pill neutral">—</span>
+            </div>
+            <div class="se-kv-list" id="ov-se-kv"></div>
+            <div class="se-home-actions">
+              <button type="button" class="se-btn mini" data-trigger="se" data-i18n="action.exec">执行</button>
+              <a class="se-btn mini primary" href="/se-main.html" data-i18n="action.enter">进入 SE →</a>
+            </div>
+          </article>
+
+          <div class="pas-chain-arrow" id="arrow-se-lf" title="SE → LF">→</div>
+
+          <article class="se-home-card">
+            <div class="se-home-card-head">
+              <h2>2. <span data-i18n="nav.lf">潮流分析 LF</span></h2>
+              <span id="ov-lf-pill" class="se-pill neutral">—</span>
+            </div>
+            <div class="se-kv-list" id="ov-lf-kv"></div>
+            <div class="se-home-actions">
+              <button type="button" class="se-btn mini" data-trigger="lf" data-i18n="action.exec">执行</button>
+              <a class="se-btn mini primary" href="/lf-main.html" data-i18n="action.enter_lf">进入 LF →</a>
+            </div>
+          </article>
+
+          <div class="pas-chain-arrow" id="arrow-lf-ca" title="LF → CA">→</div>
+
+          <article class="se-home-card">
+            <div class="se-home-card-head">
+              <h2>3. <span data-i18n="nav.ca">静态安全 CA</span></h2>
+              <span id="ov-ca-pill" class="se-pill neutral">—</span>
+            </div>
+            <div class="se-kv-list" id="ov-ca-kv"></div>
+            <div class="se-home-actions">
+              <button type="button" class="se-btn mini" data-trigger="ca" data-i18n="action.exec">执行</button>
+              <a class="se-btn mini primary" href="/ca-main.html" data-i18n="action.enter_ca">进入 CA →</a>
+            </div>
+          </article>
+        </section>
+
+        <!-- 下方双栏：跨模块告警聚合 + 三模块联合运行记录 -->
+        <section class="pas-overview-bottom">
+          <article class="se-home-card">
+            <div class="se-home-card-head">
+              <h2 data-i18n="ov.alerts">跨模块重点告警</h2>
+              <span id="ov-alert-count" class="se-pill ok tabular">0</span>
+            </div>
+            <div class="se-table-wrap">
+              <table class="se-table compact">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.module">模块</th>
+                    <th data-i18n="col.severity">等级</th>
+                    <th data-i18n="col.target">对象</th>
+                    <th data-i18n="col.detail">详情</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="se-home-card">
+            <div class="se-home-card-head">
+              <h2 data-i18n="ov.recent_runs">三模块联合运行动态</h2>
+              <a class="se-link" href="/runs.html" data-i18n="action.more">全部 →</a>
+            </div>
+            <div class="se-table-wrap">
+              <table class="se-table compact">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.module">模块</th>
+                    <th>#</th>
+                    <th data-i18n="col.source">来源</th>
+                    <th data-i18n="col.summary">摘要</th>
+                    <th data-i18n="col.elapsed">耗时</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-runs-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
   </div>
-  <dialog id="value-dialog" aria-label="完整字段值"></dialog>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/overview-app.js"></script>
 </body>
 </html>
-

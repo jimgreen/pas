@@ -16,7 +16,7 @@ from .db import Repository, RepositoryHub
 from . import kernels
 from .scheduler import Scheduler, _fingerprint, persist_completed_run, utc_now
 from .input_store import initialize_inputs, is_scdfe_d_wide_db
-from .model_input import SQLITE_SUFFIXES
+from .model_input import SQLITE_SUFFIXES, read_model_tables
 from .rtdb_schema import schema_transaction
 
 
@@ -32,6 +32,23 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
         do_cycle=se_task.period_seconds,
         overwrite=False,
     )
+    lf_task = config.tasks["lf"]
+    result_repositories["lf"].lf_params_get(
+        lf_task.parameter_file,
+        do_cycle=lf_task.period_seconds,
+    )
+    ca_task = config.tasks["ca"]
+    result_repositories["ca"].ca_params_get(do_cycle=ca_task.period_seconds)
+    if (
+        not result_repositories["ca"].ca_contingencies_list()
+        and ca_task.model_file
+        and Path(ca_task.model_file).is_file()
+        and Path(ca_task.model_file).suffix.lower() in SQLITE_SUFFIXES
+    ):
+        try:
+            result_repositories["ca"].ca_contingencies_sync(read_model_tables(Path(ca_task.model_file)))
+        except (ValueError, OSError, sqlite3.Error):
+            pass
     if repository.control is not None:
         repository.control.set_config("workspace", {key: str(getattr(config, key) or "") for key in
             ("workspace_root", "runtime", "scenario", "workspace_directory")})
@@ -67,10 +84,93 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             stage_logger=stage_logger,
         )
 
+    def _read_scada_breakers() -> dict[tuple[str, int], int]:
+        meas_file = config.tasks["se"].measurement_file
+        out: dict[tuple[str, int], int] = {}
+        if meas_file and is_scdfe_d_wide_db(meas_file):
+            try:
+                from .input_store import connect as _ro_connect
+                with _ro_connect(meas_file, readonly=True) as conn:
+                    conn.execute("PRAGMA query_only=ON")
+                    for brk_tbl in ("ACBreak", "DCBreak"):
+                        cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{brk_tbl}")')}
+                        if {"idx", "position", "position_qual"} <= cols:
+                            nu_expr = '"position_notuse"' if "position_notuse" in cols else "0"
+                            for r in conn.execute(f'SELECT idx, position, position_qual, {nu_expr} AS nu FROM "{brk_tbl}"'):
+                                if r["position"] is not None and r["position_qual"] == 0 and not r["nu"]:
+                                    out[(brk_tbl, int(r["idx"]))] = int(r["position"])
+            except (OSError, sqlite3.Error):
+                pass
+        return out
+
+    def _run_lf_online(*, stage_logger=None):
+        current_task = config.tasks["lf"]
+        lf_repo = result_repositories["lf"]
+        se_repo = result_repositories["se"]
+        lf_params = lf_repo.lf_params_get(current_task.parameter_file, do_cycle=current_task.period_seconds)
+        se_snap = se_repo.se_topology_snapshot() if int(lf_params.get("use_se_base", 1)) else None
+        pseudo_stats = se_repo.se_pseudo_stat_list(enabled_only=True) if int(lf_params.get("use_se_base", 1)) else None
+        brk_status = _read_scada_breakers() if int(lf_params.get("use_se_base", 1)) else None
+        study_overrides = lf_repo.lf_overrides_list(enabled_only=True)
+        return kernels.run_lf(
+            current_task,
+            config.kernel_root,
+            lf_params=lf_params,
+            se_snap=se_snap,
+            breaker_status=brk_status,
+            pseudo_stats=pseudo_stats,
+            study_overrides=study_overrides,
+            mode="study" if study_overrides else "online",
+            stage_logger=stage_logger,
+        )
+
+    def _run_ca_online(*, stage_logger=None):
+        current_task = config.tasks["ca"]
+        ca_repo = result_repositories["ca"]
+        lf_repo = result_repositories["lf"]
+        se_repo = result_repositories["se"]
+        lf_task_cur = config.tasks["lf"]
+        ca_params = ca_repo.ca_params_get(do_cycle=current_task.period_seconds)
+        lf_params = lf_repo.lf_params_get(lf_task_cur.parameter_file, do_cycle=lf_task_cur.period_seconds)
+        lf_snap = lf_repo.lf_snapshot() if int(ca_params.get("use_lf_base", 1)) else None
+        se_snap = se_repo.se_topology_snapshot() if int(lf_params.get("use_se_base", 1)) else None
+        pseudo_stats = se_repo.se_pseudo_stat_list(enabled_only=True) if int(lf_params.get("use_se_base", 1)) else None
+        brk_status = _read_scada_breakers() if int(lf_params.get("use_se_base", 1)) else None
+        study_overrides = lf_repo.lf_overrides_list(enabled_only=True)
+        contingencies = ca_repo.ca_contingencies_list(enabled_only=True)
+        if (
+            not contingencies
+            and int(ca_params.get("scan_n1", 1))
+            and current_task.model_file
+            and Path(current_task.model_file).is_file()
+            and Path(current_task.model_file).suffix.lower() in SQLITE_SUFFIXES
+        ):
+            try:
+                ca_repo.ca_contingencies_sync(read_model_tables(Path(current_task.model_file)))
+                contingencies = ca_repo.ca_contingencies_list(enabled_only=True)
+            except (ValueError, OSError, sqlite3.Error):
+                pass
+        device_limits = ca_repo.ca_device_limits_map()
+        return kernels.run_ca(
+            current_task,
+            config.kernel_root,
+            ca_params=ca_params,
+            lf_snap=lf_snap,
+            se_snap=se_snap,
+            breaker_status=brk_status,
+            pseudo_stats=pseudo_stats,
+            study_overrides=study_overrides,
+            lf_params=lf_params,
+            lf_para_file=lf_task_cur.parameter_file,
+            contingencies=contingencies,
+            device_limits=device_limits,
+            stage_logger=stage_logger,
+        )
+
     runners = {
         "se": _run_se_online,
-        "lf": lambda: kernels.run_lf(config.tasks["lf"], config.kernel_root),
-        "ca": lambda: kernels.run_ca(config.tasks["ca"], config.kernel_root),
+        "lf": _run_lf_online,
+        "ca": _run_ca_online,
     }
     scheduler = Scheduler(config, repository, runners, result_repositories)
     scheduler.restore_schedules()

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CA 参数与限值 · PAS 在线分析平台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/ca-config" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><strong>PAS</strong><small data-i18n="brand.subtitle">在线分析平台</small></div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" class="active" data-i18n="nav.ca">静态安全 CA</a>
+          <div class="nav-sub" role="group" aria-label="CA Pages">
+            <a href="/ca-main.html" data-route="ca-main" data-i18n="nav.ca_main">主画面</a>
+            <a href="/ca-risks.html" data-route="ca-risks" data-i18n="nav.ca_risks">风险与图谱</a>
+            <a href="/ca-contingencies.html" data-route="ca-contingencies" data-i18n="nav.ca_contingencies">预想故障集</a>
+            <a href="/ca-config.html" data-route="ca-config" class="active" data-i18n="nav.ca_config">参数与限值</a>
+            <a href="/ca-logs.html" data-route="ca-logs" data-i18n="nav.ca_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.ops">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ca_config">CA 参数与安全限值</h1>
+            <span id="ca-param-updated" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn danger" id="btn-param-reset" data-i18n="action.reset_default">恢复默认</button>
+          <button type="button" class="se-btn ghost" id="btn-param-save" data-i18n="action.save_params">保存参数</button>
+          <button type="button" class="se-btn primary" id="btn-param-save-run" data-i18n="action.save_and_trial">保存并试算对比</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="ca-trial-diff" class="se-trial-banner" hidden></div>
+
+      <div class="se-workspace">
+        <section class="se-panel active">
+          <div class="se-toolbar">
+            <div class="se-tab-strip" role="tablist">
+              <button type="button" class="se-tab active" data-cfg-tab="params" data-i18n="tab.ca_params">扫描与越限参数</button>
+              <button type="button" class="se-tab" data-cfg-tab="limits" data-i18n="tab.ca_limits">设备安全限值</button>
+            </div>
+            <div class="se-tool-group" id="ca-limit-tools" hidden>
+              <input id="clim-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_limit" placeholder="搜索限值设备...">
+              <button type="button" class="se-btn mini" id="btn-seed-limits" data-i18n="action.seed_limits">从模型播种限值</button>
+              <a class="se-btn mini" href="/limits.html" data-i18n="action.open_limits">限值管理页 →</a>
+            </div>
+          </div>
+
+          <div id="pane-ca-params" class="se-form-panel">
+            <div class="se-form-section">
+              <h3 data-i18n="sec.base_scan">基态来源与预想故障扫描</h3>
+              <div class="se-form-grid cols-4">
+                <label class="se-field">
+                  <span data-i18n="param.use_lf_base">LF 基态注入</span>
+                  <select id="cp-use-lf">
+                    <option value="1" data-i18n="opt.enabled">启用</option>
+                    <option value="0" data-i18n="opt.disabled">停用</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.scan_n1">启用 N-1 扫描</span>
+                  <select id="cp-scan-n1">
+                    <option value="1" data-i18n="opt.enabled">启用</option>
+                    <option value="0" data-i18n="opt.disabled">停用</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.scan_nk">启用 N-k 扫描</span>
+                  <select id="cp-scan-nk">
+                    <option value="1" data-i18n="opt.enabled">启用</option>
+                    <option value="0" data-i18n="opt.disabled">停用</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.max_scan">单轮最大扫描数</span>
+                  <input id="cp-max-scan" type="number" min="1" max="500" step="1">
+                </label>
+              </div>
+            </div>
+
+            <div class="se-form-section">
+              <h3 data-i18n="sec.ca_thresholds">越限与失电门槛</h3>
+              <div class="se-form-grid cols-4">
+                <label class="se-field">
+                  <span data-i18n="param.v_min_pu">电压下限 (pu)</span>
+                  <input id="cp-vmin" type="number" step="0.005" min="0.5" max="1.05">
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.v_max_pu">电压上限 (pu)</span>
+                  <input id="cp-vmax" type="number" step="0.005" min="0.95" max="1.5">
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.ol_warn">重载预警 (%)</span>
+                  <input id="cp-ol-warn" type="number" step="1" min="10" max="200">
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.ol_limit">过载越限 (%)</span>
+                  <input id="cp-ol-limit" type="number" step="1" min="20" max="300">
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.loss_thr">失电告警门槛 (kW)</span>
+                  <input id="cp-loss-thr" type="number" step="0.1" min="0">
+                </label>
+                <label class="se-field">
+                  <span data-i18n="param.do_cycle">计算周期参考 (s)</span>
+                  <input id="cp-cycle" type="number" step="1" min="5" max="604800">
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div id="pane-ca-limits" class="se-table-panel" hidden>
+            <div class="se-table-wrap">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.dev_type">设备类</th>
+                    <th data-i18n="col.device">设备名</th>
+                    <th data-i18n="col.metric">指标</th>
+                    <th data-i18n="col.min_val">下限</th>
+                    <th data-i18n="col.max_val">上限</th>
+                    <th data-i18n="col.unit">单位</th>
+                    <th data-i18n="col.status">状态</th>
+                  </tr>
+                </thead>
+                <tbody id="clim-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-msg" style="margin:8px 0 14px;color:var(--muted);font-size:13px"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="confirm-cancel" data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="confirm-ok" data-i18n="action.confirm">确认</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/ca-app.js"></script>
+</body>
+</html>

@@ -98,6 +98,428 @@ class PasWebApp:
         for_task = getattr(self.repository, "for_task", None)
         return for_task("se") if callable(for_task) else self.repository
 
+    def _lf_repo(self) -> Any:
+        for_task = getattr(self.repository, "for_task", None)
+        return for_task("lf") if callable(for_task) else self.repository
+
+    def _ca_repo(self) -> Any:
+        for_task = getattr(self.repository, "for_task", None)
+        return for_task("ca") if callable(for_task) else self.repository
+
+    def _build_ca_topology_risks(self, *, run_id: int | None = None) -> dict[str, Any]:
+        """构建 CA 接线图风险叠加数据（按最新/历史 CA 断面映射每个受影响设备与实母线的风险等级）。"""
+        ca_repo = self._ca_repo()
+        snap = ca_repo.ca_snapshot(run_id=run_id)
+        latest = snap.get("latest")
+        ca_task = getattr(self.config, "tasks", {}).get("ca")
+        model_file = getattr(ca_task, "model_file", None)
+
+        # 建立 ACNode/DCNode -> 关联实母线 dev_id 映射，便于母线风险同步点亮 SVG 实母线
+        node_to_real_bs: dict[tuple[str, int], list[str]] = {}
+        if model_file and Path(model_file).is_file() and Path(model_file).suffix.lower() in SQLITE_SUFFIXES:
+            try:
+                mt = read_model_tables(Path(model_file))
+                for bs_tbl, node_tbl in (("ACRealBs", "ACNode"), ("DCRealBs", "DCNode")):
+                    for row in (mt.get(bs_tbl) or {}).get("rows") or ():
+                        if row.get("idx") is not None and row.get("node") is not None:
+                            node_to_real_bs.setdefault((node_tbl, int(row["node"])), []).append(f"{bs_tbl}-{int(row['idx'])}")
+            except (ValueError, OSError, input_store.sqlite3.Error):
+                pass
+
+        rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "normal": 0}
+        devices: dict[str, dict[str, Any]] = {}
+
+        def _attach(dev_id: str, risk: dict[str, Any]) -> None:
+            entry = devices.setdefault(
+                dev_id,
+                {
+                    "dev_id": dev_id,
+                    "device_type": risk.get("device_type", ""),
+                    "device_idx": risk.get("device_idx"),
+                    "device_name": risk.get("device_name", ""),
+                    "severity": "normal",
+                    "risk_count": 0,
+                    "risks": [],
+                },
+            )
+            entry["risk_count"] += 1
+            if rank.get(str(risk.get("severity")), 0) > rank.get(entry["severity"], 0):
+                entry["severity"] = str(risk.get("severity"))
+            if len(entry["risks"]) < 12:
+                entry["risks"].append(risk)
+
+        for r in snap.get("risks") or ():
+            dt = str(r.get("device_type") or "")
+            didx = r.get("device_idx")
+            if dt and didx is not None:
+                _attach(f"{dt}-{int(didx)}", r)
+                for rb_id in node_to_real_bs.get((dt, int(didx)), ()):
+                    _attach(rb_id, r)
+
+        return {
+            "latest": latest,
+            "run_id": snap.get("run_id"),
+            "is_history": bool(run_id is not None),
+            "svg_available": self._se_svg_path() is not None,
+            "risk_dev_ids": sorted(devices.keys()),
+            "devices": devices,
+            "risks": (snap.get("risks") or [])[:200],
+        }
+
+    def _build_pipeline_overview(self) -> dict[str, Any]:
+        """聚合全平台 SE → LF → CA 链路状态、版本溯源一致性、三模块摘要与跨模块告警。"""
+        se_repo = self._se_repo()
+        lf_repo = self._lf_repo()
+        ca_repo = self._ca_repo()
+        se_task = getattr(self.config, "tasks", {}).get("se")
+        lf_task = getattr(self.config, "tasks", {}).get("lf")
+        ca_task = getattr(self.config, "tasks", {}).get("ca")
+
+        se_ov = se_repo.se_overview(getattr(se_task, "parameter_file", None), do_cycle=getattr(se_task, "period_seconds", 60))
+        lf_home = lf_repo.lf_home_summary(getattr(lf_task, "parameter_file", None), do_cycle=getattr(lf_task, "period_seconds", 60))
+        ca_home = ca_repo.ca_home_summary(do_cycle=getattr(ca_task, "period_seconds", 300))
+
+        se_lat = se_ov.get("latest")
+        lf_lat = lf_home.get("latest")
+        ca_lat = ca_home.get("latest")
+
+        se_id = int(se_lat["run_id"]) if se_lat and se_lat.get("run_id") is not None else None
+        lf_id = int(lf_lat["run_id"]) if lf_lat and lf_lat.get("run_id") is not None else None
+        ca_id = int(ca_lat["run_id"]) if ca_lat and ca_lat.get("run_id") is not None else None
+
+        lf_from_se = lf_lat.get("source_se_run_id") if lf_lat else None
+        ca_from_lf = ca_lat.get("source_lf_run_id") if ca_lat else None
+        ca_from_se = ca_lat.get("source_se_run_id") if ca_lat else None
+
+        se_lf_synced = bool(se_id is not None and lf_from_se is not None and int(lf_from_se) == se_id)
+        lf_ca_synced = bool(lf_id is not None and ca_from_lf is not None and int(ca_from_lf) == lf_id)
+
+        # 聚合跨模块重点告警（SE 坏数据 + LF 越限 + CA 严重/高风险）
+        alerts: list[dict[str, Any]] = []
+        for b in (se_ov.get("bad_data") or [])[:6]:
+            alerts.append({
+                "module": "SE",
+                "severity": "medium",
+                "target": f"{b.get('device_name', '')} · {b.get('meas_type', '')}",
+                "detail": f"归一化残差 {b.get('norm_residual', 0):.2f}（实测 {b.get('meas_value')} / 估计 {b.get('est_value')}）",
+                "href": "/se-bad.html",
+            })
+        for v in (lf_home.get("voltage_extremes") or [])[:6]:
+            if v.get("v_status") != "normal":
+                alerts.append({
+                    "module": "LF",
+                    "severity": "high",
+                    "target": str(v.get("device_name") or ""),
+                    "detail": f"母线电压越限：{v.get('v_pu'):.4f} pu ({v.get('v_status')})",
+                    "href": "/lf-flow.html",
+                })
+        for br in (lf_home.get("top_loading") or [])[:6]:
+            if br.get("overload"):
+                alerts.append({
+                    "module": "LF",
+                    "severity": "high",
+                    "target": str(br.get("device_name") or ""),
+                    "detail": f"支路/换流器过载：{br.get('loading_pct'):.1f}%",
+                    "href": "/lf-results.html",
+                })
+        for r in (ca_home.get("top_risks") or [])[:8]:
+            alerts.append({
+                "module": "CA",
+                "severity": str(r.get("severity") or "medium"),
+                "target": f"[{r.get('category', 'N-0')}] {r.get('contingency_name', '')} → {r.get('device_name', '')}",
+                "detail": str(r.get("detail") or ""),
+                "href": "/ca-risks.html",
+            })
+
+        # 合并最近联合运行历史
+        recent_runs: list[dict[str, Any]] = []
+        for r in (se_ov.get("recent_runs") or [])[:8]:
+            recent_runs.append({
+                "module": "SE",
+                "run_id": r.get("run_id"),
+                "status": r.get("status"),
+                "started_at": r.get("started_at"),
+                "elapsed_seconds": r.get("elapsed_seconds"),
+                "source": r.get("execution_source"),
+                "summary": f"合格率 {(r.get('pass_rate') or 0)*100:.1f}% · 坏数据 {r.get('bad_data_count') or 0}",
+                "href": "/se-logs.html",
+            })
+        for r in (lf_home.get("recent_runs") or [])[:8]:
+            recent_runs.append({
+                "module": "LF",
+                "run_id": r.get("run_id"),
+                "status": r.get("status"),
+                "started_at": r.get("started_at"),
+                "elapsed_seconds": r.get("elapsed_seconds"),
+                "source": r.get("execution_source"),
+                "summary": f"SE #{r.get('source_se_run_id') or '—'} · 网损率 {(r.get('loss_rate') or 0):.2f}%",
+                "href": "/lf-logs.html",
+            })
+        for r in (ca_home.get("recent_runs") or [])[:8]:
+            recent_runs.append({
+                "module": "CA",
+                "run_id": r.get("run_id"),
+                "status": r.get("status"),
+                "started_at": r.get("started_at"),
+                "elapsed_seconds": r.get("elapsed_seconds"),
+                "source": r.get("execution_source"),
+                "summary": f"LF #{r.get('source_lf_run_id') or '—'} · 风险 {r.get('risk_level') or '—'} ({r.get('security_score') if r.get('security_score') is not None else '—'})",
+                "href": "/ca-logs.html",
+            })
+        recent_runs.sort(key=lambda x: str(x.get("started_at") or ""), reverse=True)
+
+        get_pol = getattr(self.scheduler, "get_cascade_policy", None)
+        chain_st = getattr(self.scheduler, "chain_status", None)
+        sched_st = self.scheduler.status() if callable(getattr(self.scheduler, "status", None)) else {}
+
+        return {
+            "workspace": {
+                "scenario": getattr(self.config, "scenario", ""),
+                "runtime": getattr(self.config, "runtime", ""),
+                "workspace_directory": str(getattr(self.config, "workspace_directory", "") or ""),
+            },
+            "cascade_policy": get_pol() if callable(get_pol) else {"se_to_lf": False, "lf_to_ca": False},
+            "chain": chain_st() if callable(chain_st) else {"running": False, "last_chain": None},
+            "scheduler": {
+                "daemon_running": bool(sched_st.get("daemon_running", False)),
+                "active_tasks": sched_st.get("active_tasks") or [],
+                "pending_tasks": sched_st.get("pending_tasks") or [],
+            },
+            "linkage": {
+                "se_run_id": se_id,
+                "lf_run_id": lf_id,
+                "lf_source_se_run_id": lf_from_se,
+                "ca_run_id": ca_id,
+                "ca_source_lf_run_id": ca_from_lf,
+                "ca_source_se_run_id": ca_from_se,
+                "se_lf_synced": se_lf_synced,
+                "lf_ca_synced": lf_ca_synced,
+                "all_synced": se_lf_synced and lf_ca_synced,
+            },
+            "se": {
+                "latest": se_lat,
+                "trend": (se_ov.get("trend_series") or [])[-30:],
+            },
+            "lf": {
+                "latest": lf_lat,
+                "overrides": lf_home.get("overrides"),
+                "trend": (lf_home.get("trend_series") or [])[-30:],
+            },
+            "ca": {
+                "latest": ca_lat,
+                "contingency_defs": ca_home.get("contingency_defs"),
+                "trend": (ca_home.get("trend_series") or [])[-30:],
+            },
+            "alerts": alerts[:20],
+            "recent_runs": recent_runs[:20],
+        }
+
+    def _build_lf_topology_values(self, *, run_id: int | None = None) -> dict[str, Any]:
+        """构建 LF 潮流图 SVG 绑定数据（支持最新/历史断面、LF 值 / 负载率 % / LF−SE 偏差及越限高亮）。"""
+        repo = self._lf_repo()
+        lf_task = getattr(self.config, "tasks", {}).get("lf")
+        model_file = getattr(lf_task, "model_file", None)
+        se_task = getattr(self.config, "tasks", {}).get("se")
+        meas_file = getattr(se_task, "measurement_file", None)
+
+        snap = repo.lf_snapshot(run_id=run_id)
+        latest_stat = snap.get("latest")
+        units = {
+            "u_unit": (latest_stat or {}).get("u_unit") or "V",
+            "p_unit": (latest_stat or {}).get("p_unit") or "kW",
+            "i_unit": (latest_stat or {}).get("i_unit") or "A",
+            "q_unit": {"W": "var", "kW": "kvar", "MW": "Mvar"}.get((latest_stat or {}).get("p_unit") or "kW", "kvar"),
+        }
+        bus_node_map: dict[str, dict[int, tuple[str, int, str]]] = {"ACRealBs": {}, "DCRealBs": {}}
+        if model_file and Path(model_file).is_file() and Path(model_file).suffix.lower() in SQLITE_SUFFIXES:
+            try:
+                model_tables = read_model_tables(Path(model_file))
+                for bs_tbl, node_tbl in (("ACRealBs", "ACNode"), ("DCRealBs", "DCNode")):
+                    for row in (model_tables.get(bs_tbl) or {}).get("rows") or ():
+                        if row.get("idx") is not None and row.get("node") is not None:
+                            bus_node_map[bs_tbl][int(row["idx"])] = (node_tbl, int(row["node"]), str(row.get("name", "")))
+            except (ValueError, OSError, input_store.sqlite3.Error):
+                pass
+
+        breaker_status: dict[tuple[str, int], int] = {}
+        if meas_file and input_store.is_scdfe_d_wide_db(meas_file):
+            try:
+                with input_store.connect(meas_file, readonly=True) as conn:
+                    conn.execute("PRAGMA query_only=ON")
+                    for brk_tbl in ("ACBreak", "DCBreak"):
+                        cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{brk_tbl}")')}
+                        if {"idx", "position", "position_qual"} <= cols:
+                            for r in conn.execute(f'SELECT idx, position, position_qual FROM "{brk_tbl}"'):
+                                if r["position"] is not None and r["position_qual"] == 0:
+                                    breaker_status[(brk_tbl, int(r["idx"]))] = int(r["position"])
+            except (OSError, input_store.sqlite3.Error):
+                pass
+
+        devices_out: dict[str, dict[str, Any]] = {}
+        node_records: dict[tuple[str, int], dict[str, Any]] = {}
+        alerts: list[dict[str, Any]] = []
+
+        # 1. 节点电压（ACNode / DCNode）
+        for b in snap.get("buses") or ():
+            dt = str(b["device_type"])
+            idx = int(b["device_idx"])
+            dev_id = f"{dt}-{idx}"
+            is_alert = b.get("v_status") != "normal"
+            v_slot = {
+                "metric": "uab" if dt == "ACNode" else "u",
+                "unit": units["u_unit"],
+                "lf": b.get("v_eng"),
+                "se": b.get("v_se"),
+                "diff": b.get("v_diff"),
+                "v_pu": b.get("v_pu"),
+                "angle_deg": b.get("angle_deg"),
+                "loading_pct": None,
+                "is_alert": is_alert,
+            }
+            entry = {
+                "dev_id": dev_id,
+                "device_type": dt,
+                "idx": idx,
+                "name": str(b.get("device_name", "")),
+                "has_alert": is_alert,
+                "alert_reason": f"V={b.get('v_pu'):.4f}pu ({b.get('v_status')})" if (is_alert and b.get("v_pu") is not None) else "",
+                "metrics": {v_slot["metric"]: v_slot},
+                "svg_slots": {"voltage": v_slot},
+            }
+            devices_out[dev_id] = entry
+            node_records[(dt, idx)] = entry
+            if is_alert:
+                alerts.append({
+                    "dev_id": dev_id,
+                    "device_type": dt,
+                    "device_name": entry["name"],
+                    "kind": "voltage",
+                    "value": b.get("v_eng"),
+                    "unit": units["u_unit"],
+                    "detail": entry["alert_reason"],
+                })
+
+        # 2. 电源与负荷（ACGenerator / DCGenerator / ACLoad / DCLoad）
+        for u in snap.get("units") or ():
+            if u.get("device_idx") is None:
+                continue
+            dt = str(u["device_type"])
+            idx = int(u["device_idx"])
+            dev_id = f"{dt}-{idx}"
+            is_ol = bool(u.get("overload"))
+            lp = u.get("loading_pct")
+            p_slot = {"metric": "p", "unit": units["p_unit"], "lf": u.get("p_lf"), "se": u.get("p_se"), "diff": u.get("p_diff"), "loading_pct": lp, "is_alert": is_ol}
+            q_slot = {"metric": "q", "unit": units["q_unit"], "lf": u.get("q_lf"), "se": None, "diff": None, "loading_pct": lp, "is_alert": False}
+            v_slot = {"metric": "uab" if dt.startswith("AC") else "u", "unit": units["u_unit"], "lf": u.get("v_lf"), "se": None, "diff": None, "loading_pct": None, "is_alert": False}
+            i_slot = {"metric": "ia" if dt.startswith("AC") else "i", "unit": units["i_unit"], "lf": u.get("i_lf"), "se": None, "diff": None, "loading_pct": lp, "is_alert": is_ol}
+            metrics = {"p": p_slot, v_slot["metric"]: v_slot, i_slot["metric"]: i_slot}
+            svg_slots = {"activePower": p_slot, "voltage": v_slot, "current": i_slot}
+            if dt.startswith("AC"):
+                metrics["q"] = q_slot
+                svg_slots["reactivePower"] = q_slot
+            devices_out[dev_id] = {
+                "dev_id": dev_id,
+                "device_type": dt,
+                "idx": idx,
+                "name": str(u.get("device_name", "")),
+                "control_type": u.get("control_type") or "",
+                "rated_capacity": u.get("rated_capacity"),
+                "loading_pct": lp,
+                "has_alert": is_ol,
+                "alert_reason": f"负载率 {lp:.1f}%" if (is_ol and lp is not None) else "",
+                "metrics": metrics,
+                "svg_slots": svg_slots,
+            }
+            if is_ol:
+                p_txt = f"{float(u['p_lf']):.2f}" if isinstance(u.get("p_lf"), (int, float)) else "—"
+                alerts.append({
+                    "dev_id": dev_id,
+                    "device_type": dt,
+                    "device_name": str(u.get("device_name", "")),
+                    "kind": "overload",
+                    "value": lp,
+                    "unit": "%",
+                    "detail": f"P={p_txt} {units['p_unit']}",
+                })
+
+        # 3. 支路、换流器与断路器
+        for br in snap.get("branches") or ():
+            if br.get("device_idx") is None:
+                continue
+            dt = str(br["device_type"])
+            idx = int(br["device_idx"])
+            dev_id = f"{dt}-{idx}"
+            is_ol = bool(br.get("overload"))
+            lp = br.get("loading_pct")
+            p_slot = {"metric": "ac_p" if dt == "DCACConverter" else "i_p", "unit": units["p_unit"], "lf": br.get("p_to") if dt == "DCACConverter" else br.get("p_from"), "se": br.get("p_se"), "diff": br.get("p_diff"), "loading_pct": lp, "is_alert": is_ol}
+            q_slot = {"metric": "ac_q" if dt == "DCACConverter" else "i_q", "unit": units["q_unit"], "lf": br.get("q_to") if dt == "DCACConverter" else br.get("q_from"), "se": None, "diff": None, "loading_pct": lp, "is_alert": False}
+            v_slot = {"metric": "ac_uab" if dt == "DCACConverter" else "i_uab", "unit": units["u_unit"], "lf": br.get("v_to") if dt == "DCACConverter" else br.get("v_from"), "se": None, "diff": None, "loading_pct": None, "is_alert": False}
+            i_slot = {"metric": "ac_ia" if dt == "DCACConverter" else ("i_ia" if dt.startswith("AC") else "i_i"), "unit": units["i_unit"], "lf": br.get("i_to") if dt == "DCACConverter" else br.get("i_from"), "se": None, "diff": None, "loading_pct": lp, "is_alert": is_ol}
+            metrics = {p_slot["metric"]: p_slot, v_slot["metric"]: v_slot, i_slot["metric"]: i_slot}
+            svg_slots: dict[str, Any] = {"activePower": p_slot, "voltage": v_slot, "current": i_slot}
+            if dt.startswith("AC") or dt == "DCACConverter":
+                metrics[q_slot["metric"]] = q_slot
+                svg_slots["reactivePower"] = q_slot
+            if dt in ("ACBreak", "DCBreak"):
+                pos = breaker_status.get((dt, idx))
+                if pos is not None:
+                    svg_slots["status"] = {"metric": "position", "lf": pos, "se": pos, "unit": "", "is_alert": False}
+            devices_out[dev_id] = {
+                "dev_id": dev_id,
+                "device_type": dt,
+                "idx": idx,
+                "name": str(br.get("device_name", "")),
+                "rated_capacity": br.get("rated_capacity"),
+                "loading_pct": lp,
+                "p_loss": br.get("p_loss"),
+                "has_alert": is_ol,
+                "alert_reason": f"负载率 {lp:.1f}%" if (is_ol and lp is not None) else "",
+                "metrics": metrics,
+                "svg_slots": svg_slots,
+            }
+            if is_ol:
+                p_txt = f"{float(p_slot['lf']):.2f}" if isinstance(p_slot.get("lf"), (int, float)) else "—"
+                alerts.append({
+                    "dev_id": dev_id,
+                    "device_type": dt,
+                    "device_name": str(br.get("device_name", "")),
+                    "kind": "overload",
+                    "value": lp,
+                    "unit": "%",
+                    "detail": f"P={p_txt} {units['p_unit']}",
+                })
+
+        # 4. 映射实母线 ACRealBs / DCRealBs
+        for bs_tbl, mapping in bus_node_map.items():
+            for bs_idx, (node_tbl, node_idx, bs_name) in mapping.items():
+                node_entry = node_records.get((node_tbl, node_idx))
+                if not node_entry:
+                    continue
+                v_slot = node_entry["svg_slots"]["voltage"]
+                dev_id = f"{bs_tbl}-{bs_idx}"
+                devices_out[dev_id] = {
+                    "dev_id": dev_id,
+                    "device_type": bs_tbl,
+                    "idx": bs_idx,
+                    "name": bs_name or node_entry["name"],
+                    "linked_node": {"device_type": node_tbl, "idx": node_idx, "name": node_entry["name"]},
+                    "has_alert": node_entry["has_alert"],
+                    "alert_reason": node_entry["alert_reason"],
+                    "metrics": {v_slot["metric"]: v_slot},
+                    "svg_slots": {"voltage": v_slot},
+                }
+
+        return {
+            "latest": latest_stat,
+            "run_id": snap.get("run_id"),
+            "is_history": bool(run_id is not None),
+            "units": units,
+            "svg_available": self._se_svg_path() is not None,
+            "alerts": alerts,
+            "alert_dev_ids": sorted(did for did, item in devices_out.items() if item.get("has_alert")),
+            "devices": devices_out,
+        }
+
     def _se_svg_path(self) -> Path | None:
         workspace = getattr(self.config, "workspace_directory", None)
         scenario = getattr(self.config, "scenario", None)
@@ -967,6 +1389,178 @@ class PasWebApp:
                     return {"ok": True, "data": se_repo.se_logs_policy_get()}
             except (ValueError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
+        # --- 在线潮流分析（LF）专用只读 API ---
+        if parsed.path.startswith("/api/lf/"):
+            lf_repo = self._lf_repo()
+            lf_task = getattr(self.config, "tasks", {}).get("lf")
+            lf_para_file = getattr(lf_task, "parameter_file", None)
+            lf_period = getattr(lf_task, "period_seconds", 60)
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/lf/home":
+                    return {"ok": True, "data": lf_repo.lf_home_summary(lf_para_file, do_cycle=lf_period)}
+                if parsed.path == "/api/lf/runs/converged":
+                    return {"ok": True, "data": lf_repo.lf_converged_runs(_int_query(query, "limit", 30, 1, 200))}
+                if parsed.path == "/api/lf/topology-values":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {"ok": True, "data": self._build_lf_topology_values(run_id=rid_val)}
+                if parsed.path == "/api/lf/results":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {
+                        "ok": True,
+                        "data": lf_repo.lf_results_browse(
+                            kind=query.get("kind", ["branches"])[0],
+                            domain=query.get("domain", ["all"])[0],
+                            device_type=query.get("device_type", [""])[0],
+                            only_abnormal=query.get("only_abnormal", ["0"])[0] in {"1", "true"},
+                            q=query.get("q", [""])[0],
+                            run_id=rid_val,
+                            limit=_int_query(query, "limit", 50, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/lf/history/stats":
+                    return {"ok": True, "data": lf_repo.lf_history_stats(_int_query(query, "limit", 100, 1, 500))}
+                if parsed.path == "/api/lf/params":
+                    return {"ok": True, "data": lf_repo.lf_params_get(lf_para_file, do_cycle=lf_period)}
+                if parsed.path == "/api/lf/overrides":
+                    return {
+                        "ok": True,
+                        "data": lf_repo.lf_overrides_list(
+                            scheme_name=query.get("scheme_name", [""])[0],
+                            enabled_only=query.get("enabled_only", ["0"])[0] in {"1", "true"},
+                            device_type=query.get("device_type", [""])[0],
+                            q=query.get("q", [""])[0],
+                        ),
+                    }
+                if parsed.path == "/api/lf/model-catalog":
+                    from .lf_online import LF_OVERRIDE_FIELDS
+                    cat = self._se_model_catalog()
+                    return {"ok": True, "data": {**cat, "override_fields": {k: list(v) for k, v in LF_OVERRIDE_FIELDS.items()}}}
+                if parsed.path == "/api/lf/logs":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {
+                        "ok": True,
+                        "data": lf_repo.lf_logs_list(
+                            level=query.get("level", [""])[0],
+                            stage=query.get("stage", [""])[0],
+                            source=query.get("source", [""])[0],
+                            run_id=rid_val,
+                            window=query.get("window", ["all"])[0],
+                            q=query.get("q", [""])[0],
+                            limit=_int_query(query, "limit", 50, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/lf/logs/summary":
+                    return {"ok": True, "data": lf_repo.lf_logs_summary()}
+                if parsed.path == "/api/lf/logs/policy":
+                    return {"ok": True, "data": lf_repo.lf_logs_policy_get()}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        # --- 全平台 SE → LF → CA 链路态势只读 API ---
+        if parsed.path == "/api/pipeline/status":
+            try:
+                return {"ok": True, "data": self._build_pipeline_overview()}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        # --- 在线静态安全分析（CA）专用只读 API ---
+        if parsed.path.startswith("/api/ca/"):
+            ca_repo = self._ca_repo()
+            ca_task = getattr(self.config, "tasks", {}).get("ca")
+            ca_period = getattr(ca_task, "period_seconds", 300)
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/ca/home":
+                    return {"ok": True, "data": ca_repo.ca_home_summary(do_cycle=ca_period)}
+                if parsed.path == "/api/ca/runs/history":
+                    return {"ok": True, "data": ca_repo.ca_runs_history(_int_query(query, "limit", 30, 1, 200))}
+                if parsed.path == "/api/ca/topology-risks":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {"ok": True, "data": self._build_ca_topology_risks(run_id=rid_val)}
+                if parsed.path == "/api/ca/risks":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_risks_browse(
+                            category=query.get("category", ["all"])[0],
+                            severity=query.get("severity", ["all"])[0],
+                            risk_category=query.get("risk_category", ["all"])[0],
+                            q=query.get("q", [""])[0],
+                            run_id=rid_val,
+                            limit=_int_query(query, "limit", 50, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/ca/contingencies/results":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_contingency_results_browse(
+                            category=query.get("category", ["all"])[0],
+                            severity=query.get("severity", ["all"])[0],
+                            only_risk=query.get("only_risk", ["0"])[0] in {"1", "true"},
+                            q=query.get("q", [""])[0],
+                            run_id=rid_val,
+                            limit=_int_query(query, "limit", 50, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/ca/contingencies/defs":
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_contingencies_list(
+                            category=query.get("category", [""])[0],
+                            enabled_only=query.get("enabled_only", ["0"])[0] in {"1", "true"},
+                            device_type=query.get("device_type", [""])[0],
+                            q=query.get("q", [""])[0],
+                        ),
+                    }
+                if parsed.path == "/api/ca/model-catalog":
+                    from .ca_online import CONTINGENCY_DEVICE_TABLES
+                    cat = self._se_model_catalog()
+                    return {
+                        "ok": True,
+                        "data": {
+                            **cat,
+                            "contingency_types": [
+                                {"type": k, "label": v[0], "priority": v[1]}
+                                for k, v in CONTINGENCY_DEVICE_TABLES.items()
+                            ],
+                        },
+                    }
+                if parsed.path == "/api/ca/params":
+                    return {"ok": True, "data": ca_repo.ca_params_get(do_cycle=ca_period)}
+                if parsed.path == "/api/ca/history/stats":
+                    return {"ok": True, "data": ca_repo.ca_history_stats(_int_query(query, "limit", 100, 1, 500))}
+                if parsed.path == "/api/ca/logs":
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_logs_list(
+                            level=query.get("level", [""])[0],
+                            stage=query.get("stage", [""])[0],
+                            source=query.get("source", [""])[0],
+                            run_id=rid_val,
+                            window=query.get("window", ["all"])[0],
+                            q=query.get("q", [""])[0],
+                            limit=_int_query(query, "limit", 50, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/ca/logs/summary":
+                    return {"ok": True, "data": ca_repo.ca_logs_summary()}
+                if parsed.path == "/api/ca/logs/policy":
+                    return {"ok": True, "data": ca_repo.ca_logs_policy_get()}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
         if parsed.path.startswith('/api/inputs/'):
             try:
                 kind=parsed.path.rsplit('/',1)[-1]
@@ -1264,6 +1858,130 @@ class PasWebApp:
                     }
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
+        # --- 在线潮流分析（LF）写接口 ---
+        if path.startswith("/api/lf/"):
+            lf_repo = self._lf_repo()
+            lf_task = getattr(self.config, "tasks", {}).get("lf")
+            lf_para_file = getattr(lf_task, "parameter_file", None)
+            parts = path.strip("/").split("/")
+            try:
+                if path == "/api/lf/params":
+                    return {"ok": True, "data": lf_repo.lf_params_save(payload, lf_para_file)}
+                if path == "/api/lf/params/reset":
+                    return {"ok": True, "data": lf_repo.lf_params_reset(lf_para_file)}
+                if path == "/api/lf/overrides":
+                    return {"ok": True, "data": lf_repo.lf_override_save(payload)}
+                if path == "/api/lf/overrides/clear":
+                    return {"ok": True, "data": {"deleted": lf_repo.lf_overrides_clear(scheme_name=str(payload.get("scheme_name") or ""))}}
+                if len(parts) == 5 and parts[:3] == ["api", "lf", "overrides"] and parts[4] == "delete":
+                    oid = _int_path(parts[3])
+                    if oid is None:
+                        return {"ok": False, "error": "invalid_id"}
+                    return {"ok": True, "data": {"deleted": lf_repo.lf_override_delete(oid), "id": oid}}
+                if path == "/api/lf/logs/policy":
+                    return {"ok": True, "data": lf_repo.lf_logs_policy_update(payload)}
+                if path == "/api/lf/logs/purge":
+                    return {
+                        "ok": True,
+                        "data": lf_repo.lf_logs_purge(
+                            dry_run=bool(payload.get("dry_run", False)),
+                            retention_days=int(payload["retention_days"]) if payload.get("retention_days") not in (None, "") else None,
+                            keep_error_days=int(payload["keep_error_days"]) if payload.get("keep_error_days") not in (None, "") else None,
+                            max_rows=int(payload["max_rows"]) if payload.get("max_rows") not in (None, "") else None,
+                            source="operator",
+                        ),
+                    }
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        # --- 全平台 SE → LF → CA 级联配置与一键串联写接口 ---
+        if path == "/api/pipeline/cascade":
+            updater = getattr(self.scheduler, "update_cascade_policy", None)
+            if not callable(updater):
+                return {"ok": False, "error": "cascade_not_supported"}
+            try:
+                res = updater(
+                    se_to_lf=bool(payload["se_to_lf"]) if "se_to_lf" in payload else None,
+                    lf_to_ca=bool(payload["lf_to_ca"]) if "lf_to_ca" in payload else None,
+                )
+                return {"ok": True, "data": res}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if path == "/api/actions/run-chain":
+            raw_tasks = payload.get("tasks")
+            if isinstance(raw_tasks, list) and raw_tasks:
+                tasks = tuple(str(t) for t in raw_tasks if str(t) in ("se", "lf", "ca"))
+            else:
+                tasks = ("se", "lf", "ca")
+            if not tasks:
+                return {"ok": False, "error": "invalid_tasks"}
+            if payload.get("async", False):
+                submitter = getattr(self.scheduler, "submit_chain_async", None)
+                if not callable(submitter):
+                    return {"ok": False, "error": "chain_not_supported"}
+                return {"ok": True, "data": submitter(tasks)}
+            runner = getattr(self.scheduler, "run_chain", None)
+            if not callable(runner):
+                return {"ok": False, "error": "chain_not_supported"}
+            res = runner(tasks)
+            return {"ok": bool(res.get("ok")), "error": None if res.get("ok") else "链路执行中断", "data": res}
+        # --- 在线静态安全分析（CA）写接口 ---
+        if path.startswith("/api/ca/"):
+            ca_repo = self._ca_repo()
+            ca_task = getattr(self.config, "tasks", {}).get("ca")
+            parts = path.strip("/").split("/")
+            try:
+                if path == "/api/ca/params":
+                    return {"ok": True, "data": ca_repo.ca_params_save(payload)}
+                if path == "/api/ca/params/reset":
+                    return {"ok": True, "data": ca_repo.ca_params_reset()}
+                if path == "/api/ca/contingencies/defs":
+                    return {"ok": True, "data": ca_repo.ca_contingency_save(payload)}
+                if path == "/api/ca/contingencies/sync":
+                    model_file = getattr(ca_task, "model_file", None)
+                    if not model_file or not Path(model_file).is_file():
+                        return {"ok": False, "error": "model_file_not_found"}
+                    mt = read_model_tables(Path(model_file))
+                    dts = payload.get("device_types") if isinstance(payload.get("device_types"), list) else None
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_contingencies_sync(mt, device_types=dts, overwrite=bool(payload.get("overwrite", False))),
+                    }
+                if path == "/api/ca/contingencies/bulk-toggle":
+                    return {
+                        "ok": True,
+                        "data": {
+                            "updated": ca_repo.ca_contingencies_bulk_toggle(
+                                enabled=bool(payload.get("enabled", True)),
+                                category=str(payload.get("category") or ""),
+                                device_type=str(payload.get("device_type") or ""),
+                            )
+                        },
+                    }
+                if path == "/api/ca/contingencies/clear":
+                    return {
+                        "ok": True,
+                        "data": {"deleted": ca_repo.ca_contingencies_clear(only_auto=bool(payload.get("only_auto", False)))},
+                    }
+                if len(parts) == 6 and parts[:4] == ["api", "ca", "contingencies", "defs"] and parts[5] == "delete":
+                    cid = _int_path(parts[4])
+                    if cid is None:
+                        return {"ok": False, "error": "invalid_id"}
+                    return {"ok": True, "data": {"deleted": ca_repo.ca_contingency_delete(cid), "id": cid}}
+                if path == "/api/ca/logs/policy":
+                    return {"ok": True, "data": ca_repo.ca_logs_policy_update(payload)}
+                if path == "/api/ca/logs/purge":
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_logs_purge(
+                            dry_run=bool(payload.get("dry_run", False)),
+                            retention_days=int(payload["retention_days"]) if payload.get("retention_days") not in (None, "") else None,
+                            keep_error_days=int(payload["keep_error_days"]) if payload.get("keep_error_days") not in (None, "") else None,
+                            max_rows=int(payload["max_rows"]) if payload.get("max_rows") not in (None, "") else None,
+                            source="operator",
+                        ),
+                    }
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
         if path.startswith('/api/inputs/'):
             try:
                 action=path.removeprefix('/api/inputs/')
@@ -1378,6 +2096,16 @@ class PasWebApp:
                 if wid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": se_repo.se_weight_rule_save(payload, rule_id=wid)}
+            if len(parts) == 4 and parts[:3] == ["api", "lf", "overrides"]:
+                oid = _int_path(parts[3])
+                if oid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": self._lf_repo().lf_override_save(payload, override_id=oid)}
+            if len(parts) == 5 and parts[:4] == ["api", "ca", "contingencies", "defs"]:
+                cid = _int_path(parts[4])
+                if cid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": self._ca_repo().ca_contingency_save(payload, contingency_id=cid)}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}
@@ -1412,6 +2140,16 @@ class PasWebApp:
                 if wid is None:
                     return {"ok": False, "error": "invalid_id"}
                 return {"ok": True, "data": {"deleted": se_repo.se_weight_rule_delete(wid), "id": wid}}
+            if len(parts) == 4 and parts[:3] == ["api", "lf", "overrides"]:
+                oid = _int_path(parts[3])
+                if oid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": {"deleted": self._lf_repo().lf_override_delete(oid), "id": oid}}
+            if len(parts) == 5 and parts[:4] == ["api", "ca", "contingencies", "defs"]:
+                cid = _int_path(parts[4])
+                if cid is None:
+                    return {"ok": False, "error": "invalid_id"}
+                return {"ok": True, "data": {"deleted": self._ca_repo().ca_contingency_delete(cid), "id": cid}}
         except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": False, "error": "not_found"}
@@ -1511,6 +2249,87 @@ class PasWebApp:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/csv; charset=utf-8")
                     self.send_header("Content-Disposition", 'attachment; filename="se-run-logs.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/lf/results/export":
+                    query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    body = app._lf_repo().lf_results_export_csv(
+                        kind=query.get("kind", ["branches"])[0],
+                        domain=query.get("domain", ["all"])[0],
+                        device_type=query.get("device_type", [""])[0],
+                        only_abnormal=query.get("only_abnormal", ["0"])[0] in {"1", "true"},
+                        q=query.get("q", [""])[0],
+                        run_id=rid_val,
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="lf-results.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/lf/logs/export":
+                    query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    csv_text = app._lf_repo().lf_logs_export_csv(
+                        level=query.get("level", [""])[0],
+                        stage=query.get("stage", [""])[0],
+                        source=query.get("source", [""])[0],
+                        run_id=rid_val,
+                        window=query.get("window", ["all"])[0],
+                        q=query.get("q", [""])[0],
+                    )
+                    body = csv_text.encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="lf-run-logs.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/ca/risks/export":
+                    query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    body = app._ca_repo().ca_risks_export_csv(
+                        category=query.get("category", ["all"])[0],
+                        severity=query.get("severity", ["all"])[0],
+                        risk_category=query.get("risk_category", ["all"])[0],
+                        q=query.get("q", [""])[0],
+                        run_id=rid_val,
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="ca-risks.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/ca/logs/export":
+                    query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    csv_text = app._ca_repo().ca_logs_export_csv(
+                        level=query.get("level", [""])[0],
+                        stage=query.get("stage", [""])[0],
+                        source=query.get("source", [""])[0],
+                        run_id=rid_val,
+                        window=query.get("window", ["all"])[0],
+                        q=query.get("q", [""])[0],
+                    )
+                    body = csv_text.encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="ca-run-logs.csv"')
                     self.send_header("Content-Length", str(len(body)))
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PAS · 潮流图</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/lf-flow" data-lf-view="flow" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se_root">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf-root" class="active" data-i18n="nav.lf_root">潮流分析 LF</a>
+          <div class="nav-sub" role="group" aria-label="LF Modules">
+            <a href="/lf-main.html" data-route="lf-main" data-i18n="nav.lf_main">主画面</a>
+            <a href="/lf-flow.html" data-route="lf-flow" class="active" data-i18n="nav.lf_flow">潮流图</a>
+            <a href="/lf-results.html" data-route="lf-results" data-i18n="nav.lf_results">潮流明细</a>
+            <a href="/lf-params.html" data-route="lf-params" data-i18n="nav.lf_params">参数与方式</a>
+            <a href="/lf-logs.html" data-route="lf-logs" data-i18n="nav.lf_logs">运行日志</a>
+          </div>
+          <a href="/ca-main.html" data-route="ca" data-i18n="nav.ca">静态安全 CA</a>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.lf_flow">在线潮流图</h1>
+            <span id="lf-status-pill" class="se-pill neutral">—</span>
+            <select id="lf-run-select" class="se-select compact tabular" aria-label="History run"></select>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-lf" data-i18n="action.run_lf">立即执行 LF</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <section class="se-panel active">
+          <div class="se-topo-layout">
+            <div class="se-topo-stage-card">
+              <div class="se-toolbar">
+                <div class="se-tool-group">
+                  <select id="lf-svg-mode" class="se-select compact" aria-label="Display mode">
+                    <option value="lf" data-i18n="flow.mode_lf">LF 潮流值</option>
+                    <option value="loading" data-i18n="flow.mode_loading">负载率 %</option>
+                    <option value="diff" data-i18n="flow.mode_diff">LF − SE 偏差</option>
+                  </select>
+                  <select id="lf-device-jump" class="se-select compact" aria-label="Locate device"></select>
+                </div>
+                <div class="se-tool-group">
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-in">+</button>
+                  <span class="se-zoom-text tabular" id="svg-zoom-label">100%</span>
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-out">−</button>
+                  <button type="button" class="se-btn mini" id="btn-svg-fit" data-i18n="topo.fit">适应画布</button>
+                </div>
+              </div>
+              <div class="se-svg-viewport" id="lf-svg-viewport">
+                <div class="se-svg-canvas" id="lf-svg-canvas"></div>
+                <div class="se-svg-tooltip" id="lf-svg-tooltip" hidden></div>
+              </div>
+            </div>
+
+            <aside class="se-topo-inspector">
+              <section class="se-side-card se-bad-card">
+                <div class="se-side-head">
+                  <h2 data-i18n="flow.alerts">越限与重载</h2>
+                  <span class="se-pill ok tabular" id="lf-alert-count">0</span>
+                </div>
+                <div class="se-bad-list" id="lf-alert-list"></div>
+              </section>
+              <section class="se-side-card se-dev-card">
+                <div class="se-side-head">
+                  <h2 id="lf-insp-title" data-i18n="flow.dev_detail">设备潮流</h2>
+                  <span class="se-tag" id="lf-insp-type">—</span>
+                </div>
+                <div class="se-inspector-body" id="lf-insp-body"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 就地方式调整弹窗（不修改源模型，仅写入 lf_study_override 并可立即重算） -->
+  <dialog id="lf-override-dialog" class="se-modal wide" aria-labelledby="ov-dlg-title">
+    <h3 id="ov-dlg-title" data-i18n="ov.dlg_title">方式调整</h3>
+    <form id="lf-ov-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" id="fov-id">
+      <label class="se-field">
+        <span data-i18n="col.dev_type">设备类型</span>
+        <select id="fov-dev-type"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.device">设备名称</span>
+        <select id="fov-dev-name"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="ov.field">调整字段</span>
+        <select id="fov-field"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="ov.value">设定值</span>
+        <input id="fov-value" class="tabular" type="number" step="any" required>
+      </label>
+      <label class="se-field full">
+        <span data-i18n="col.note">备注</span>
+        <input id="fov-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions full">
+        <button type="button" class="se-btn ghost" id="btn-ov-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn ghost" data-i18n="ov.save_only">仅保存</button>
+        <button type="button" class="se-btn primary" id="btn-ov-save-run" data-i18n="ov.save_and_run">保存并重算 LF</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/assets/lf-app.js"></script>
+</body>
+</html>

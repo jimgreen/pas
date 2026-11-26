@@ -2050,3 +2050,326 @@ CREATE TABLE IF NOT EXISTS se_weight_rule (
     UNIQUE(scope, device_type, device_name, metric)
 );
 CREATE INDEX IF NOT EXISTS idx_se_weight_rule_lookup ON se_weight_rule(enabled, device_type, metric);
+
+-- ============================================================================
+-- 在线潮流分析（LF）扩展表（独立于 lf.sqlite3，完整追踪 SE 源断面与历史回放）
+-- ============================================================================
+
+-- 潮流计算运行统计历史表（每次收敛/失败留存一行，驱动主画面 24h 曲线与历史回放）
+CREATE TABLE IF NOT EXISTS lf_statistics (
+    run_id INTEGER PRIMARY KEY REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    calc_time TEXT NOT NULL,
+    source_se_run_id INTEGER,
+    mode TEXT NOT NULL DEFAULT 'online',
+    elapsed_seconds REAL NOT NULL DEFAULT 0.0,
+    kernel_seconds REAL NOT NULL DEFAULT 0.0,
+    converged INTEGER NOT NULL DEFAULT 0,
+    iterations INTEGER NOT NULL DEFAULT 0,
+    norm_f REAL NOT NULL DEFAULT 0.0,
+    ac_converged INTEGER,
+    ac_iterations INTEGER,
+    ac_norm_f REAL,
+    dc_converged INTEGER,
+    dc_iterations INTEGER,
+    dc_norm_f REAL,
+    ac_gen_p REAL NOT NULL DEFAULT 0.0,
+    ac_gen_q REAL NOT NULL DEFAULT 0.0,
+    ac_load_p REAL NOT NULL DEFAULT 0.0,
+    ac_load_q REAL NOT NULL DEFAULT 0.0,
+    ac_loss_p REAL NOT NULL DEFAULT 0.0,
+    dc_gen_p REAL NOT NULL DEFAULT 0.0,
+    dc_load_p REAL NOT NULL DEFAULT 0.0,
+    dc_loss_p REAL NOT NULL DEFAULT 0.0,
+    total_gen_p REAL NOT NULL DEFAULT 0.0,
+    total_load_p REAL NOT NULL DEFAULT 0.0,
+    total_loss_p REAL NOT NULL DEFAULT 0.0,
+    loss_rate REAL NOT NULL DEFAULT 0.0,
+    min_v_pu REAL,
+    max_v_pu REAL,
+    min_v_bus TEXT NOT NULL DEFAULT '',
+    max_v_bus TEXT NOT NULL DEFAULT '',
+    max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    max_loading_dev TEXT NOT NULL DEFAULT '',
+    v_violation_count INTEGER NOT NULL DEFAULT 0,
+    overload_count INTEGER NOT NULL DEFAULT 0,
+    device_count INTEGER NOT NULL DEFAULT 0,
+    override_count INTEGER NOT NULL DEFAULT 0,
+    u_unit TEXT NOT NULL DEFAULT 'V',
+    p_unit TEXT NOT NULL DEFAULT 'kW',
+    i_unit TEXT NOT NULL DEFAULT 'A',
+    failure_reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_lf_statistics_time ON lf_statistics(calc_time);
+
+-- 潮流节点电压结果表（按 run_id 保留工程单位与标幺值，含与 SE 基态电压偏差）
+CREATE TABLE IF NOT EXISTS lf_bus_result (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER NOT NULL,
+    device_name TEXT NOT NULL,
+    vbase REAL,
+    v_pu REAL,
+    v_eng REAL,
+    angle_deg REAL,
+    v_se REAL,
+    v_diff REAL,
+    v_status TEXT NOT NULL DEFAULT 'normal'
+);
+CREATE INDEX IF NOT EXISTS idx_lf_bus_result_run ON lf_bus_result(run_id, domain, device_idx);
+
+-- 潮流支路/换流器/开关结果表（按 run_id 保留工程单位功率、电流、损耗、负载率与 SE 偏差）
+CREATE TABLE IF NOT EXISTS lf_branch_result (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    node_from INTEGER,
+    node_to INTEGER,
+    p_from REAL,
+    q_from REAL,
+    i_from REAL,
+    v_from REAL,
+    p_to REAL,
+    q_to REAL,
+    i_to REAL,
+    v_to REAL,
+    p_loss REAL,
+    rated_capacity REAL,
+    loading_pct REAL,
+    overload INTEGER NOT NULL DEFAULT 0,
+    p_se REAL,
+    p_diff REAL
+);
+CREATE INDEX IF NOT EXISTS idx_lf_branch_result_run ON lf_branch_result(run_id, device_type, loading_pct);
+
+-- 潮流电源/负荷结果表（按 run_id 保留工程单位 P/Q/V/I、负载率与 SE 偏差）
+CREATE TABLE IF NOT EXISTS lf_unit_result (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    node_idx INTEGER,
+    control_type TEXT NOT NULL DEFAULT '',
+    p_lf REAL,
+    q_lf REAL,
+    v_lf REAL,
+    i_lf REAL,
+    p_se REAL,
+    p_diff REAL,
+    rated_capacity REAL,
+    loading_pct REAL,
+    overload INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_lf_unit_result_run ON lf_unit_result(run_id, device_type, device_idx);
+
+-- 潮流方式调整方案表（叠加在 SE 基态之上，用于方式试算或临时覆盖，不修改源模型）
+CREATE TABLE IF NOT EXISTS lf_study_override (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scheme_name TEXT NOT NULL DEFAULT 'default',
+    device_type TEXT NOT NULL,
+    device_idx INTEGER,
+    device_name TEXT NOT NULL,
+    field TEXT NOT NULL,
+    value REAL NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(scheme_name, device_type, device_name, field)
+);
+CREATE INDEX IF NOT EXISTS idx_lf_study_override_enabled ON lf_study_override(enabled, scheme_name);
+
+-- 潮流算法与运行控制参数表（单行配置 id=1）
+CREATE TABLE IF NOT EXISTS lf_para (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    tol REAL NOT NULL DEFAULT 1e-8,
+    max_iter INTEGER NOT NULL DEFAULT 50,
+    min_voltage REAL NOT NULL DEFAULT 0.01,
+    divergence_threshold REAL NOT NULL DEFAULT 1e6,
+    use_se_base INTEGER NOT NULL DEFAULT 1,
+    cascade_ca INTEGER NOT NULL DEFAULT 0,
+    v_min_pu REAL NOT NULL DEFAULT 0.93,
+    v_max_pu REAL NOT NULL DEFAULT 1.07,
+    overload_warn_pct REAL NOT NULL DEFAULT 80.0,
+    overload_limit_pct REAL NOT NULL DEFAULT 100.0,
+    do_cycle INTEGER NOT NULL DEFAULT 60,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- 潮流运行与配置审计日志表
+CREATE TABLE IF NOT EXISTS lf_run_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    calc_time TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'INFO',
+    stage TEXT NOT NULL DEFAULT 'system',
+    source TEXT NOT NULL DEFAULT 'system',
+    elapsed_ms REAL,
+    message TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_lf_run_log_time ON lf_run_log(calc_time DESC);
+CREATE INDEX IF NOT EXISTS idx_lf_run_log_run ON lf_run_log(run_id);
+
+-- 潮流日志定期清理策略表
+CREATE TABLE IF NOT EXISTS lf_log_policy (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 1,
+    retention_days INTEGER NOT NULL DEFAULT 30,
+    keep_error_days INTEGER NOT NULL DEFAULT 90,
+    max_rows INTEGER NOT NULL DEFAULT 50000,
+    cleanup_interval_hours INTEGER NOT NULL DEFAULT 6,
+    min_level TEXT NOT NULL DEFAULT 'INFO',
+    last_cleanup_at TEXT NOT NULL DEFAULT '',
+    last_deleted_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- ============================================================================
+-- 在线静态安全分析 (CA) 专用扩展表（LF → CA 基态溯源、N-0/N-1/N-k 扫描与审计）
+-- ============================================================================
+
+-- 静态安全分析每次运行的汇总统计表（溯源 source_lf_run_id / source_se_run_id）
+CREATE TABLE IF NOT EXISTS ca_statistics (
+    run_id INTEGER PRIMARY KEY REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    calc_time TEXT NOT NULL,
+    source_lf_run_id INTEGER,
+    source_se_run_id INTEGER,
+    base_converged INTEGER NOT NULL DEFAULT 1,
+    risk_level TEXT NOT NULL DEFAULT '安全',
+    security_score REAL NOT NULL DEFAULT 100.0,
+    n0_risk_count INTEGER NOT NULL DEFAULT 0,
+    n1_total_count INTEGER NOT NULL DEFAULT 0,
+    n1_converged_count INTEGER NOT NULL DEFAULT 0,
+    n1_diverged_count INTEGER NOT NULL DEFAULT 0,
+    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+    nk_total_count INTEGER NOT NULL DEFAULT 0,
+    nk_risk_count INTEGER NOT NULL DEFAULT 0,
+    critical_count INTEGER NOT NULL DEFAULT 0,
+    high_count INTEGER NOT NULL DEFAULT 0,
+    medium_count INTEGER NOT NULL DEFAULT 0,
+    low_count INTEGER NOT NULL DEFAULT 0,
+    max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    max_loading_dev TEXT NOT NULL DEFAULT '',
+    min_v_pu REAL,
+    min_v_bus TEXT NOT NULL DEFAULT '',
+    max_v_pu REAL,
+    max_v_bus TEXT NOT NULL DEFAULT '',
+    max_load_loss_kw REAL NOT NULL DEFAULT 0.0,
+    worst_contingency TEXT NOT NULL DEFAULT '',
+    elapsed_seconds REAL NOT NULL DEFAULT 0.0,
+    kernel_seconds REAL NOT NULL DEFAULT 0.0,
+    u_unit TEXT NOT NULL DEFAULT 'V',
+    p_unit TEXT NOT NULL DEFAULT 'kW',
+    i_unit TEXT NOT NULL DEFAULT 'A',
+    failure_reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ca_statistics_time ON ca_statistics(calc_time DESC);
+
+-- 预想故障定义库（支持 N-1 模型自动同步与 N-k 多元件组合故障）
+CREATE TABLE IF NOT EXISTS ca_contingency_def (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT 'N-1' CHECK (category IN ('N-1', 'N-k')),
+    items_json TEXT NOT NULL DEFAULT '[]',
+    target_desc TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 50,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    auto_generated INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ca_contingency_def_enabled ON ca_contingency_def(enabled, priority, id);
+
+-- 每次 CA 运行的预想故障扫描明细结果表
+CREATE TABLE IF NOT EXISTS ca_contingency_result (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    contingency_name TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'N-1',
+    target_desc TEXT NOT NULL DEFAULT '',
+    converged INTEGER NOT NULL DEFAULT 1,
+    iterations INTEGER NOT NULL DEFAULT 0,
+    elapsed_ms REAL NOT NULL DEFAULT 0.0,
+    load_loss_kw REAL NOT NULL DEFAULT 0.0,
+    max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    max_loading_dev TEXT NOT NULL DEFAULT '',
+    min_v_pu REAL,
+    min_v_bus TEXT NOT NULL DEFAULT '',
+    max_v_pu REAL,
+    max_v_bus TEXT NOT NULL DEFAULT '',
+    risk_count INTEGER NOT NULL DEFAULT 0,
+    severity TEXT NOT NULL DEFAULT 'normal',
+    failure_reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ca_contingency_result_run ON ca_contingency_result(run_id, severity, risk_count);
+
+-- 每次 CA 运行的结构化安全风险清单表（支持 N-0/N-1/N-k 与 SVG 接线图联动）
+CREATE TABLE IF NOT EXISTS ca_risk_detail (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    contingency_name TEXT NOT NULL DEFAULT 'N-0 基态',
+    category TEXT NOT NULL DEFAULT 'N-0',
+    device_type TEXT NOT NULL DEFAULT '',
+    device_idx INTEGER,
+    device_name TEXT NOT NULL DEFAULT '',
+    risk_category TEXT NOT NULL DEFAULT 'overload',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    metric TEXT NOT NULL DEFAULT '',
+    actual_value REAL,
+    limit_value REAL,
+    violation_pct REAL NOT NULL DEFAULT 0.0,
+    unit TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ca_risk_detail_run ON ca_risk_detail(run_id, category, severity);
+
+-- 静态安全分析算法与扫描参数表（单行配置 id=1）
+CREATE TABLE IF NOT EXISTS ca_para (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    use_lf_base INTEGER NOT NULL DEFAULT 1,
+    scan_n1 INTEGER NOT NULL DEFAULT 1,
+    scan_nk INTEGER NOT NULL DEFAULT 1,
+    max_scan_count INTEGER NOT NULL DEFAULT 40,
+    v_min_pu REAL NOT NULL DEFAULT 0.93,
+    v_max_pu REAL NOT NULL DEFAULT 1.07,
+    overload_warn_pct REAL NOT NULL DEFAULT 80.0,
+    overload_limit_pct REAL NOT NULL DEFAULT 100.0,
+    load_loss_threshold_kw REAL NOT NULL DEFAULT 0.5,
+    do_cycle INTEGER NOT NULL DEFAULT 300,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- 静态安全分析运行与配置审计日志表
+CREATE TABLE IF NOT EXISTS ca_run_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    calc_time TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'INFO',
+    stage TEXT NOT NULL DEFAULT 'system',
+    source TEXT NOT NULL DEFAULT 'system',
+    elapsed_ms REAL,
+    message TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_ca_run_log_time ON ca_run_log(calc_time DESC);
+CREATE INDEX IF NOT EXISTS idx_ca_run_log_run ON ca_run_log(run_id);
+
+-- 静态安全分析日志定期清理策略表
+CREATE TABLE IF NOT EXISTS ca_log_policy (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 1,
+    retention_days INTEGER NOT NULL DEFAULT 30,
+    keep_error_days INTEGER NOT NULL DEFAULT 90,
+    max_rows INTEGER NOT NULL DEFAULT 50000,
+    cleanup_interval_hours INTEGER NOT NULL DEFAULT 6,
+    min_level TEXT NOT NULL DEFAULT 'INFO',
+    last_cleanup_at TEXT NOT NULL DEFAULT '',
+    last_deleted_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+);

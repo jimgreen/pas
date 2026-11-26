@@ -1954,3 +1954,79 @@ body.se-splitting-h {
   .se-params-form, .se-form-grid { grid-template-columns: 1fr; }
   .se-topo-inspector { flex-direction: column; max-height: 360px; }
 }
+
+/* ==================== 全平台 SE → LF → CA 联动态势台 ==================== */
+.se-home-card {
+  background: var(--bg-surface);
+  border: var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.se-home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.se-home-card-head h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.se-home-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pas-chain-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr) 26px minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+.pas-chain-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 700;
+}
+.pas-chain-arrow.synced { color: var(--sem-ok, #16a34a); }
+.pas-chain-arrow.stale { color: var(--sem-warn, #d97706); }
+.pas-overview-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+.pas-overview-bottom > .se-home-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pas-overview-bottom .se-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.pas-cascade-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: var(--border);
+  background: var(--bg-subtle);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+@media (max-width: 1120px) {
+  .pas-chain-grid { grid-template-columns: 1fr; }
+  .pas-chain-arrow { transform: rotate(90deg); height: 20px; }
+  .pas-overview-bottom { grid-template-columns: 1fr; }
+}

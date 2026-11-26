@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CA 风险与图谱 · PAS 在线分析平台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/ca-risks" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><strong>PAS</strong><small data-i18n="brand.subtitle">在线分析平台</small></div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" class="active" data-i18n="nav.ca">静态安全 CA</a>
+          <div class="nav-sub" role="group" aria-label="CA Pages">
+            <a href="/ca-main.html" data-route="ca-main" data-i18n="nav.ca_main">主画面</a>
+            <a href="/ca-risks.html" data-route="ca-risks" class="active" data-i18n="nav.ca_risks">风险与图谱</a>
+            <a href="/ca-contingencies.html" data-route="ca-contingencies" data-i18n="nav.ca_contingencies">预想故障集</a>
+            <a href="/ca-config.html" data-route="ca-config" data-i18n="nav.ca_config">参数与限值</a>
+            <a href="/ca-logs.html" data-route="ca-logs" data-i18n="nav.ca_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.ops">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ca_risks">安全风险与故障图谱</h1>
+            <span id="ca-level-pill" class="se-pill neutral">—</span>
+            <select id="ca-run-select" class="se-select compact tabular" aria-label="History run"></select>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-ca" data-i18n="action.run_ca">立即执行 CA</button>
+          <button type="button" class="se-btn ghost" id="btn-export-risks" data-i18n="action.export_csv">导出 CSV</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <section class="se-panel active">
+          <div class="se-toolbar">
+            <div class="se-tab-strip" role="tablist">
+              <button type="button" class="se-tab active" data-risk-tab="risks" data-i18n="tab.risks">风险明细表</button>
+              <button type="button" class="se-tab" data-risk-tab="contingencies" data-i18n="tab.cont_results">故障扫描总览</button>
+              <button type="button" class="se-tab" data-risk-tab="topology" data-i18n="tab.risk_map">接线图风险分布</button>
+            </div>
+            <div class="se-tool-group" id="ca-risk-filters">
+              <select id="ca-f-cat" class="se-select compact" aria-label="Category">
+                <option value="all" data-i18n="opt.all_cat">全部场景</option>
+                <option value="N-0">N-0</option>
+                <option value="N-1">N-1</option>
+                <option value="N-k">N-k</option>
+              </select>
+              <select id="ca-f-sev" class="se-select compact" aria-label="Severity">
+                <option value="all" data-i18n="opt.all_sev">全部等级</option>
+                <option value="critical" data-i18n="sev.critical">严重</option>
+                <option value="high" data-i18n="sev.high">高</option>
+                <option value="medium" data-i18n="sev.medium">中</option>
+                <option value="low" data-i18n="sev.low">低</option>
+              </select>
+              <select id="ca-f-rtype" class="se-select compact" aria-label="Risk type">
+                <option value="all" data-i18n="opt.all_rtype">全部类型</option>
+                <option value="divergence" data-i18n="rtype.divergence">潮流发散</option>
+                <option value="load_loss" data-i18n="rtype.load_loss">负荷损失</option>
+                <option value="overload" data-i18n="rtype.overload">设备过载</option>
+                <option value="heavy_load" data-i18n="rtype.heavy_load">重载预警</option>
+                <option value="voltage_low" data-i18n="rtype.voltage_low">电压越下限</option>
+                <option value="voltage_high" data-i18n="rtype.voltage_high">电压越上限</option>
+              </select>
+              <input id="ca-f-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_risk" placeholder="搜索设备/故障...">
+            </div>
+          </div>
+
+          <!-- 子视图 1：风险明细表 -->
+          <div id="pane-ca-risks" class="se-table-panel">
+            <div class="se-table-wrap">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.severity">等级</th>
+                    <th data-i18n="col.category">类别</th>
+                    <th data-i18n="col.contingency">故障场景</th>
+                    <th data-i18n="col.risk_type">风险类型</th>
+                    <th data-i18n="col.device">受影响设备</th>
+                    <th data-i18n="col.actual">实算值</th>
+                    <th data-i18n="col.limit">限值</th>
+                    <th data-i18n="col.violation">越限幅</th>
+                    <th data-i18n="col.detail">详情</th>
+                  </tr>
+                </thead>
+                <tbody id="ca-risks-tbody"></tbody>
+              </table>
+            </div>
+            <div class="se-pager" id="ca-risks-pager"></div>
+          </div>
+
+          <!-- 子视图 2：故障扫描总览 -->
+          <div id="pane-ca-conts" class="se-table-panel" hidden>
+            <div class="se-table-wrap">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.severity">最高等级</th>
+                    <th data-i18n="col.category">类别</th>
+                    <th data-i18n="col.contingency">预想故障</th>
+                    <th data-i18n="col.targets">开断元件</th>
+                    <th data-i18n="col.conv">收敛</th>
+                    <th data-i18n="col.load_loss">失电负荷</th>
+                    <th data-i18n="col.max_loading">最大负载 %</th>
+                    <th data-i18n="col.min_v">最低电压</th>
+                    <th data-i18n="col.risk_cnt">风险数</th>
+                    <th data-i18n="col.elapsed_ms">耗时 ms</th>
+                  </tr>
+                </thead>
+                <tbody id="ca-conts-tbody"></tbody>
+              </table>
+            </div>
+            <div class="se-pager" id="ca-conts-pager"></div>
+          </div>
+
+          <!-- 子视图 3：接线图风险分布（复用 se-topo-stage-card 严格限制视口高度） -->
+          <div id="pane-ca-topo" class="se-topo-layout" style="flex:1;min-height:0" hidden>
+            <div class="se-topo-stage-card">
+              <div class="se-toolbar">
+                <div class="se-tool-group">
+                  <select id="ca-device-jump" class="se-select compact" aria-label="Locate risk device"></select>
+                </div>
+                <div class="se-tool-group">
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-in">+</button>
+                  <span class="se-zoom-text tabular" id="svg-zoom-label">100%</span>
+                  <button type="button" class="se-btn mini" id="btn-svg-zoom-out">−</button>
+                  <button type="button" class="se-btn mini" id="btn-svg-fit" data-i18n="topo.fit">适应画布</button>
+                </div>
+              </div>
+              <div class="se-svg-viewport" id="ca-svg-viewport">
+                <div class="se-svg-canvas" id="ca-svg-canvas"></div>
+                <div class="se-svg-tooltip" id="ca-svg-tooltip" hidden></div>
+              </div>
+            </div>
+            <aside class="se-topo-inspector">
+              <section class="se-side-card se-bad-card">
+                <div class="se-side-head">
+                  <h2 data-i18n="topo.risk_devices">高风险设备</h2>
+                  <span class="se-pill ok tabular" id="ca-topo-risk-count">0</span>
+                </div>
+                <div class="se-bad-list" id="ca-topo-risk-list"></div>
+              </section>
+              <section class="se-side-card se-dev-card">
+                <div class="se-side-head">
+                  <h2 id="ca-insp-title" data-i18n="topo.dev_risks">设备风险详情</h2>
+                  <span class="se-tag" id="ca-insp-sev">—</span>
+                </div>
+                <div class="se-inspector-body" id="ca-insp-body"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/assets/ca-app.js"></script>
+</body>
+</html>

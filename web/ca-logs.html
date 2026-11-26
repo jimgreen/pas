@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CA 运行日志 · PAS 在线分析平台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/ca-logs" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><strong>PAS</strong><small data-i18n="brand.subtitle">在线分析平台</small></div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" class="active" data-i18n="nav.ca">静态安全 CA</a>
+          <div class="nav-sub" role="group" aria-label="CA Pages">
+            <a href="/ca-main.html" data-route="ca-main" data-i18n="nav.ca_main">主画面</a>
+            <a href="/ca-risks.html" data-route="ca-risks" data-i18n="nav.ca_risks">风险与图谱</a>
+            <a href="/ca-contingencies.html" data-route="ca-contingencies" data-i18n="nav.ca_contingencies">预想故障集</a>
+            <a href="/ca-config.html" data-route="ca-config" data-i18n="nav.ca_config">参数与限值</a>
+            <a href="/ca-logs.html" data-route="ca-logs" class="active" data-i18n="nav.ca_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.ops">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ca_logs">CA 运行日志与调度</h1>
+            <span id="ca-log-total-pill" class="se-pill neutral tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-ca" data-i18n="action.run_ca">立即执行 CA</button>
+          <button type="button" class="se-btn ghost" id="btn-log-export" data-i18n="action.export_csv">导出 CSV</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <section class="se-panel active">
+          <div class="se-toolbar">
+            <div class="se-tab-strip" role="tablist">
+              <button type="button" class="se-tab active" data-log-tab="list" data-i18n="tab.log_list">日志明细</button>
+              <button type="button" class="se-tab" data-log-tab="runs" data-i18n="tab.run_sched">运行与调度</button>
+              <button type="button" class="se-tab" data-log-tab="policy" data-i18n="tab.log_policy">清理策略</button>
+            </div>
+            <div class="se-tool-group" id="ca-log-filters">
+              <select id="clog-level" class="se-select compact" aria-label="Level">
+                <option value="all" data-i18n="opt.all_level">全部级别</option>
+                <option value="INFO">INFO</option>
+                <option value="WARN">WARN</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+              <select id="clog-stage" class="se-select compact" aria-label="Stage">
+                <option value="all" data-i18n="opt.all_stage">全部阶段</option>
+                <option value="trigger">trigger</option>
+                <option value="lf_import">lf_import</option>
+                <option value="n0_check">n0_check</option>
+                <option value="n1_scan">n1_scan</option>
+                <option value="persist">persist</option>
+                <option value="param_change">param_change</option>
+                <option value="contingency_change">contingency_change</option>
+                <option value="cleanup">cleanup</option>
+                <option value="error">error</option>
+              </select>
+              <select id="clog-win" class="se-select compact" aria-label="Window">
+                <option value="all" data-i18n="opt.all_time">全部时间</option>
+                <option value="24h">24h</option>
+                <option value="7d">7d</option>
+                <option value="30d">30d</option>
+              </select>
+              <input id="clog-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_log" placeholder="搜索日志消息...">
+            </div>
+          </div>
+
+          <div id="pane-ca-log-list" class="se-table-panel">
+            <div class="se-table-wrap">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.time">时间</th>
+                    <th data-i18n="col.level">级别</th>
+                    <th data-i18n="col.stage">阶段</th>
+                    <th>Run</th>
+                    <th data-i18n="col.source">来源</th>
+                    <th data-i18n="col.elapsed_ms">耗时 ms</th>
+                    <th data-i18n="col.message">消息</th>
+                  </tr>
+                </thead>
+                <tbody id="clog-tbody"></tbody>
+              </table>
+            </div>
+            <div class="se-pager" id="clog-pager"></div>
+          </div>
+
+          <div id="pane-ca-log-runs" class="se-home-split" hidden>
+            <article class="se-home-card">
+              <div class="se-home-card-head">
+                <h2 data-i18n="logs.history_runs">CA 历史运行记录</h2>
+              </div>
+              <div class="se-table-wrap">
+                <table class="se-table compact">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th data-i18n="col.time">开始时间</th>
+                      <th data-i18n="col.source_lf">LF</th>
+                      <th data-i18n="col.risk_level">等级</th>
+                      <th data-i18n="col.score">评分</th>
+                      <th data-i18n="col.n1_risk">N-0/N-1</th>
+                      <th data-i18n="col.actions">回放</th>
+                    </tr>
+                  </thead>
+                  <tbody id="crun-tbody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="se-home-card">
+              <div class="se-home-card-head">
+                <h2 data-i18n="logs.schedule_card">CA 周期调度</h2>
+              </div>
+              <form id="ca-sched-form" class="se-form-grid cols-2" style="padding:10px">
+                <label class="se-field">
+                  <span data-i18n="sched.enabled">周期自动执行</span>
+                  <select id="csched-enabled">
+                    <option value="1" data-i18n="opt.enabled">启用</option>
+                    <option value="0" data-i18n="opt.disabled">停用</option>
+                  </select>
+                </label>
+                <label class="se-field">
+                  <span data-i18n="sched.period">周期 (s)</span>
+                  <input id="csched-period" type="number" min="5" max="604800" step="1" required>
+                </label>
+                <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
+                  <button type="submit" class="se-btn primary" data-i18n="action.save_sched">保存调度</button>
+                </div>
+              </form>
+            </article>
+          </div>
+
+          <div id="pane-ca-log-policy" class="se-form-panel" hidden>
+            <form id="ca-policy-form" class="se-form-grid cols-4">
+              <label class="se-field">
+                <span data-i18n="pol.enabled">自动清理</span>
+                <select id="cpol-enabled">
+                  <option value="1" data-i18n="opt.enabled">启用</option>
+                  <option value="0" data-i18n="opt.disabled">停用</option>
+                </select>
+              </label>
+              <label class="se-field">
+                <span data-i18n="pol.ret_days">常规保留天数</span>
+                <input id="cpol-ret" type="number" min="1" max="3650">
+              </label>
+              <label class="se-field">
+                <span data-i18n="pol.err_days">ERROR 保留天数</span>
+                <input id="cpol-err" type="number" min="1" max="3650">
+              </label>
+              <label class="se-field">
+                <span data-i18n="pol.max_rows">最大保留条数</span>
+                <input id="cpol-max" type="number" min="100" max="500000">
+              </label>
+              <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
+                <button type="submit" class="se-btn primary" data-i18n="action.save_params">保存策略</button>
+                <button type="button" class="se-btn danger" id="btn-clog-purge" data-i18n="action.purge_now">立即按策略清理</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-msg" style="margin:8px 0 14px;color:var(--muted);font-size:13px"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="confirm-cancel" data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="confirm-ok" data-i18n="action.confirm">确认</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/ca-app.js"></script>
+</body>
+</html>

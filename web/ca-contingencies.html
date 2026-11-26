@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="minimalist-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CA 预想故障集 · PAS 在线分析平台</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+</head>
+<body data-page="/ca-contingencies" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div><strong>PAS</strong><small data-i18n="brand.subtitle">在线分析平台</small></div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" class="active" data-i18n="nav.ca">静态安全 CA</a>
+          <div class="nav-sub" role="group" aria-label="CA Pages">
+            <a href="/ca-main.html" data-route="ca-main" data-i18n="nav.ca_main">主画面</a>
+            <a href="/ca-risks.html" data-route="ca-risks" data-i18n="nav.ca_risks">风险与图谱</a>
+            <a href="/ca-contingencies.html" data-route="ca-contingencies" class="active" data-i18n="nav.ca_contingencies">预想故障集</a>
+            <a href="/ca-config.html" data-route="ca-config" data-i18n="nav.ca_config">参数与限值</a>
+            <a href="/ca-logs.html" data-route="ca-logs" data-i18n="nav.ca_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.ops">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/measurements.html" data-route="measurements" data-i18n="nav.measurements">设备量测</a>
+          <a href="/limits.html" data-route="limits" data-i18n="nav.limits">安全限值</a>
+          <a href="/workspace.html" data-route="workspace" data-i18n="nav.workspace">工作目录</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ca_contingencies">预想故障集管理</h1>
+            <span id="ca-def-stat-pill" class="se-pill neutral tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-ca" data-i18n="action.scan_now">立即扫描当前故障集</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme">
+            <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
+            <option value="precision-dark" data-i18n="theme.dark">精密暗黑</option>
+            <option value="bento-grid" data-i18n="theme.bento">便当盒网格</option>
+            <option value="glassmorphism" data-i18n="theme.glass">毛玻璃拟态</option>
+            <option value="editorial" data-i18n="theme.editorial">编辑杂志</option>
+            <option value="sci-fi-cyan" data-i18n="theme.cyan">科幻 · 电光青</option>
+            <option value="sci-fi-purple" data-i18n="theme.purple">科幻 · 赛博紫</option>
+            <option value="sci-fi-matrix" data-i18n="theme.matrix">科幻 · 矩阵绿</option>
+          </select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+            <option value="ru-RU">Русский</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <section class="se-panel active">
+          <div class="se-toolbar">
+            <div class="se-tool-group">
+              <select id="cdef-cat" class="se-select compact" aria-label="Category">
+                <option value="all" data-i18n="opt.all_cat">全部场景</option>
+                <option value="N-1">N-1</option>
+                <option value="N-k">N-k</option>
+              </select>
+              <select id="cdef-dtype" class="se-select compact" aria-label="Device type">
+                <option value="all" data-i18n="opt.all_type">全部设备类</option>
+                <option value="DCACConverter">DCACConverter</option>
+                <option value="DCDCConverter">DCDCConverter</option>
+                <option value="ACBranch">ACBranch</option>
+                <option value="DCBranch">DCBranch</option>
+                <option value="ACGenerator">ACGenerator</option>
+                <option value="DCGenerator">DCGenerator</option>
+              </select>
+              <input id="cdef-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_cont" placeholder="搜索故障名/元件...">
+            </div>
+            <div class="se-tool-group">
+              <button type="button" class="se-btn mini primary" id="btn-cdef-add" data-i18n="action.add_cont">+ 新增故障</button>
+              <button type="button" class="se-btn mini" id="btn-cdef-sync" data-i18n="action.sync_n1">从模型生成 N-1</button>
+              <button type="button" class="se-btn mini" id="btn-cdef-enable-all" data-i18n="action.enable_filtered">全部启用</button>
+              <button type="button" class="se-btn mini" id="btn-cdef-disable-all" data-i18n="action.disable_filtered">全部停用</button>
+              <button type="button" class="se-btn mini danger" id="btn-cdef-clear" data-i18n="action.clear_conts">清空故障集</button>
+            </div>
+          </div>
+
+          <div class="se-table-panel">
+            <div class="se-table-wrap">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="col.priority">优先级</th>
+                    <th data-i18n="col.category">类别</th>
+                    <th data-i18n="col.contingency">故障名称</th>
+                    <th data-i18n="col.targets">开断元件</th>
+                    <th data-i18n="col.source">来源</th>
+                    <th data-i18n="col.status">状态</th>
+                    <th data-i18n="col.actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="cdef-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 新增/编辑预想故障模态框（支持 N-1 与 N-k 双元件组合） -->
+  <dialog id="cdef-dialog" class="se-modal wide" aria-labelledby="cdef-dlg-title">
+    <h3 id="cdef-dlg-title" data-i18n="dlg.cont_title">预想故障定义</h3>
+    <form id="cdef-form" class="se-form-grid" style="margin-top:8px">
+      <input type="hidden" id="cf-id">
+      <label class="se-field">
+        <span data-i18n="col.contingency">故障名称</span>
+        <input id="cf-name" type="text" placeholder="留空自动命名">
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.priority">优先级</span>
+        <input id="cf-prio" type="number" min="1" max="999" value="20" required>
+      </label>
+      <label class="se-field">
+        <span data-i18n="dlg.dev1_type">主故障元件类型</span>
+        <select id="cf-dt1"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="dlg.dev1_name">主故障元件</span>
+        <select id="cf-dn1"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="dlg.dev2_type">第二元件类型（N-k 可选）</span>
+        <select id="cf-dt2"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="dlg.dev2_name">第二元件（N-k 可选）</span>
+        <select id="cf-dn2"></select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.status">状态</span>
+        <select id="cf-enabled">
+          <option value="1" data-i18n="opt.enabled">启用</option>
+          <option value="0" data-i18n="opt.disabled">停用</option>
+        </select>
+      </label>
+      <label class="se-field">
+        <span data-i18n="col.note">备注</span>
+        <input id="cf-note" type="text" maxlength="200">
+      </label>
+      <div class="se-modal-actions" style="grid-column:1 / -1">
+        <button type="button" class="se-btn ghost" id="cf-cancel" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="se-btn primary" data-i18n="action.save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-msg" style="margin:8px 0 14px;color:var(--muted);font-size:13px"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="confirm-cancel" data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="confirm-ok" data-i18n="action.confirm">确认</button>
+    </div>
+  </dialog>
+
+  <script src="/assets/ca-app.js"></script>
+</body>
+</html>

@@ -18,6 +18,24 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .analytics import DETAILS, detail_query, hour_window, merge_trends
+from .ca_online import (
+    bulk_toggle_ca_contingencies,
+    ca_log_summary,
+    clear_ca_contingencies,
+    delete_ca_contingency,
+    ensure_ca_log_policy,
+    ensure_ca_params,
+    export_ca_logs_csv,
+    list_ca_contingencies,
+    list_ca_logs,
+    purge_ca_logs,
+    record_ca_log,
+    reset_ca_params,
+    save_ca_contingency,
+    save_ca_params,
+    sync_ca_contingencies_from_model,
+    update_ca_log_policy,
+)
 from .dbdef import build_dbdef_rows, load_catalog, normalize_dbdef_row, table_names, upsert_dbdef_row
 from .input_store import SE_DEVICE_RESULT_METRICS
 from .rtdb_schema import execute_schema, schema_transaction
@@ -65,6 +83,22 @@ from .se_pseudo import (
     save_pseudo_meas_define,
     save_pseudo_stat_define,
     store_se_pseudo_results,
+)
+from .lf_online import (
+    clear_lf_overrides,
+    delete_lf_override,
+    ensure_lf_log_policy,
+    ensure_lf_params,
+    export_lf_logs_csv,
+    lf_log_summary,
+    list_lf_logs,
+    list_lf_overrides,
+    purge_lf_logs,
+    record_lf_log,
+    reset_lf_params,
+    save_lf_override,
+    save_lf_params,
+    update_lf_log_policy,
 )
 from .se_weight import delete_weight_rule, list_weight_rules, save_weight_rule
 
@@ -1962,16 +1996,362 @@ class Repository:
             )
 
     @synchronized
-    def store_lf_result(self, run_id: int, result: dict[str, Any]) -> None:
+    def store_lf_result(
+        self,
+        run_id: int,
+        result: dict[str, Any],
+        *,
+        calc_time: str | None = None,
+        elapsed_seconds: float | None = None,
+        kernel_seconds: float | None = None,
+    ) -> None:
         conn = self._connection()
-        conn.execute("INSERT INTO lf_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (run_id, _bool(result.get("converged")), int(result.get("iterations", 0)), float(result.get("norm_f", 0.0)), str(result.get("failure_reason", "") or ""), result.get("ac_converged"), result.get("ac_iterations"), result.get("ac_norm_f"), result.get("dc_converged"), result.get("dc_iterations"), result.get("dc_norm_f"), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        conn.executemany("INSERT INTO lf_device_result(run_id, domain, device_type, device_key, node_from, node_to, voltage_from, voltage_to, p_from, q_from, p_to, q_to, current_from, current_to, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, row.get("domain", ""), row.get("device_type", ""), row.get("device_key", ""), row.get("node_from"), row.get("node_to"), row.get("voltage_from"), row.get("voltage_to"), row.get("p_from"), row.get("q_from"), row.get("p_to"), row.get("q_to"), row.get("current_from"), row.get("current_to"), json.dumps(row, ensure_ascii=False)) for row in result.get("devices", [])))
+        stamp = calc_time or utc_now()
+        conn.execute(
+            "INSERT INTO lf_result VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                _bool(result.get("converged")),
+                int(result.get("iterations", 0)),
+                float(result.get("norm_f", 0.0)),
+                str(result.get("failure_reason", "") or ""),
+                result.get("ac_converged"),
+                result.get("ac_iterations"),
+                result.get("ac_norm_f"),
+                result.get("dc_converged"),
+                result.get("dc_iterations"),
+                result.get("dc_norm_f"),
+                json.dumps(result.get("summary", {}), ensure_ascii=False),
+            ),
+        )
+        conn.executemany(
+            "INSERT INTO lf_device_result(run_id, domain, device_type, device_key, node_from, node_to, voltage_from, voltage_to, p_from, q_from, p_to, q_to, current_from, current_to, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                (
+                    run_id,
+                    row.get("domain", ""),
+                    row.get("device_type", ""),
+                    row.get("device_key", ""),
+                    row.get("node_from"),
+                    row.get("node_to"),
+                    row.get("voltage_from"),
+                    row.get("voltage_to"),
+                    row.get("p_from"),
+                    row.get("q_from"),
+                    row.get("p_to"),
+                    row.get("q_to"),
+                    row.get("current_from"),
+                    row.get("current_to"),
+                    json.dumps(row, ensure_ascii=False),
+                )
+                for row in result.get("devices", [])
+            ),
+        )
+
+        # 写入在线潮流工程单位结果表与统计表（lf_statistics / lf_bus_result / lf_branch_result / lf_unit_result）
+        st = result.get("lf_statistics") or {}
+        k_sec = float(kernel_seconds if kernel_seconds is not None else (result.get("performance") or {}).get("solve_seconds", 0.0) or 0.0)
+        e_sec = float(elapsed_seconds if elapsed_seconds is not None else k_sec)
+        conn.execute(
+            """INSERT OR REPLACE INTO lf_statistics(
+                   run_id, calc_time, source_se_run_id, mode, elapsed_seconds, kernel_seconds,
+                   converged, iterations, norm_f,
+                   ac_converged, ac_iterations, ac_norm_f,
+                   dc_converged, dc_iterations, dc_norm_f,
+                   ac_gen_p, ac_gen_q, ac_load_p, ac_load_q, ac_loss_p,
+                   dc_gen_p, dc_load_p, dc_loss_p,
+                   total_gen_p, total_load_p, total_loss_p, loss_rate,
+                   min_v_pu, max_v_pu, min_v_bus, max_v_bus,
+                   max_loading_pct, max_loading_dev,
+                   v_violation_count, overload_count, device_count, override_count,
+                   u_unit, p_unit, i_unit, failure_reason
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                run_id,
+                stamp,
+                st.get("source_se_run_id"),
+                str(st.get("mode") or "online"),
+                e_sec,
+                k_sec,
+                _bool(st.get("converged", result.get("converged"))),
+                int(st.get("iterations", result.get("iterations", 0))),
+                float(st.get("norm_f", result.get("norm_f", 0.0))),
+                st.get("ac_converged", result.get("ac_converged")),
+                st.get("ac_iterations", result.get("ac_iterations")),
+                st.get("ac_norm_f", result.get("ac_norm_f")),
+                st.get("dc_converged", result.get("dc_converged")),
+                st.get("dc_iterations", result.get("dc_iterations")),
+                st.get("dc_norm_f", result.get("dc_norm_f")),
+                float(st.get("ac_gen_p", 0.0)),
+                float(st.get("ac_gen_q", 0.0)),
+                float(st.get("ac_load_p", 0.0)),
+                float(st.get("ac_load_q", 0.0)),
+                float(st.get("ac_loss_p", 0.0)),
+                float(st.get("dc_gen_p", 0.0)),
+                float(st.get("dc_load_p", 0.0)),
+                float(st.get("dc_loss_p", 0.0)),
+                float(st.get("total_gen_p", 0.0)),
+                float(st.get("total_load_p", 0.0)),
+                float(st.get("total_loss_p", 0.0)),
+                float(st.get("loss_rate", 0.0)),
+                st.get("min_v_pu"),
+                st.get("max_v_pu"),
+                str(st.get("min_v_bus") or ""),
+                str(st.get("max_v_bus") or ""),
+                float(st.get("max_loading_pct", 0.0)),
+                str(st.get("max_loading_dev") or ""),
+                int(st.get("v_violation_count", 0)),
+                int(st.get("overload_count", 0)),
+                int(st.get("device_count", len(result.get("devices") or ()))),
+                int(st.get("override_count", 0)),
+                str(st.get("u_unit") or "V"),
+                str(st.get("p_unit") or "kW"),
+                str(st.get("i_unit") or "A"),
+                str(st.get("failure_reason", result.get("failure_reason", "")) or ""),
+            ),
+        )
+        lf_buses = result.get("lf_buses") or ()
+        if lf_buses:
+            conn.executemany(
+                """INSERT INTO lf_bus_result(
+                       run_id, domain, device_type, device_idx, device_name,
+                       vbase, v_pu, v_eng, angle_deg, v_se, v_diff, v_status
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        run_id,
+                        b["domain"],
+                        b["device_type"],
+                        int(b["device_idx"]),
+                        b["device_name"],
+                        b.get("vbase"),
+                        b.get("v_pu"),
+                        b.get("v_eng"),
+                        b.get("angle_deg"),
+                        b.get("v_se"),
+                        b.get("v_diff"),
+                        b.get("v_status", "normal"),
+                    )
+                    for b in lf_buses
+                ),
+            )
+        lf_branches = result.get("lf_branches") or ()
+        if lf_branches:
+            conn.executemany(
+                """INSERT INTO lf_branch_result(
+                       run_id, domain, device_type, device_idx, device_name,
+                       node_from, node_to, p_from, q_from, i_from, v_from,
+                       p_to, q_to, i_to, v_to, p_loss, rated_capacity,
+                       loading_pct, overload, p_se, p_diff
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        run_id,
+                        b["domain"],
+                        b["device_type"],
+                        b.get("device_idx"),
+                        b["device_name"],
+                        b.get("node_from"),
+                        b.get("node_to"),
+                        b.get("p_from"),
+                        b.get("q_from"),
+                        b.get("i_from"),
+                        b.get("v_from"),
+                        b.get("p_to"),
+                        b.get("q_to"),
+                        b.get("i_to"),
+                        b.get("v_to"),
+                        b.get("p_loss"),
+                        b.get("rated_capacity"),
+                        b.get("loading_pct"),
+                        int(b.get("overload", 0)),
+                        b.get("p_se"),
+                        b.get("p_diff"),
+                    )
+                    for b in lf_branches
+                ),
+            )
+        lf_units = result.get("lf_units") or ()
+        if lf_units:
+            conn.executemany(
+                """INSERT INTO lf_unit_result(
+                       run_id, domain, device_type, device_idx, device_name,
+                       node_idx, control_type, p_lf, q_lf, v_lf, i_lf,
+                       p_se, p_diff, rated_capacity, loading_pct, overload
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        run_id,
+                        u["domain"],
+                        u["device_type"],
+                        u.get("device_idx"),
+                        u["device_name"],
+                        u.get("node_idx"),
+                        u.get("control_type", ""),
+                        u.get("p_lf"),
+                        u.get("q_lf"),
+                        u.get("v_lf"),
+                        u.get("i_lf"),
+                        u.get("p_se"),
+                        u.get("p_diff"),
+                        u.get("rated_capacity"),
+                        u.get("loading_pct"),
+                        int(u.get("overload", 0)),
+                    )
+                    for u in lf_units
+                ),
+            )
 
     @synchronized
-    def store_ca_result(self, run_id: int, result: dict[str, Any]) -> None:
+    def store_ca_result(
+        self,
+        run_id: int,
+        result: dict[str, Any],
+        *,
+        calc_time: str | None = None,
+        elapsed_seconds: float | None = None,
+        kernel_seconds: float | None = None,
+    ) -> None:
         conn = self._connection()
-        conn.execute("INSERT INTO ca_result VALUES (?, ?, ?, ?, ?, ?)", (run_id, result.get("risk_level", "无"), int(result.get("n0_risk_count", 0)), int(result.get("n1_scan_count", 0)), int(result.get("n1_risk_count", 0)), json.dumps(result.get("summary", {}), ensure_ascii=False)))
-        conn.executemany("INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", ((run_id, str(row.get("contingency", "N-0")), str(row.get("risk_source", "")), str(row.get("risk_dist", "")), str(row.get("risk_type", "")), row.get("risk_value") if isinstance(row.get("risk_value"), (int, float)) else None, None if isinstance(row.get("risk_value"), (int, float)) else str(row.get("risk_value") or ""), str(row.get("risk_info", "")), utc_now()) for row in result.get("risks", [])))
+        conn.execute(
+            "INSERT INTO ca_result VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                result.get("risk_level", "安全"),
+                int(result.get("n0_risk_count", 0)),
+                int(result.get("n1_scan_count", 0)),
+                int(result.get("n1_risk_count", 0)),
+                json.dumps(result.get("summary", {}), ensure_ascii=False),
+            ),
+        )
+        conn.executemany(
+            "INSERT INTO ca_risk(run_id, contingency, risk_source, risk_dist, risk_type, risk_value_real, risk_value_text, risk_info, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                (
+                    run_id,
+                    str(row.get("contingency", "N-0")),
+                    str(row.get("risk_source", "")),
+                    str(row.get("risk_dist", "")),
+                    str(row.get("risk_type", "")),
+                    row.get("risk_value") if isinstance(row.get("risk_value"), (int, float)) else None,
+                    None if isinstance(row.get("risk_value"), (int, float)) else str(row.get("risk_value") or ""),
+                    str(row.get("risk_info", "")),
+                    utc_now(),
+                )
+                for row in result.get("risks", [])
+            ),
+        )
+        st = result.get("ca_statistics")
+        if isinstance(st, dict):
+            stamp = calc_time or utc_now()
+            k_sec = float(kernel_seconds if kernel_seconds is not None else (result.get("performance") or {}).get("solve_seconds", 0.0) or 0.0)
+            e_sec = float(elapsed_seconds if elapsed_seconds is not None else k_sec)
+            conn.execute(
+                """INSERT OR REPLACE INTO ca_statistics(
+                       run_id, calc_time, source_lf_run_id, source_se_run_id, base_converged,
+                       risk_level, security_score, n0_risk_count,
+                       n1_total_count, n1_converged_count, n1_diverged_count, n1_risk_count,
+                       nk_total_count, nk_risk_count,
+                       critical_count, high_count, medium_count, low_count,
+                       max_loading_pct, max_loading_dev,
+                       min_v_pu, min_v_bus, max_v_pu, max_v_bus,
+                       max_load_loss_kw, worst_contingency,
+                       elapsed_seconds, kernel_seconds,
+                       u_unit, p_unit, i_unit, failure_reason
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_id,
+                    stamp,
+                    st.get("source_lf_run_id"),
+                    st.get("source_se_run_id"),
+                    int(st.get("base_converged", 1)),
+                    str(st.get("risk_level") or result.get("risk_level") or "安全"),
+                    float(st.get("security_score", 100.0)),
+                    int(st.get("n0_risk_count", 0)),
+                    int(st.get("n1_total_count", 0)),
+                    int(st.get("n1_converged_count", 0)),
+                    int(st.get("n1_diverged_count", 0)),
+                    int(st.get("n1_risk_count", 0)),
+                    int(st.get("nk_total_count", 0)),
+                    int(st.get("nk_risk_count", 0)),
+                    int(st.get("critical_count", 0)),
+                    int(st.get("high_count", 0)),
+                    int(st.get("medium_count", 0)),
+                    int(st.get("low_count", 0)),
+                    float(st.get("max_loading_pct", 0.0)),
+                    str(st.get("max_loading_dev") or ""),
+                    st.get("min_v_pu"),
+                    str(st.get("min_v_bus") or ""),
+                    st.get("max_v_pu"),
+                    str(st.get("max_v_bus") or ""),
+                    float(st.get("max_load_loss_kw", 0.0)),
+                    str(st.get("worst_contingency") or ""),
+                    e_sec,
+                    k_sec,
+                    str(st.get("u_unit") or "V"),
+                    str(st.get("p_unit") or "kW"),
+                    str(st.get("i_unit") or "A"),
+                    str(st.get("failure_reason") or ""),
+                ),
+            )
+        conts = result.get("ca_contingencies") or ()
+        if conts:
+            conn.executemany(
+                """INSERT INTO ca_contingency_result(
+                       run_id, contingency_name, category, target_desc, converged, iterations,
+                       elapsed_ms, load_loss_kw, max_loading_pct, max_loading_dev,
+                       min_v_pu, min_v_bus, max_v_pu, max_v_bus, risk_count, severity, failure_reason
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        run_id,
+                        str(c.get("contingency_name") or ""),
+                        str(c.get("category") or "N-1"),
+                        str(c.get("target_desc") or ""),
+                        int(c.get("converged", 1)),
+                        int(c.get("iterations", 0)),
+                        float(c.get("elapsed_ms", 0.0)),
+                        float(c.get("load_loss_kw", 0.0)),
+                        float(c.get("max_loading_pct", 0.0)),
+                        str(c.get("max_loading_dev") or ""),
+                        c.get("min_v_pu"),
+                        str(c.get("min_v_bus") or ""),
+                        c.get("max_v_pu"),
+                        str(c.get("max_v_bus") or ""),
+                        int(c.get("risk_count", 0)),
+                        str(c.get("severity") or "normal"),
+                        str(c.get("failure_reason") or ""),
+                    )
+                    for c in conts
+                ),
+            )
+        details = result.get("ca_risk_details") or ()
+        if details:
+            conn.executemany(
+                """INSERT INTO ca_risk_detail(
+                       run_id, contingency_name, category, device_type, device_idx, device_name,
+                       risk_category, severity, metric, actual_value, limit_value, violation_pct, unit, detail
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        run_id,
+                        str(d.get("contingency_name") or "N-0 基态"),
+                        str(d.get("category") or "N-0"),
+                        str(d.get("device_type") or ""),
+                        d.get("device_idx"),
+                        str(d.get("device_name") or ""),
+                        str(d.get("risk_category") or "overload"),
+                        str(d.get("severity") or "medium"),
+                        str(d.get("metric") or ""),
+                        d.get("actual_value"),
+                        d.get("limit_value"),
+                        float(d.get("violation_pct", 0.0)),
+                        str(d.get("unit") or ""),
+                        str(d.get("detail") or ""),
+                    )
+                    for d in details
+                ),
+            )
 
     @synchronized
     def store_result(
@@ -1993,11 +2373,678 @@ class Repository:
                 kernel_seconds=kernel_seconds,
             )
         elif task_type == "lf":
-            self.store_lf_result(run_id, result)
+            self.store_lf_result(
+                run_id,
+                result,
+                calc_time=calc_time,
+                elapsed_seconds=elapsed_seconds,
+                kernel_seconds=kernel_seconds,
+            )
         elif task_type == "ca":
-            self.store_ca_result(run_id, result)
+            self.store_ca_result(
+                run_id,
+                result,
+                calc_time=calc_time,
+                elapsed_seconds=elapsed_seconds,
+                kernel_seconds=kernel_seconds,
+            )
         else:
             raise ValueError(f"unsupported task type: {task_type}")
+
+    # ======================== 在线潮流分析 (LF) 查询与管理接口 ========================
+
+    @synchronized
+    def lf_params_get(self, para_file: str | Path | None = None, *, do_cycle: int | float = 60) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ensure_lf_params(conn, para_file, do_cycle=do_cycle)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def lf_params_save(self, payload: dict[str, Any], para_file: str | Path | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        res = save_lf_params(conn, payload, para_file)
+        conn.commit()
+        return res
+
+    @synchronized
+    def lf_params_reset(self, para_file: str | Path | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        res = reset_lf_params(conn, para_file)
+        conn.commit()
+        return res
+
+    @synchronized
+    def lf_overrides_list(self, *, scheme_name: str = "", enabled_only: bool = False, device_type: str = "", q: str = "") -> list[dict[str, Any]]:
+        return list_lf_overrides(self._connection(), scheme_name=scheme_name, enabled_only=enabled_only, device_type=device_type, q=q)
+
+    @synchronized
+    def lf_override_save(self, payload: dict[str, Any], *, override_id: int | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        res = save_lf_override(conn, payload, override_id=override_id)
+        conn.commit()
+        return res
+
+    @synchronized
+    def lf_override_delete(self, override_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_lf_override(conn, override_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def lf_overrides_clear(self, *, scheme_name: str = "") -> int:
+        conn = self._connection()
+        cnt = clear_lf_overrides(conn, scheme_name=scheme_name)
+        conn.commit()
+        return cnt
+
+    @synchronized
+    def record_lf_run_log(
+        self,
+        *,
+        level: str = "INFO",
+        stage: str = "system",
+        message: str = "",
+        run_id: int | None = None,
+        source: str = "system",
+        elapsed_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> int | None:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        lid = record_lf_log(
+            conn,
+            level=level,
+            stage=stage,
+            message=message,
+            run_id=run_id,
+            source=source,
+            elapsed_ms=elapsed_ms,
+            detail=detail,
+        )
+        if commit and not was_in_tx:
+            conn.commit()
+        return lid
+
+    @synchronized
+    def lf_logs_list(self, **kwargs) -> dict[str, Any]:
+        return list_lf_logs(self._connection(), **kwargs)
+
+    @synchronized
+    def lf_logs_summary(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = lf_log_summary(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def lf_logs_policy_get(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ensure_lf_log_policy(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def lf_logs_policy_update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        conn = self._connection()
+        res = update_lf_log_policy(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def lf_logs_purge(self, **kwargs) -> dict[str, Any]:
+        conn = self._connection()
+        res = purge_lf_logs(conn, **kwargs)
+        conn.commit()
+        return res
+
+    @synchronized
+    def lf_logs_export_csv(self, **kwargs) -> str:
+        return export_lf_logs_csv(self._connection(), **kwargs)
+
+    @synchronized
+    def lf_converged_runs(self, limit: int = 30) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 200))
+        return self._rows(
+            """SELECT run_id, calc_time, source_se_run_id, mode, converged, iterations,
+                      total_gen_p, total_load_p, total_loss_p, loss_rate,
+                      min_v_pu, max_v_pu, max_loading_pct,
+                      v_violation_count, overload_count, elapsed_seconds, p_unit
+               FROM lf_statistics
+               ORDER BY run_id DESC LIMIT ?""",
+            (limit,),
+        )
+
+    @synchronized
+    def lf_history_stats(self, limit: int = 100) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        rows = self._rows(
+            """SELECT run_id, calc_time, source_se_run_id, mode, converged, iterations,
+                      norm_f, total_gen_p, total_load_p, total_loss_p, loss_rate,
+                      min_v_pu, max_v_pu, max_loading_pct, v_violation_count, overload_count,
+                      elapsed_seconds, kernel_seconds, p_unit
+               FROM lf_statistics
+               ORDER BY run_id DESC LIMIT ?""",
+            (limit,),
+        )
+        rows.reverse()
+        return rows
+
+    @synchronized
+    def lf_snapshot(self, run_id: int | None = None) -> dict[str, Any]:
+        """单次锁内读取指定或最新 LF 运行的统计、节点、支路与电源负荷完整快照。"""
+        if run_id is None:
+            srows = self._rows("SELECT * FROM lf_statistics ORDER BY run_id DESC LIMIT 1")
+            stat = srows[0] if srows else None
+            rid = int(stat["run_id"]) if stat else None
+        else:
+            rid = int(run_id)
+            srows = self._rows("SELECT * FROM lf_statistics WHERE run_id = ? LIMIT 1", (rid,))
+            stat = srows[0] if srows else None
+        if rid is None:
+            return {"latest": None, "run_id": None, "buses": [], "branches": [], "units": []}
+        buses = self._rows("SELECT * FROM lf_bus_result WHERE run_id = ? ORDER BY domain, device_idx", (rid,))
+        branches = self._rows("SELECT * FROM lf_branch_result WHERE run_id = ? ORDER BY COALESCE(loading_pct, -1) DESC, device_type, device_idx", (rid,))
+        units = self._rows("SELECT * FROM lf_unit_result WHERE run_id = ? ORDER BY device_type, device_idx", (rid,))
+        return {"latest": stat, "run_id": rid, "buses": buses, "branches": branches, "units": units}
+
+    @synchronized
+    def lf_home_summary(self, para_file: str | Path | None = None, do_cycle: int | float = 60) -> dict[str, Any]:
+        """聚合 LF 三栏主画面数据：统计、网损与极值、24h 趋势曲线、重载/越限排行、方式调整计数与最新日志。"""
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        snap = self.lf_snapshot()
+        latest = snap["latest"]
+        params = ensure_lf_params(conn, para_file, do_cycle=do_cycle)
+        sched_rows = self._rows("SELECT * FROM schedule WHERE task_type = 'lf' LIMIT 1")
+        schedule = sched_rows[0] if sched_rows else None
+        ov_counts = conn.execute(
+            "SELECT COUNT(*) AS total, COALESCE(SUM(enabled = 1), 0) AS enabled FROM lf_study_override"
+        ).fetchone()
+        recent_runs = self._rows(
+            """SELECT r.run_id, r.status, r.started_at, r.elapsed_seconds, r.execution_source,
+                      s.converged, s.iterations, s.source_se_run_id, s.total_gen_p, s.total_load_p,
+                      s.total_loss_p, s.loss_rate, s.v_violation_count, s.overload_count
+               FROM calculation_run r
+               LEFT JOIN lf_statistics s ON s.run_id = r.run_id
+               WHERE r.task_type = 'lf'
+               ORDER BY r.run_id DESC LIMIT 30"""
+        )
+        # 24h 网损率与负载率曲线（最多 120 点）
+        series = self._rows(
+            """SELECT run_id, calc_time, converged, loss_rate, max_loading_pct,
+                      total_gen_p, total_load_p, total_loss_p, min_v_pu, max_v_pu
+               FROM lf_statistics
+               ORDER BY run_id DESC LIMIT 120"""
+        )
+        series.reverse()
+        top_loading = [b for b in snap["branches"] if b.get("loading_pct") is not None][:8]
+        v_alerts = [b for b in snap["buses"] if b.get("v_status") != "normal"][:8]
+        if not v_alerts:
+            v_alerts = sorted(
+                [b for b in snap["buses"] if b.get("v_pu") is not None],
+                key=lambda x: abs(float(x["v_pu"]) - 1.0),
+                reverse=True,
+            )[:8]
+        log_rows = self._rows("SELECT * FROM lf_run_log ORDER BY log_id DESC LIMIT 1")
+        latest_log = log_rows[0] if log_rows else None
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return {
+            "latest": latest,
+            "params": params,
+            "schedule": schedule,
+            "overrides": {"total": int(ov_counts["total"] or 0), "enabled": int(ov_counts["enabled"] or 0)},
+            "recent_runs": recent_runs,
+            "trend_series": series,
+            "top_loading": top_loading,
+            "voltage_extremes": v_alerts,
+            "latest_log": latest_log,
+        }
+
+    @synchronized
+    def lf_results_browse(
+        self,
+        *,
+        kind: str = "branches",
+        domain: str = "all",
+        device_type: str = "",
+        only_abnormal: bool = False,
+        q: str = "",
+        run_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """分页浏览指定或最新 LF 断面的节点/支路/电源负荷结果。"""
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        snap = self.lf_snapshot(run_id=run_id)
+        latest = snap["latest"]
+        rid = snap["run_id"]
+        if kind == "buses":
+            rows = list(snap["buses"])
+        elif kind == "units":
+            rows = list(snap["units"])
+        else:
+            kind = "branches"
+            rows = list(snap["branches"])
+
+        search = str(q or "").strip().casefold()
+        filtered = []
+        for r in rows:
+            if domain and domain != "all" and str(r.get("domain") or "").upper() != domain.upper():
+                continue
+            if device_type and str(r.get("device_type") or "") != device_type:
+                continue
+            if only_abnormal:
+                if kind == "buses":
+                    if r.get("v_status") == "normal":
+                        continue
+                else:
+                    if not r.get("overload") and (r.get("loading_pct") is None or float(r["loading_pct"]) < 80.0):
+                        continue
+            if search and search not in f"{r.get('device_idx','')} {r.get('device_name','')} {r.get('device_type','')}".casefold():
+                continue
+            filtered.append(r)
+
+        avail_types = sorted({str(r.get("device_type") or "") for r in rows if r.get("device_type")})
+        return {
+            "kind": kind,
+            "run_id": rid,
+            "latest": latest,
+            "available_types": avail_types,
+            "rows": filtered[offset : offset + limit],
+            "meta": {"total": len(filtered), "limit": limit, "offset": offset, "run_id": rid},
+        }
+
+    @synchronized
+    def lf_results_export_csv(
+        self,
+        *,
+        kind: str = "branches",
+        domain: str = "all",
+        device_type: str = "",
+        only_abnormal: bool = False,
+        q: str = "",
+        run_id: int | None = None,
+    ) -> bytes:
+        page = self.lf_results_browse(
+            kind=kind,
+            domain=domain,
+            device_type=device_type,
+            only_abnormal=only_abnormal,
+            q=q,
+            run_id=run_id,
+            limit=10000,
+            offset=0,
+        )
+        rows = page["rows"]
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        if kind == "buses":
+            cols = ["device_idx", "domain", "device_name", "vbase", "v_pu", "v_eng", "angle_deg", "v_se", "v_diff", "v_status"]
+        elif kind == "units":
+            cols = ["device_idx", "domain", "device_type", "device_name", "control_type", "p_lf", "q_lf", "v_lf", "i_lf", "p_se", "p_diff", "rated_capacity", "loading_pct", "overload"]
+        else:
+            cols = ["device_idx", "domain", "device_type", "device_name", "p_from", "q_from", "i_from", "p_to", "q_to", "i_to", "p_loss", "rated_capacity", "loading_pct", "overload", "p_se", "p_diff"]
+        w.writerow(cols)
+        for r in rows:
+            w.writerow([r.get(c) for c in cols])
+        return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+    # ======================== 在线静态安全分析 (CA) 查询与管理接口 ========================
+
+    @synchronized
+    def ca_params_get(self, *, do_cycle: int | float = 300) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ensure_ca_params(conn, do_cycle=do_cycle)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def ca_params_save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        conn = self._connection()
+        res = save_ca_params(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_params_reset(self) -> dict[str, Any]:
+        conn = self._connection()
+        res = reset_ca_params(conn)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_contingencies_list(self, *, category: str = "", enabled_only: bool = False, device_type: str = "", q: str = "") -> list[dict[str, Any]]:
+        return list_ca_contingencies(self._connection(), category=category, enabled_only=enabled_only, device_type=device_type, q=q)
+
+    @synchronized
+    def ca_contingency_save(self, payload: dict[str, Any], *, contingency_id: int | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        res = save_ca_contingency(conn, payload, contingency_id=contingency_id)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_contingency_delete(self, contingency_id: int) -> bool:
+        conn = self._connection()
+        ok = delete_ca_contingency(conn, contingency_id)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def ca_contingencies_clear(self, *, only_auto: bool = False) -> int:
+        conn = self._connection()
+        cnt = clear_ca_contingencies(conn, only_auto=only_auto)
+        conn.commit()
+        return cnt
+
+    @synchronized
+    def ca_contingencies_sync(self, model_tables: dict[str, dict[str, Any]], *, device_types: list[str] | None = None, overwrite: bool = False) -> dict[str, Any]:
+        conn = self._connection()
+        res = sync_ca_contingencies_from_model(conn, model_tables, device_types=device_types, overwrite=overwrite)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_contingencies_bulk_toggle(self, *, enabled: bool, category: str = "", device_type: str = "") -> int:
+        conn = self._connection()
+        cnt = bulk_toggle_ca_contingencies(conn, enabled=enabled, category=category, device_type=device_type)
+        conn.commit()
+        return cnt
+
+    @synchronized
+    def ca_device_limits_map(self) -> dict[tuple[str, str, str], dict[str, Any]]:
+        """从 ca_limit 表读取启用的设备级限值，返回 {(device_type, device_name, metric): row}。"""
+        conn = self._connection()
+        tbl = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ca_limit'").fetchone()
+        if not tbl:
+            return {}
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(ca_limit)")}
+        if {"model_table", "device_name", "field"} <= cols:
+            rows = conn.execute(
+                "SELECT model_table AS device_type, device_name, field AS metric, lower_value AS min_value, upper_value AS max_value, unit FROM ca_limit WHERE enabled = 1"
+            ).fetchall()
+        elif {"device_type", "device_name", "metric"} <= cols:
+            rows = conn.execute(
+                "SELECT device_type, device_name, metric, min_value, max_value, unit FROM ca_limit WHERE enabled = 1"
+            ).fetchall()
+        else:
+            return {}
+        out: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for r in rows:
+            out[(str(r["device_type"]), str(r["device_name"]), str(r["metric"]))] = dict(r)
+        return out
+
+    @synchronized
+    def record_ca_run_log(
+        self,
+        *,
+        level: str = "INFO",
+        stage: str = "system",
+        message: str = "",
+        run_id: int | None = None,
+        source: str = "system",
+        elapsed_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> int | None:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        lid = record_ca_log(
+            conn,
+            level=level,
+            stage=stage,
+            message=message,
+            run_id=run_id,
+            source=source,
+            elapsed_ms=elapsed_ms,
+            detail=detail,
+        )
+        if commit and not was_in_tx:
+            conn.commit()
+        return lid
+
+    @synchronized
+    def ca_logs_list(self, **kwargs) -> dict[str, Any]:
+        return list_ca_logs(self._connection(), **kwargs)
+
+    @synchronized
+    def ca_logs_summary(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ca_log_summary(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def ca_logs_policy_get(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ensure_ca_log_policy(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def ca_logs_policy_update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        conn = self._connection()
+        res = update_ca_log_policy(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_logs_purge(self, **kwargs) -> dict[str, Any]:
+        conn = self._connection()
+        res = purge_ca_logs(conn, **kwargs)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ca_logs_export_csv(self, **kwargs) -> str:
+        return export_ca_logs_csv(self._connection(), **kwargs)
+
+    @synchronized
+    def ca_runs_history(self, limit: int = 30) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 200))
+        return self._rows(
+            """SELECT run_id, calc_time, source_lf_run_id, source_se_run_id, base_converged,
+                      risk_level, security_score, n0_risk_count, n1_total_count, n1_risk_count,
+                      nk_total_count, nk_risk_count, critical_count, high_count, medium_count, low_count,
+                      worst_contingency, elapsed_seconds
+               FROM ca_statistics
+               ORDER BY run_id DESC LIMIT ?""",
+            (limit,),
+        )
+
+    @synchronized
+    def ca_history_stats(self, limit: int = 100) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        rows = self._rows(
+            """SELECT run_id, calc_time, source_lf_run_id, source_se_run_id, risk_level, security_score,
+                      n0_risk_count, n1_total_count, n1_risk_count, nk_total_count, nk_risk_count,
+                      critical_count, high_count, medium_count, low_count,
+                      max_loading_pct, min_v_pu, max_load_loss_kw, elapsed_seconds
+               FROM ca_statistics
+               ORDER BY run_id DESC LIMIT ?""",
+            (limit,),
+        )
+        rows.reverse()
+        return rows
+
+    @synchronized
+    def ca_snapshot(self, run_id: int | None = None) -> dict[str, Any]:
+        """读取最新或指定历史 run_id 的 CA 完整断面（统计、故障扫描结果、结构化风险）。"""
+        if run_id is not None:
+            stats = self._rows("SELECT * FROM ca_statistics WHERE run_id = ? LIMIT 1", (int(run_id),))
+        else:
+            stats = self._rows("SELECT * FROM ca_statistics ORDER BY run_id DESC LIMIT 1")
+        if not stats:
+            return {"latest": None, "run_id": None, "contingencies": [], "risks": []}
+        latest = stats[0]
+        rid = int(latest["run_id"])
+        conts = self._rows(
+            """SELECT * FROM ca_contingency_result WHERE run_id = ?
+               ORDER BY CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC,
+                        risk_count DESC, load_loss_kw DESC, max_loading_pct DESC""",
+            (rid,),
+        )
+        risks = self._rows(
+            """SELECT * FROM ca_risk_detail WHERE run_id = ?
+               ORDER BY CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC,
+                        violation_pct DESC, id ASC""",
+            (rid,),
+        )
+        return {"latest": latest, "run_id": rid, "contingencies": conts, "risks": risks}
+
+    @synchronized
+    def ca_home_summary(self, *, do_cycle: int | float = 300) -> dict[str, Any]:
+        """聚合 CA 三栏主画面数据：安全评分与风险统计、LF/SE 溯源、趋势曲线、最严重风险与故障排行。"""
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        snap = self.ca_snapshot()
+        latest = snap["latest"]
+        params = ensure_ca_params(conn, do_cycle=do_cycle)
+        sched_rows = self._rows("SELECT * FROM schedule WHERE task_type = 'ca' LIMIT 1")
+        schedule = sched_rows[0] if sched_rows else None
+        def_counts = conn.execute(
+            "SELECT COUNT(*) AS total, COALESCE(SUM(enabled = 1), 0) AS enabled, COALESCE(SUM(category = 'N-1'), 0) AS n1, COALESCE(SUM(category = 'N-k'), 0) AS nk FROM ca_contingency_def"
+        ).fetchone()
+        recent_runs = self._rows(
+            """SELECT r.run_id, r.status, r.started_at, r.elapsed_seconds, r.execution_source,
+                      s.risk_level, s.security_score, s.source_lf_run_id, s.source_se_run_id,
+                      s.n0_risk_count, s.n1_total_count, s.n1_risk_count, s.critical_count, s.high_count
+               FROM calculation_run r
+               LEFT JOIN ca_statistics s ON s.run_id = r.run_id
+               WHERE r.task_type = 'ca'
+               ORDER BY r.run_id DESC LIMIT 30"""
+        )
+        trend = self._rows(
+            """SELECT run_id, calc_time, security_score, risk_level,
+                      n0_risk_count, n1_risk_count, nk_risk_count,
+                      critical_count, high_count, max_loading_pct, max_load_loss_kw
+               FROM ca_statistics ORDER BY run_id DESC LIMIT 120"""
+        )
+        trend.reverse()
+        top_risks = snap["risks"][:10]
+        top_contingencies = snap["contingencies"][:10]
+        log_rows = self._rows("SELECT * FROM ca_run_log ORDER BY log_id DESC LIMIT 1")
+        latest_log = log_rows[0] if log_rows else None
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return {
+            "latest": latest,
+            "params": params,
+            "schedule": schedule,
+            "contingency_defs": {
+                "total": int(def_counts["total"] or 0),
+                "enabled": int(def_counts["enabled"] or 0),
+                "n1": int(def_counts["n1"] or 0),
+                "nk": int(def_counts["nk"] or 0),
+            },
+            "recent_runs": recent_runs,
+            "trend_series": trend,
+            "top_risks": top_risks,
+            "top_contingencies": top_contingencies,
+            "latest_log": latest_log,
+        }
+
+    @synchronized
+    def ca_risks_browse(
+        self,
+        *,
+        category: str = "all",
+        severity: str = "all",
+        risk_category: str = "all",
+        q: str = "",
+        run_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        snap = self.ca_snapshot(run_id=run_id)
+        rows = list(snap["risks"])
+        search = str(q or "").strip().casefold()
+        filtered = []
+        for r in rows:
+            if category and category != "all" and str(r.get("category") or "") != category:
+                continue
+            if severity and severity != "all" and str(r.get("severity") or "") != severity:
+                continue
+            if risk_category and risk_category != "all" and str(r.get("risk_category") or "") != risk_category:
+                continue
+            if search:
+                hay = f"{r.get('contingency_name','')} {r.get('device_type','')} {r.get('device_name','')} {r.get('detail','')}".casefold()
+                if search not in hay:
+                    continue
+            filtered.append(r)
+        return {
+            "run_id": snap["run_id"],
+            "latest": snap["latest"],
+            "rows": filtered[offset : offset + limit],
+            "meta": {"total": len(filtered), "limit": limit, "offset": offset, "run_id": snap["run_id"]},
+        }
+
+    @synchronized
+    def ca_contingency_results_browse(
+        self,
+        *,
+        category: str = "all",
+        severity: str = "all",
+        only_risk: bool = False,
+        q: str = "",
+        run_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        snap = self.ca_snapshot(run_id=run_id)
+        rows = list(snap["contingencies"])
+        search = str(q or "").strip().casefold()
+        filtered = []
+        for r in rows:
+            if category and category != "all" and str(r.get("category") or "") != category:
+                continue
+            if severity and severity != "all" and str(r.get("severity") or "") != severity:
+                continue
+            if only_risk and int(r.get("risk_count") or 0) == 0 and int(r.get("converged", 1)) == 1:
+                continue
+            if search:
+                hay = f"{r.get('contingency_name','')} {r.get('target_desc','')} {r.get('max_loading_dev','')} {r.get('min_v_bus','')}".casefold()
+                if search not in hay:
+                    continue
+            filtered.append(r)
+        return {
+            "run_id": snap["run_id"],
+            "latest": snap["latest"],
+            "rows": filtered[offset : offset + limit],
+            "meta": {"total": len(filtered), "limit": limit, "offset": offset, "run_id": snap["run_id"]},
+        }
+
+    @synchronized
+    def ca_risks_export_csv(self, **kwargs) -> bytes:
+        page = self.ca_risks_browse(**{**kwargs, "limit": 10000, "offset": 0})
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        cols = ["category", "contingency_name", "severity", "risk_category", "device_type", "device_name", "metric", "actual_value", "limit_value", "violation_pct", "unit", "detail"]
+        w.writerow(cols)
+        for r in page["rows"]:
+            w.writerow([r.get(c) for c in cols])
+        return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
     @synchronized
     def upsert_dbdef_row(self, table_name: str, row: dict[str, Any]) -> None:
@@ -2283,6 +3330,139 @@ class RepositoryHub:
 
     def se_logs_export_csv(self, **kwargs):
         return self.for_task("se").se_logs_export_csv(**kwargs)
+
+    # --- LF 代理方法 ---
+    def lf_params_get(self, para_file=None, *, do_cycle=60):
+        return self.for_task("lf").lf_params_get(para_file, do_cycle=do_cycle)
+
+    def lf_params_save(self, payload, para_file=None):
+        return self.for_task("lf").lf_params_save(payload, para_file)
+
+    def lf_params_reset(self, para_file=None):
+        return self.for_task("lf").lf_params_reset(para_file)
+
+    def lf_overrides_list(self, **kwargs):
+        return self.for_task("lf").lf_overrides_list(**kwargs)
+
+    def lf_override_save(self, payload, **kwargs):
+        return self.for_task("lf").lf_override_save(payload, **kwargs)
+
+    def lf_override_delete(self, override_id):
+        return self.for_task("lf").lf_override_delete(override_id)
+
+    def lf_overrides_clear(self, **kwargs):
+        return self.for_task("lf").lf_overrides_clear(**kwargs)
+
+    def record_lf_run_log(self, **kwargs):
+        return self.for_task("lf").record_lf_run_log(**kwargs)
+
+    def lf_logs_list(self, **kwargs):
+        return self.for_task("lf").lf_logs_list(**kwargs)
+
+    def lf_logs_summary(self):
+        return self.for_task("lf").lf_logs_summary()
+
+    def lf_logs_policy_get(self):
+        return self.for_task("lf").lf_logs_policy_get()
+
+    def lf_logs_policy_update(self, payload):
+        return self.for_task("lf").lf_logs_policy_update(payload)
+
+    def lf_logs_purge(self, **kwargs):
+        return self.for_task("lf").lf_logs_purge(**kwargs)
+
+    def lf_logs_export_csv(self, **kwargs):
+        return self.for_task("lf").lf_logs_export_csv(**kwargs)
+
+    def lf_converged_runs(self, limit=30):
+        return self.for_task("lf").lf_converged_runs(limit)
+
+    def lf_history_stats(self, limit=100):
+        return self.for_task("lf").lf_history_stats(limit)
+
+    def lf_snapshot(self, run_id=None):
+        return self.for_task("lf").lf_snapshot(run_id)
+
+    def lf_home_summary(self, para_file=None, do_cycle=60):
+        return self.for_task("lf").lf_home_summary(para_file, do_cycle)
+
+    def lf_results_browse(self, **kwargs):
+        return self.for_task("lf").lf_results_browse(**kwargs)
+
+    def lf_results_export_csv(self, **kwargs):
+        return self.for_task("lf").lf_results_export_csv(**kwargs)
+
+    def ca_params_get(self, *, do_cycle=300):
+        return self.for_task("ca").ca_params_get(do_cycle=do_cycle)
+
+    def ca_params_save(self, payload):
+        return self.for_task("ca").ca_params_save(payload)
+
+    def ca_params_reset(self):
+        return self.for_task("ca").ca_params_reset()
+
+    def ca_contingencies_list(self, **kwargs):
+        return self.for_task("ca").ca_contingencies_list(**kwargs)
+
+    def ca_contingency_save(self, payload, **kwargs):
+        return self.for_task("ca").ca_contingency_save(payload, **kwargs)
+
+    def ca_contingency_delete(self, contingency_id):
+        return self.for_task("ca").ca_contingency_delete(contingency_id)
+
+    def ca_contingencies_clear(self, **kwargs):
+        return self.for_task("ca").ca_contingencies_clear(**kwargs)
+
+    def ca_contingencies_sync(self, model_tables, **kwargs):
+        return self.for_task("ca").ca_contingencies_sync(model_tables, **kwargs)
+
+    def ca_contingencies_bulk_toggle(self, **kwargs):
+        return self.for_task("ca").ca_contingencies_bulk_toggle(**kwargs)
+
+    def ca_device_limits_map(self):
+        return self.for_task("ca").ca_device_limits_map()
+
+    def record_ca_run_log(self, **kwargs):
+        return self.for_task("ca").record_ca_run_log(**kwargs)
+
+    def ca_logs_list(self, **kwargs):
+        return self.for_task("ca").ca_logs_list(**kwargs)
+
+    def ca_logs_summary(self):
+        return self.for_task("ca").ca_logs_summary()
+
+    def ca_logs_policy_get(self):
+        return self.for_task("ca").ca_logs_policy_get()
+
+    def ca_logs_policy_update(self, payload):
+        return self.for_task("ca").ca_logs_policy_update(payload)
+
+    def ca_logs_purge(self, **kwargs):
+        return self.for_task("ca").ca_logs_purge(**kwargs)
+
+    def ca_logs_export_csv(self, **kwargs):
+        return self.for_task("ca").ca_logs_export_csv(**kwargs)
+
+    def ca_runs_history(self, limit=30):
+        return self.for_task("ca").ca_runs_history(limit)
+
+    def ca_history_stats(self, limit=100):
+        return self.for_task("ca").ca_history_stats(limit)
+
+    def ca_snapshot(self, run_id=None):
+        return self.for_task("ca").ca_snapshot(run_id)
+
+    def ca_home_summary(self, *, do_cycle=300):
+        return self.for_task("ca").ca_home_summary(do_cycle=do_cycle)
+
+    def ca_risks_browse(self, **kwargs):
+        return self.for_task("ca").ca_risks_browse(**kwargs)
+
+    def ca_contingency_results_browse(self, **kwargs):
+        return self.for_task("ca").ca_contingency_results_browse(**kwargs)
+
+    def ca_risks_export_csv(self, **kwargs):
+        return self.for_task("ca").ca_risks_export_csv(**kwargs)
 
     def close(self) -> None:
         if self.control is not None:
