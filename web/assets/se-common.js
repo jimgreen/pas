@@ -236,15 +236,10 @@
     },
   };
 
-  const VALID_THEMES = [
-    'minimalist-light',
-    'precision-dark',
-    'bento-grid',
-    'glassmorphism',
-    'editorial',
-    'sci-fi-cyan',
-    'sci-fi-purple',
-    'sci-fi-matrix',
+  const VALID_THEMES = (window.PAS_THEMES && window.PAS_THEMES.length) ? window.PAS_THEMES : [
+    'minimalist-light', 'arctic-frost', 'warm-paper', 'slate-daylight', 'bento-grid', 'editorial',
+    'precision-dark', 'ocean-slate', 'nord-dark', 'industrial-amber', 'glassmorphism',
+    'sci-fi-cyan', 'sci-fi-purple', 'sci-fi-matrix',
   ];
 
   function createSECommon(pageDict, onLangChange) {

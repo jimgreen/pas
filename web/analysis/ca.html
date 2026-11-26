@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="minimalist-light">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>PAS 在线分析平台</title><link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
   <link rel="icon" href="data:,">
+  <script src="/assets/theme-registry.js"></script>
 </head>
 <body data-page="/analysis/ca">
   <div class="app-shell">
@@ -16,7 +18,8 @@
       </nav>
       <div class="sidebar-foot"><span class="status-dot"></span><span id="service-state">服务检查中</span></div>
     </aside>
-    <main class="main"><header class="topbar"><div><span class="eyebrow">POWER ANALYSIS SERVICE</span><h1 id="page-title">运行总览</h1></div><div class="top-actions"><button class="ghost" data-action="refresh">刷新</button><button class="primary" data-action="run-all">立即执行全部</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="app" class="content"></div></main>
+    <main class="main"><header class="topbar"><div><span class="eyebrow">POWER ANALYSIS SERVICE</span><h1 id="page-title">运行总览</h1></div><div class="top-actions">
+          <select id="theme-select" class="se-select compact" aria-label="Theme"></select><button class="ghost" data-action="refresh">刷新</button><button class="primary" data-action="run-all">立即执行全部</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="app" class="content"></div></main>
   </div>
   <dialog id="value-dialog" aria-label="完整字段值"></dialog>
   <script src="/assets/app.js"></script>
