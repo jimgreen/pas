@@ -83,14 +83,18 @@
       <div id="lf-trial-bar" class="se-trial-bar" hidden></div>
 
       <div class="se-workspace">
-        <section class="se-panel active">
-          <div class="se-card se-full-card">
+        <div class="pas-stack-layout">
+          <section class="pas-compact-param-card">
+            <form id="lf-params-form" class="se-params-form"></form>
+          </section>
+
+          <section class="pas-table-fill-card">
             <div class="se-toolbar">
-              <div class="se-tool-group" id="lf-params-subtab-seg" role="tablist">
-                <button type="button" class="se-chip-btn seg active" data-psub="para" data-i18n="params.tab_para">算法参数</button>
-                <button type="button" class="se-chip-btn seg" data-psub="overrides" data-i18n="params.tab_ov">方式调整方案</button>
+              <div class="se-tool-group">
+                <h2 style="margin:0;font-size:13px;font-weight:700" data-i18n="params.tab_ov">方式调整方案</h2>
+                <span class="se-tag tabular" id="lf-ov-count">0</span>
               </div>
-              <div class="se-tool-group" id="lf-ov-toolbar" hidden>
+              <div class="se-tool-group" id="lf-ov-toolbar">
                 <select id="ov-type-filter" class="se-select compact" aria-label="Device type"></select>
                 <input id="ov-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_dev" placeholder="搜索设备">
                 <button type="button" class="se-btn primary mini" id="btn-add-override" data-i18n="ov.add">+ 新增调整</button>
@@ -98,10 +102,9 @@
                 <button type="button" class="se-btn danger-ghost mini" id="btn-clear-overrides" data-i18n="ov.clear_all">清空方式</button>
               </div>
             </div>
-            <form id="lf-params-form" class="se-params-form"></form>
-            <div class="se-table-scroll" id="lf-ov-table-wrap" hidden></div>
-          </div>
-        </section>
+            <div class="se-table-scroll" id="lf-ov-table-wrap"></div>
+          </section>
+        </div>
       </div>
     </main>
   </div>

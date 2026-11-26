@@ -906,8 +906,8 @@
   min-height: 0;
 }
 
-.se-bad-card { max-height: 38%; }
-.se-dev-card { flex: 1; }
+.se-bad-card { max-height: 44%; flex-shrink: 0; }
+.se-dev-card { flex: 1; min-height: 0; }
 
 .se-side-head {
   display: flex;
@@ -1462,6 +1462,8 @@ tbody tr:hover td.se-sticky-right {
 .se-home-grid {
   --col1: 248px;
   --col2: 252px;
+  flex: 1;
+  height: 100%;
   display: grid;
   grid-template-columns: var(--col1) 8px var(--col2) 8px minmax(340px, 1fr);
   gap: 0;
@@ -2025,8 +2027,69 @@ body.se-splitting-h {
   cursor: pointer;
   user-select: none;
 }
+/* 同屏上下组合布局（上方紧凑参数卡片 + 下方 100% 铺满主数据表，消除短表空屏） */
+.pas-stack-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.pas-compact-param-card {
+  background: var(--bg-surface);
+  border: var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 8px 10px;
+  flex-shrink: 0;
+}
+.pas-compact-param-card .se-params-form {
+  padding: 4px 0 0;
+  gap: 6px 10px;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+.pas-compact-param-card .se-form-grid {
+  gap: 6px 10px;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+.pas-table-fill-card {
+  background: var(--bg-surface);
+  border: var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.pas-table-fill-card .se-table-wrap,
+.pas-table-fill-card .se-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+/* 日志页运行历史与策略双栏全高布局 */
+.pas-runs-policy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.pas-runs-policy-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
 @media (max-width: 1120px) {
   .pas-chain-grid { grid-template-columns: 1fr; }
   .pas-chain-arrow { transform: rotate(90deg); height: 20px; }
-  .pas-overview-bottom { grid-template-columns: 1fr; }
+  .pas-overview-bottom, .pas-runs-policy-grid { grid-template-columns: 1fr; }
 }

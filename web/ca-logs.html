@@ -82,8 +82,7 @@
           <div class="se-toolbar">
             <div class="se-tab-strip" role="tablist">
               <button type="button" class="se-tab active" data-log-tab="list" data-i18n="tab.log_list">日志明细</button>
-              <button type="button" class="se-tab" data-log-tab="runs" data-i18n="tab.run_sched">运行与调度</button>
-              <button type="button" class="se-tab" data-log-tab="policy" data-i18n="tab.log_policy">清理策略</button>
+              <button type="button" class="se-tab" data-log-tab="runs" data-i18n="tab.run_sched">运行与策略</button>
             </div>
             <div class="se-tool-group" id="ca-log-filters">
               <select id="clog-level" class="se-select compact" aria-label="Level">
@@ -134,8 +133,8 @@
             <div class="se-pager" id="clog-pager"></div>
           </div>
 
-          <div id="pane-ca-log-runs" class="se-home-split" hidden>
-            <article class="se-home-card">
+          <div id="pane-ca-log-runs" class="pas-runs-policy-grid" hidden>
+            <article class="pas-table-fill-card">
               <div class="se-home-card-head">
                 <h2 data-i18n="logs.history_runs">CA 历史运行记录</h2>
               </div>
@@ -157,55 +156,67 @@
               </div>
             </article>
 
-            <article class="se-home-card">
-              <div class="se-home-card-head">
-                <h2 data-i18n="logs.schedule_card">CA 周期调度</h2>
-              </div>
-              <form id="ca-sched-form" class="se-form-grid cols-2" style="padding:10px">
-                <label class="se-field">
-                  <span data-i18n="sched.enabled">周期自动执行</span>
-                  <select id="csched-enabled">
-                    <option value="1" data-i18n="opt.enabled">启用</option>
-                    <option value="0" data-i18n="opt.disabled">停用</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="sched.period">周期 (s)</span>
-                  <input id="csched-period" type="number" min="5" max="604800" step="1" required>
-                </label>
-                <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
-                  <button type="submit" class="se-btn primary" data-i18n="action.save_sched">保存调度</button>
+            <div class="pas-runs-policy-side">
+              <article class="se-home-card">
+                <div class="se-home-card-head">
+                  <h2 data-i18n="logs.schedule_card">CA 周期调度</h2>
                 </div>
-              </form>
-            </article>
-          </div>
+                <form id="ca-sched-form" class="se-form-grid cols-2">
+                  <label class="se-field">
+                    <span data-i18n="sched.enabled">周期自动执行</span>
+                    <select id="csched-enabled">
+                      <option value="1" data-i18n="opt.enabled">启用</option>
+                      <option value="0" data-i18n="opt.disabled">停用</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="sched.period">周期 (s)</span>
+                    <input id="csched-period" type="number" min="5" max="604800" step="1" required>
+                  </label>
+                  <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
+                    <button type="submit" class="se-btn primary mini" data-i18n="action.save_sched">保存调度</button>
+                  </div>
+                </form>
+              </article>
 
-          <div id="pane-ca-log-policy" class="se-form-panel" hidden>
-            <form id="ca-policy-form" class="se-form-grid cols-4">
-              <label class="se-field">
-                <span data-i18n="pol.enabled">自动清理</span>
-                <select id="cpol-enabled">
-                  <option value="1" data-i18n="opt.enabled">启用</option>
-                  <option value="0" data-i18n="opt.disabled">停用</option>
-                </select>
-              </label>
-              <label class="se-field">
-                <span data-i18n="pol.ret_days">常规保留天数</span>
-                <input id="cpol-ret" type="number" min="1" max="3650">
-              </label>
-              <label class="se-field">
-                <span data-i18n="pol.err_days">ERROR 保留天数</span>
-                <input id="cpol-err" type="number" min="1" max="3650">
-              </label>
-              <label class="se-field">
-                <span data-i18n="pol.max_rows">最大保留条数</span>
-                <input id="cpol-max" type="number" min="100" max="500000">
-              </label>
-              <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
-                <button type="submit" class="se-btn primary" data-i18n="action.save_params">保存策略</button>
-                <button type="button" class="se-btn danger" id="btn-clog-purge" data-i18n="action.purge_now">立即按策略清理</button>
-              </div>
-            </form>
+              <article class="se-home-card">
+                <div class="se-home-card-head">
+                  <h2 data-i18n="tab.log_policy">日志清理策略</h2>
+                </div>
+                <form id="ca-policy-form" class="se-form-grid cols-2">
+                  <label class="se-field">
+                    <span data-i18n="pol.enabled">自动清理</span>
+                    <select id="cpol-enabled">
+                      <option value="1" data-i18n="opt.enabled">启用</option>
+                      <option value="0" data-i18n="opt.disabled">停用</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.ret_days">常规保留天数</span>
+                    <input id="cpol-ret" type="number" min="1" max="3650">
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.err_days">ERROR 保留天数</span>
+                    <input id="cpol-err" type="number" min="1" max="3650">
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.max_rows">最大保留条数</span>
+                    <input id="cpol-max" type="number" min="100" max="500000">
+                  </label>
+                  <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end">
+                    <button type="submit" class="se-btn primary mini" data-i18n="action.save_params">保存策略</button>
+                    <button type="button" class="se-btn danger mini" id="btn-clog-purge" data-i18n="action.purge_now">立即按策略清理</button>
+                  </div>
+                </form>
+              </article>
+
+              <article class="se-home-card" style="flex:1">
+                <div class="se-home-card-head">
+                  <h2>阶段日志分布</h2>
+                </div>
+                <div class="se-kv-list" id="ca-stage-stats"></div>
+              </article>
+            </div>
           </div>
         </section>
       </div>

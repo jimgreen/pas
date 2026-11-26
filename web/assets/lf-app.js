@@ -1106,12 +1106,24 @@
         <td class="num tabular">${fmtNum(m.se, 3)}</td>
         <td class="num tabular">${m.diff == null ? '—' : `${m.diff >= 0 ? '+' : ''}${fmtNum(m.diff, 3)}`}</td>
       </tr>`).join('');
+    const lat = st.topo?.latest;
+    const sysCard = lat ? `
+      <div class="se-kv-divider" style="margin:8px 0 6px"></div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">当前断面摘要 · LF #${lat.run_id}</div>
+      <div class="se-kv-list">
+        <div class="se-kv-row"><span class="k">源 SE 断面</span><span class="v tabular">${lat.source_se_run_id ? `SE #${lat.source_se_run_id}` : '—'}</span></div>
+        <div class="se-kv-row"><span class="k">总发电 / 总负荷</span><span class="v tabular">${fmtNum(lat.total_gen_p, 1)} / ${fmtNum(lat.total_load_p, 1)} ${esc(lat.p_unit || 'kW')}</span></div>
+        <div class="se-kv-row"><span class="k">全网网损率</span><span class="v tabular">${fmtNum(lat.loss_rate, 3)}% (${fmtNum(lat.total_loss_p, 2)} ${esc(lat.p_unit || 'kW')})</span></div>
+        <div class="se-kv-row"><span class="k">最大支路负载率</span><span class="v tabular">${fmtNum(lat.max_loading_pct, 1)}% (${esc(lat.max_loading_dev || '—')})</span></div>
+        <div class="se-kv-row"><span class="k">最低 / 最高电压</span><span class="v tabular">${fmtNum(lat.min_v_pu, 4)} / ${fmtNum(lat.max_v_pu, 4)} pu</span></div>
+      </div>` : '';
     bEl.innerHTML = `${bar}
-      ${dev.loading_pct != null ? `<div class="se-kv-row" style="padding:3px 0"><span>${esc(t('col.loading'))}</span><strong class="tabular">${fmtNum(dev.loading_pct, 1)}%</strong></div>` : ''}
+      ${dev.loading_pct != null ? `<div class="se-kv-row" style="padding:3px 0"><span class="k">${esc(t('col.loading'))}</span><strong class="v tabular">${fmtNum(dev.loading_pct, 1)}%</strong></div>` : ''}
+      ${dev.alert_reason ? `<div class="se-kv-row" style="padding:3px 0"><span class="k">状态</span><strong class="v bad">${esc(dev.alert_reason)}</strong></div>` : ''}
       <table class="se-insp-table">
         <thead><tr><th>Metric</th><th class="num">LF</th><th class="num">SE</th><th class="num">Δ</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>`;
+      </table>${sysCard}`;
   }
 
   async function loadFlowView() {
@@ -1125,6 +1137,17 @@
     if (!st.selectedDevId && qp.get('dev_id') && st.topo.devices?.[qp.get('dev_id')]) {
       focusFlowDevice(qp.get('dev_id'));
     } else {
+      // 默认选中首个告警设备（无告警时选中负载率最高设备），避免右侧「设备潮流」整块空白
+      if (!st.selectedDevId || !st.topo.devices?.[st.selectedDevId]) {
+        const firstAlert = (st.topo.alerts || [])[0]?.dev_id;
+        if (firstAlert && st.topo.devices?.[firstAlert]) {
+          st.selectedDevId = firstAlert;
+        } else {
+          const allDevs = Object.values(st.topo.devices || {});
+          allDevs.sort((a, b) => (Number(b.loading_pct) || -1) - (Number(a.loading_pct) || -1));
+          if (allDevs[0]?.dev_id) st.selectedDevId = allDevs[0].dev_id;
+        }
+      }
       selectFlowDevice(st.selectedDevId);
     }
   }
@@ -1291,24 +1314,11 @@
   }
 
   async function loadParamsView() {
-    const isOv = st.paramsSub === 'overrides';
-    document.querySelectorAll('#lf-params-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.psub === st.paramsSub));
-    document.getElementById('lf-params-form').hidden = isOv;
-    document.getElementById('lf-ov-table-wrap').hidden = !isOv;
-    document.getElementById('lf-ov-toolbar').hidden = !isOv;
-    ['btn-lf-params-reset', 'btn-lf-params-save', 'btn-lf-trial'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.hidden = isOv;
-    });
-    if (isOv) {
-      await loadOverridesTable();
-      return;
-    }
     const params = await api('/api/lf/params');
-    document.getElementById('lf-params-updated').textContent = params.updated_at ? fmtTime(params.updated_at) : '—';
+    const updEl = document.getElementById('lf-params-updated');
+    if (updEl) updEl.textContent = params.updated_at ? fmtTime(params.updated_at) : '—';
     let html = '';
     LF_PARAM_SCHEMA.forEach((grp) => {
-      html += `<div class="se-param-group-title">${esc(grp.group[st.lang] || grp.group['zh-CN'])}</div>`;
       grp.fields.forEach((f) => {
         const lbl = f.label[st.lang] || f.label['zh-CN'];
         const val = params[f.key];
@@ -1319,7 +1329,9 @@
         }
       });
     });
-    document.getElementById('lf-params-form').innerHTML = html;
+    const formEl = document.getElementById('lf-params-form');
+    if (formEl) formEl.innerHTML = html;
+    await loadOverridesTable();
   }
 
   async function saveLfParams() {
@@ -1364,11 +1376,14 @@
   }
 
   async function loadOverridesTable() {
-    const [cat, rows] = await Promise.all([
+    const [cat, rows, unitsRes] = await Promise.all([
       ensureCatalog(),
       api(`/api/lf/overrides?device_type=${encodeURIComponent(st.ovFilter.type)}&q=${encodeURIComponent(st.ovFilter.q)}`),
+      api('/api/lf/results?kind=units&limit=30').catch(() => ({ rows: [] })),
     ]);
     st.overrides = rows || [];
+    const cntEl = document.getElementById('lf-ov-count');
+    if (cntEl) cntEl.textContent = String(st.overrides.length);
     const sel = document.getElementById('ov-type-filter');
     if (sel) {
       const types = Object.keys(cat.override_fields || {});
@@ -1377,7 +1392,26 @@
     }
     const wrap = document.getElementById('lf-ov-table-wrap');
     if (!st.overrides.length) {
-      wrap.innerHTML = `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+      // 无方式调整条目时，直接展示当前可调电源/负荷基态运行清单（点击即可快速新增方式调整），杜绝下方大片空白
+      const units = (unitsRes?.rows || []).filter((u) => {
+        if (st.ovFilter.type && u.device_type !== st.ovFilter.type) return false;
+        if (st.ovFilter.q && !`${u.device_name} ${u.device_type}`.toLowerCase().includes(st.ovFilter.q.toLowerCase())) return false;
+        return true;
+      });
+      if (!units.length) {
+        wrap.innerHTML = `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+        return;
+      }
+      wrap.innerHTML = `<table class="se-data-table"><thead><tr>
+        <th>${esc(t('col.dev_type'))}</th><th>${esc(t('col.device'))}</th><th>${esc(t('col.ctrl'))}</th>
+        <th class="num">P (LF)</th><th class="num">Q (LF)</th><th class="num">V (LF)</th><th class="num">P (SE)</th>
+        <th class="se-sticky-right">${esc(t('col.ops'))}</th>
+      </tr></thead><tbody>${units.map((u) => `<tr>
+        <td>${esc(u.device_type)}</td><td><strong>${esc(u.device_name)}</strong></td><td>${esc(u.control_type || '—')}</td>
+        <td class="num tabular">${fmtNum(u.p_lf, 2)}</td><td class="num tabular">${fmtNum(u.q_lf, 2)}</td>
+        <td class="num tabular">${fmtNum(u.v_lf, 2)}</td><td class="num tabular">${fmtNum(u.p_se, 2)}</td>
+        <td class="se-sticky-right"><button type="button" class="se-btn mini primary" data-lf-adjust="${esc(u.device_type)}|${u.device_idx}|${esc(u.device_name)}">${esc(t('action.adjust'))}</button></td>
+      </tr>`).join('')}</tbody></table>`;
       return;
     }
     wrap.innerHTML = `<table class="se-data-table"><thead><tr>
@@ -1415,6 +1449,17 @@
       document.getElementById('lfp-ret').value = sum.policy.retention_days ?? 30;
       document.getElementById('lfp-err').value = sum.policy.keep_error_days ?? 90;
       document.getElementById('lfp-max').value = sum.policy.max_rows ?? 50000;
+    }
+    const stgEl = document.getElementById('lf-stage-stats');
+    if (stgEl) {
+      const raw = sum.by_stage;
+      const entries = Array.isArray(raw)
+        ? raw.map((it) => [String(it.stage ?? it.name ?? '—'), Number(it.cnt ?? it.count ?? 0)])
+        : Object.entries(raw || {}).map(([k, v]) => [String(k), Number(v ?? 0)]);
+      entries.sort((a, b) => b[1] - a[1]);
+      stgEl.innerHTML = entries.length
+        ? entries.map(([k, v]) => `<div class="se-kv-row"><span class="k">${esc(k)}</span><strong class="v tabular">${v}</strong></div>`).join('')
+        : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
     }
 
     const wrap = document.getElementById('lf-log-table-wrap');

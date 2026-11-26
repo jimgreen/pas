@@ -367,7 +367,7 @@
         `<text x="${padL - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${val.toFixed(metric === 'total_risks' ? 0 : 1)}</text>`;
     }).join('');
     const dots = vals.map((v, i) => `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3" fill="var(--accent)"><title>#${series[i].run_id} (${fmtTime(series[i].calc_time)}): ${v.toFixed(1)}</title></circle>`).join('');
-    box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:196px;display:block">${ticks}<polygon points="${area}" fill="var(--accent)" opacity="0.12"/><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>${dots}<text x="${padL}" y="${h - 6}" font-size="10" fill="var(--muted)">#${series[0].run_id}</text><text x="${w - padR}" y="${h - 6}" text-anchor="end" font-size="10" fill="var(--muted)">#${series[series.length - 1].run_id}</text></svg>`;
+    box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:100%;min-height:175px;display:block">${ticks}<polygon points="${area}" fill="var(--accent)" opacity="0.12"/><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>${dots}<text x="${padL}" y="${h - 6}" font-size="10" fill="var(--muted)">#${series[0].run_id}</text><text x="${w - padR}" y="${h - 6}" text-anchor="end" font-size="10" fill="var(--muted)">#${series[series.length - 1].run_id}</text></svg>`;
   }
 
   async function loadMainView() {
@@ -564,16 +564,31 @@
     $('#ca-insp-title').textContent = dev.device_name || devId;
     $('#ca-insp-sev').textContent = sevLabel(dev.severity);
     $('#ca-insp-sev').className = `se-pill ${sevClass(dev.severity)}`;
-    $('#ca-insp-body').innerHTML = (dev.risks || []).map((r) => `
+    const riskHtml = (dev.risks || []).map((r) => `
       <div class="se-kv-row" style="flex-direction:column;align-items:flex-start;gap:2px;padding:6px 0;border-bottom:1px solid var(--line)">
         <div style="display:flex;gap:6px;align-items:center;width:100%">
           <span class="se-pill ${sevClass(r.severity)}">${esc(sevLabel(r.severity))}</span>
           <span class="se-tag">${esc(r.category)}</span>
           <strong style="font-size:12px">${esc(r.contingency_name)}</strong>
         </div>
-        <div style="font-size:12px;color:var(--muted)">${esc(r.detail)}</div>
+        <div style="font-size:12px;color:var(--text-secondary)">${esc(r.detail)}</div>
       </div>
-    `).join('') || `<div class="se-empty">${t('msg.empty')}</div>`;
+    `).join('');
+    const lat = st.svgData?.latest;
+    const summaryHtml = lat ? `
+      <div class="se-kv-divider" style="margin:8px 0 6px"></div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">当前扫描断面 · CA #${lat.run_id}</div>
+      <div class="se-kv-list">
+        <div class="se-kv-row"><span class="k">源 LF / SE 断面</span><span class="v tabular">LF #${lat.source_lf_run_id ?? '—'} / SE #${lat.source_se_run_id ?? '—'}</span></div>
+        <div class="se-kv-row"><span class="k">总体定级 / 评分</span><span class="v tabular">${esc(lat.risk_level)} (${num(lat.security_score, 1)})</span></div>
+        <div class="se-kv-row"><span class="k">N-0 基态风险</span><span class="v tabular">${lat.n0_risk_count}</span></div>
+        <div class="se-kv-row"><span class="k">N-1 扫描 / 收敛</span><span class="v tabular">${lat.n1_total_count} / ${lat.n1_converged_count}</span></div>
+        <div class="se-kv-row"><span class="k">最严重预想故障</span><span class="v tabular">${esc(lat.worst_contingency || '—')}</span></div>
+        <div class="se-kv-row"><span class="k">最大失电负荷</span><span class="v tabular">${num(lat.max_load_loss_kw, 2)} ${esc(lat.p_unit || 'kW')}</span></div>
+        <div class="se-kv-row"><span class="k">最大支路负载率</span><span class="v tabular">${num(lat.max_loading_pct, 2)}%</span></div>
+        <div class="se-kv-row"><span class="k">最低母线电压</span><span class="v tabular">${lat.min_v_pu != null ? `${num(lat.min_v_pu, 4)} pu` : '—'}</span></div>
+      </div>` : '';
+    $('#ca-insp-body').innerHTML = (riskHtml || `<div class="se-empty">${t('msg.empty')}</div>`) + summaryHtml;
   }
 
   async function loadTopoRisks() {
@@ -716,7 +731,7 @@
     $('#cp-ol-limit').value = p.overload_limit_pct ?? 100;
     $('#cp-loss-thr').value = p.load_loss_threshold_kw ?? 0.5;
     $('#cp-cycle').value = p.do_cycle ?? 300;
-    if (st.cfgTab === 'limits') await loadLimitsTable();
+    await loadLimitsTable();
   }
 
   function readParamsPayload() {
@@ -738,6 +753,7 @@
     const q = ($('#clim-q')?.value || '').trim();
     const res = await api(`/api/inputs/limits?size=100&q=${encodeURIComponent(q)}`);
     const rows = res.rows || [];
+    if ($('#clim-count')) $('#clim-count').textContent = String(res.total ?? rows.length);
     $('#clim-tbody').innerHTML = rows.length ? rows.map((r) => `<tr>
       <td>${esc(r.model_table || r.device_type)}</td>
       <td>${esc(r.device_name)}</td>
@@ -751,12 +767,11 @@
 
   // -------------------- 日志与调度 /ca-logs --------------------
   function switchLogTab(tab) {
-    st.logTab = tab;
-    $$('[data-log-tab]').forEach((b) => b.classList.toggle('active', b.dataset.logTab === tab));
-    $('#pane-ca-log-list').hidden = tab !== 'list';
-    $('#pane-ca-log-runs').hidden = tab !== 'runs';
-    $('#pane-ca-log-policy').hidden = tab !== 'policy';
-    $('#ca-log-filters').hidden = tab !== 'list';
+    st.logTab = tab === 'runs' ? 'runs' : 'list';
+    $$('[data-log-tab]').forEach((b) => b.classList.toggle('active', b.dataset.logTab === st.logTab));
+    if ($('#pane-ca-log-list')) $('#pane-ca-log-list').hidden = st.logTab !== 'list';
+    if ($('#pane-ca-log-runs')) $('#pane-ca-log-runs').hidden = st.logTab !== 'runs';
+    if ($('#ca-log-filters')) $('#ca-log-filters').hidden = st.logTab !== 'list';
   }
 
   async function loadLogsView() {
@@ -803,6 +818,12 @@
     $('#cpol-ret').value = pol.retention_days ?? 30;
     $('#cpol-err').value = pol.keep_error_days ?? 90;
     $('#cpol-max').value = pol.max_rows ?? 50000;
+    if ($('#ca-stage-stats')) {
+      const entries = Object.entries(sum.by_stage || {}).sort((a, b) => b[1] - a[1]);
+      $('#ca-stage-stats').innerHTML = entries.length
+        ? entries.map(([k, v]) => `<div class="se-kv-row"><span class="k">${esc(k)}</span><strong class="v tabular">${v}</strong></div>`).join('')
+        : `<div class="se-empty">${t('msg.empty')}</div>`;
+    }
   }
 
   async function refreshCurrentPage() {

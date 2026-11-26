@@ -87,8 +87,7 @@
 
       <nav class="se-view-tabs" id="lf-logs-tabs" role="tablist">
         <button type="button" class="se-tab active" data-lsub="stream" data-i18n="logs.tab_stream">日志明细</button>
-        <button type="button" class="se-tab" data-lsub="runs" data-i18n="logs.tab_runs">运行与调度</button>
-        <button type="button" class="se-tab" data-lsub="policy" data-i18n="logs.tab_policy">清理策略</button>
+        <button type="button" class="se-tab" data-lsub="runs" data-i18n="logs.tab_runs">运行与策略</button>
       </nav>
 
       <div class="se-workspace">
@@ -112,38 +111,44 @@
         </section>
 
         <section class="se-panel" data-lpanel="runs">
-          <div class="se-runs-layout">
-            <div class="se-card se-full-card">
-              <div class="se-toolbar"><h2 data-i18n="logs.runs_title">LF 历史运行记录</h2></div>
+          <div class="pas-runs-policy-grid">
+            <div class="pas-table-fill-card">
+              <div class="se-toolbar"><h2 style="margin:0;font-size:13px;font-weight:700" data-i18n="logs.runs_title">LF 历史运行记录</h2></div>
               <div class="se-table-scroll" id="lf-runs-table-wrap"></div>
             </div>
-            <div class="se-card">
-              <h2 data-i18n="sched.title">LF 周期调度</h2>
-              <form id="lf-schedule-form" class="se-sched-form">
-                <label class="se-field"><span data-i18n="sched.period">周期 (s)</span><input name="period_seconds" class="tabular" type="number" min="5" max="86400" value="60" required></label>
-                <label class="se-check-inline"><input type="checkbox" name="enabled"><span data-i18n="sched.enabled">启用周期自动执行</span></label>
-                <div class="se-tool-group">
-                  <button type="submit" class="se-btn primary" data-i18n="sched.save">保存调度</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-start" data-i18n="sched.start">启动周期</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-stop" data-i18n="sched.stop">停止周期</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </section>
-
-        <section class="se-panel" data-lpanel="policy">
-          <div class="se-card se-full-card">
-            <form id="lf-log-policy-form" class="se-params-form">
-              <label class="se-field"><span data-i18n="logs.pol_enabled">自动清理</span><select id="lfp-enabled"><option value="1">ON</option><option value="0">OFF</option></select></label>
-              <label class="se-field"><span data-i18n="logs.ret">常规保留天数</span><input id="lfp-ret" class="tabular" type="number" min="1" max="3650" value="30"></label>
-              <label class="se-field"><span data-i18n="logs.err_ret">ERROR 保留天数</span><input id="lfp-err" class="tabular" type="number" min="1" max="3650" value="90"></label>
-              <label class="se-field"><span data-i18n="logs.max_rows">最大保留条数</span><input id="lfp-max" class="tabular" type="number" min="100" max="5000000" value="50000"></label>
-              <div class="se-tool-group" style="grid-column:1 / -1;margin-top:8px">
-                <button type="submit" class="se-btn primary" data-i18n="params.save">保存策略</button>
-                <button type="button" class="se-btn danger-ghost" id="btn-lf-purge" data-i18n="logs.purge_now">立即按策略清理</button>
+            <div class="pas-runs-policy-side">
+              <div class="se-home-card">
+                <div class="se-home-card-head"><h2 data-i18n="sched.title">LF 周期调度</h2></div>
+                <form id="lf-schedule-form" class="se-sched-form">
+                  <label class="se-field"><span data-i18n="sched.period">周期 (s)</span><input name="period_seconds" class="tabular" type="number" min="5" max="86400" value="60" required></label>
+                  <label class="se-check-inline"><input type="checkbox" name="enabled"><span data-i18n="sched.enabled">启用周期自动执行</span></label>
+                  <div class="se-tool-group">
+                    <button type="submit" class="se-btn primary mini" data-i18n="sched.save">保存调度</button>
+                    <button type="button" class="se-btn ghost mini" id="btn-daemon-start" data-i18n="sched.start">启动周期</button>
+                    <button type="button" class="se-btn ghost mini" id="btn-daemon-stop" data-i18n="sched.stop">停止周期</button>
+                  </div>
+                </form>
               </div>
-            </form>
+
+              <div class="se-home-card">
+                <div class="se-home-card-head"><h2 data-i18n="logs.tab_policy">日志清理策略</h2></div>
+                <form id="lf-log-policy-form" class="se-form-grid cols-2">
+                  <label class="se-field"><span data-i18n="logs.pol_enabled">自动清理</span><select id="lfp-enabled"><option value="1">ON</option><option value="0">OFF</option></select></label>
+                  <label class="se-field"><span data-i18n="logs.ret">常规保留天数</span><input id="lfp-ret" class="tabular" type="number" min="1" max="3650" value="30"></label>
+                  <label class="se-field"><span data-i18n="logs.err_ret">ERROR 保留天数</span><input id="lfp-err" class="tabular" type="number" min="1" max="3650" value="90"></label>
+                  <label class="se-field"><span data-i18n="logs.max_rows">最大保留条数</span><input id="lfp-max" class="tabular" type="number" min="100" max="5000000" value="50000"></label>
+                  <div class="se-tool-group" style="grid-column:1 / -1">
+                    <button type="submit" class="se-btn primary mini" data-i18n="params.save">保存策略</button>
+                    <button type="button" class="se-btn danger-ghost mini" id="btn-lf-purge" data-i18n="logs.purge_now">立即按策略清理</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="se-home-card" style="flex:1">
+                <div class="se-home-card-head"><h2>阶段日志分布</h2></div>
+                <div class="se-kv-list" id="lf-stage-stats"></div>
+              </div>
+            </div>
           </div>
         </section>
       </div>

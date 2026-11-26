@@ -80,83 +80,73 @@
       <div id="ca-trial-diff" class="se-trial-banner" hidden></div>
 
       <div class="se-workspace">
-        <section class="se-panel active">
-          <div class="se-toolbar">
-            <div class="se-tab-strip" role="tablist">
-              <button type="button" class="se-tab active" data-cfg-tab="params" data-i18n="tab.ca_params">扫描与越限参数</button>
-              <button type="button" class="se-tab" data-cfg-tab="limits" data-i18n="tab.ca_limits">设备安全限值</button>
+        <div class="pas-stack-layout">
+          <section class="pas-compact-param-card">
+            <div class="se-form-grid">
+              <label class="se-field">
+                <span data-i18n="param.use_lf_base">LF 基态注入</span>
+                <select id="cp-use-lf">
+                  <option value="1" data-i18n="opt.enabled">启用</option>
+                  <option value="0" data-i18n="opt.disabled">停用</option>
+                </select>
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.scan_n1">启用 N-1 扫描</span>
+                <select id="cp-scan-n1">
+                  <option value="1" data-i18n="opt.enabled">启用</option>
+                  <option value="0" data-i18n="opt.disabled">停用</option>
+                </select>
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.scan_nk">启用 N-k 扫描</span>
+                <select id="cp-scan-nk">
+                  <option value="1" data-i18n="opt.enabled">启用</option>
+                  <option value="0" data-i18n="opt.disabled">停用</option>
+                </select>
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.max_scan">单轮最大扫描数</span>
+                <input id="cp-max-scan" type="number" min="1" max="500" step="1">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.v_min_pu">电压下限 (pu)</span>
+                <input id="cp-vmin" type="number" step="0.005" min="0.5" max="1.05">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.v_max_pu">电压上限 (pu)</span>
+                <input id="cp-vmax" type="number" step="0.005" min="0.95" max="1.5">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.ol_warn">重载预警 (%)</span>
+                <input id="cp-ol-warn" type="number" step="1" min="10" max="200">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.ol_limit">过载越限 (%)</span>
+                <input id="cp-ol-limit" type="number" step="1" min="20" max="300">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.loss_thr">失电告警门槛 (kW)</span>
+                <input id="cp-loss-thr" type="number" step="0.1" min="0">
+              </label>
+              <label class="se-field">
+                <span data-i18n="param.do_cycle">计算周期参考 (s)</span>
+                <input id="cp-cycle" type="number" step="1" min="5" max="604800">
+              </label>
             </div>
-            <div class="se-tool-group" id="ca-limit-tools" hidden>
-              <input id="clim-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_limit" placeholder="搜索限值设备...">
-              <button type="button" class="se-btn mini" id="btn-seed-limits" data-i18n="action.seed_limits">从模型播种限值</button>
-              <a class="se-btn mini" href="/limits.html" data-i18n="action.open_limits">限值管理页 →</a>
-            </div>
-          </div>
+          </section>
 
-          <div id="pane-ca-params" class="se-form-panel">
-            <div class="se-form-section">
-              <h3 data-i18n="sec.base_scan">基态来源与预想故障扫描</h3>
-              <div class="se-form-grid cols-4">
-                <label class="se-field">
-                  <span data-i18n="param.use_lf_base">LF 基态注入</span>
-                  <select id="cp-use-lf">
-                    <option value="1" data-i18n="opt.enabled">启用</option>
-                    <option value="0" data-i18n="opt.disabled">停用</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.scan_n1">启用 N-1 扫描</span>
-                  <select id="cp-scan-n1">
-                    <option value="1" data-i18n="opt.enabled">启用</option>
-                    <option value="0" data-i18n="opt.disabled">停用</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.scan_nk">启用 N-k 扫描</span>
-                  <select id="cp-scan-nk">
-                    <option value="1" data-i18n="opt.enabled">启用</option>
-                    <option value="0" data-i18n="opt.disabled">停用</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.max_scan">单轮最大扫描数</span>
-                  <input id="cp-max-scan" type="number" min="1" max="500" step="1">
-                </label>
+          <section class="pas-table-fill-card">
+            <div class="se-toolbar">
+              <div class="se-tool-group">
+                <h2 style="margin:0;font-size:13px;font-weight:700" data-i18n="tab.ca_limits">设备安全限值</h2>
+                <span class="se-tag tabular" id="clim-count">0</span>
+              </div>
+              <div class="se-tool-group" id="ca-limit-tools">
+                <input id="clim-q" class="se-input compact" type="search" data-i18n-placeholder="ph.search_limit" placeholder="搜索限值设备...">
+                <button type="button" class="se-btn mini" id="btn-seed-limits" data-i18n="action.seed_limits">从模型播种限值</button>
+                <a class="se-btn mini" href="/limits.html" data-i18n="action.open_limits">限值管理页 →</a>
               </div>
             </div>
-
-            <div class="se-form-section">
-              <h3 data-i18n="sec.ca_thresholds">越限与失电门槛</h3>
-              <div class="se-form-grid cols-4">
-                <label class="se-field">
-                  <span data-i18n="param.v_min_pu">电压下限 (pu)</span>
-                  <input id="cp-vmin" type="number" step="0.005" min="0.5" max="1.05">
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.v_max_pu">电压上限 (pu)</span>
-                  <input id="cp-vmax" type="number" step="0.005" min="0.95" max="1.5">
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.ol_warn">重载预警 (%)</span>
-                  <input id="cp-ol-warn" type="number" step="1" min="10" max="200">
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.ol_limit">过载越限 (%)</span>
-                  <input id="cp-ol-limit" type="number" step="1" min="20" max="300">
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.loss_thr">失电告警门槛 (kW)</span>
-                  <input id="cp-loss-thr" type="number" step="0.1" min="0">
-                </label>
-                <label class="se-field">
-                  <span data-i18n="param.do_cycle">计算周期参考 (s)</span>
-                  <input id="cp-cycle" type="number" step="1" min="5" max="604800">
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div id="pane-ca-limits" class="se-table-panel" hidden>
             <div class="se-table-wrap">
               <table class="se-table">
                 <thead>
@@ -173,8 +163,8 @@
                 <tbody id="clim-tbody"></tbody>
               </table>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   </div>
