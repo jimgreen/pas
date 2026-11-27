@@ -106,8 +106,7 @@
 
       <nav class="se-view-tabs" id="logs-tabs" role="tablist">
         <button type="button" class="se-tab active" data-view="stream" role="tab" data-i18n="tab.stream">日志明细与检索</button>
-        <button type="button" class="se-tab" data-view="runs" role="tab" data-i18n="tab.runs">运行与调度</button>
-        <button type="button" class="se-tab" data-view="policy" role="tab" data-i18n="tab.policy">定期删除与存储策略</button>
+        <button type="button" class="se-tab" data-view="runs" role="tab" data-i18n="tab.runs">运行与策略</button>
       </nav>
 
       <div class="se-workspace">
@@ -166,119 +165,114 @@
           </div>
         </section>
 
-        <!-- 2. 定期删除与存储策略 -->
-        <section class="se-panel" data-panel="policy">
-          <div class="se-split-grid">
-            <section class="se-card se-full-card">
-              <div class="se-toolbar">
-                <h2 data-i18n="pol.title">定期删除与存储策略 (se_log_policy)</h2>
-                <div class="se-tool-group">
-                  <span class="se-muted tabular" id="pol-pending-meta">--</span>
-                </div>
-              </div>
-              <form id="log-policy-form" class="se-form-grid">
-                <label class="se-field">
-                  <span data-i18n="pol.enabled">自动定期清理</span>
-                  <select name="enabled" id="lp-enabled">
-                    <option value="1" data-i18n="common.enabled">已启用</option>
-                    <option value="0" data-i18n="common.disabled">已停用</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="pol.min_level">最低入库级别</span>
-                  <select name="min_level" id="lp-min-level">
-                    <option value="DEBUG">DEBUG</option>
-                    <option value="INFO">INFO</option>
-                    <option value="WARN">WARN</option>
-                    <option value="ERROR">ERROR</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="pol.retention">常规日志保留天数</span>
-                  <select name="retention_days" id="lp-retention">
-                    <option value="7">7 天</option>
-                    <option value="15">15 天</option>
-                    <option value="30">30 天</option>
-                    <option value="60">60 天</option>
-                    <option value="90">90 天</option>
-                    <option value="180">180 天</option>
-                    <option value="365">365 天</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="pol.keep_err">ERROR 日志保留天数</span>
-                  <select name="keep_error_days" id="lp-keep-err">
-                    <option value="30">30 天</option>
-                    <option value="60">60 天</option>
-                    <option value="90">90 天</option>
-                    <option value="180">180 天</option>
-                    <option value="365">365 天</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="pol.max_rows">最大保留条数</span>
-                  <select name="max_rows" id="lp-max-rows">
-                    <option value="5000">5,000</option>
-                    <option value="20000">20,000</option>
-                    <option value="50000">50,000</option>
-                    <option value="100000">100,000</option>
-                    <option value="500000">500,000</option>
-                  </select>
-                </label>
-                <label class="se-field">
-                  <span data-i18n="pol.interval">清理执行周期</span>
-                  <select name="cleanup_interval_hours" id="lp-interval">
-                    <option value="1">1 h</option>
-                    <option value="6">6 h</option>
-                    <option value="12">12 h</option>
-                    <option value="24">24 h</option>
-                    <option value="168">168 h</option>
-                  </select>
-                </label>
-                <div class="se-tool-group full" style="margin-top:6px">
-                  <button type="submit" class="se-btn primary" data-i18n="pol.save">保存策略</button>
-                  <button type="button" class="se-btn ghost" id="btn-preview-purge" data-i18n="pol.preview">预估待清理</button>
-                  <button type="button" class="se-btn danger-ghost" id="btn-run-purge" data-i18n="pol.purge_now">立即按策略清理</button>
-                </div>
-              </form>
-            </section>
-
-            <section class="se-card se-full-card">
-              <div class="se-toolbar">
-                <h2 data-i18n="dist.title">阶段分布统计</h2>
-              </div>
-              <div class="se-stage-bars" id="log-stage-bars"></div>
-            </section>
-          </div>
-        </section>
-
-        <!-- 3. 运行与调度（由主画面并入） -->
+        <!-- 2. 运行记录 + 调度与日志清理策略（统一双栏满屏，与 LF/CA 日志页对齐） -->
         <section class="se-panel" data-panel="runs">
-          <div class="se-runs-layout">
-            <section class="se-card se-full-card">
+          <div class="pas-runs-policy-grid">
+            <div class="pas-table-fill-card">
               <div class="se-toolbar">
-                <h2 data-i18n="runs.title">SE 运行记录</h2>
+                <h2 style="margin:0;font-size:13px;font-weight:700" data-i18n="runs.title">SE 运行记录</h2>
               </div>
               <div class="se-table-scroll" id="se-runs-table-wrap"></div>
-            </section>
-            <section class="se-card">
-              <h2 data-i18n="sched.title">SE 周期调度</h2>
-              <form id="se-schedule-form" class="se-sched-form">
-                <label class="se-field">
-                  <span data-i18n="sched.period">周期 (s)</span>
-                  <input type="number" name="period_seconds" min="1" max="604800" step="1" required>
-                </label>
-                <label class="se-check-inline">
-                  <input type="checkbox" name="enabled">
-                  <span data-i18n="sched.enabled">启用周期自动执行</span>
-                </label>
-                <div class="se-tool-group">
-                  <button type="submit" class="se-btn primary" data-i18n="sched.save">保存调度</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-start" data-i18n="sched.daemon_start">启动周期</button>
-                  <button type="button" class="se-btn ghost" id="btn-daemon-stop" data-i18n="sched.daemon_stop">停止周期</button>
+            </div>
+            <div class="pas-runs-policy-side">
+              <div class="se-home-card">
+                <div class="se-home-card-head"><h2 data-i18n="sched.title">SE 周期调度</h2></div>
+                <form id="se-schedule-form" class="se-sched-form" style="margin-top:4px;gap:8px">
+                  <div class="se-form-grid cols-2">
+                    <label class="se-field">
+                      <span data-i18n="sched.period">周期 (s)</span>
+                      <input type="number" name="period_seconds" min="1" max="604800" step="1" required>
+                    </label>
+                    <label class="se-check-inline" style="align-self:end;padding-bottom:6px">
+                      <input type="checkbox" name="enabled">
+                      <span data-i18n="sched.enabled">自动执行</span>
+                    </label>
+                  </div>
+                  <div class="se-tool-group">
+                    <button type="submit" class="se-btn primary mini" data-i18n="sched.save">保存调度</button>
+                    <button type="button" class="se-btn ghost mini" id="btn-daemon-start" data-i18n="sched.daemon_start">启动周期</button>
+                    <button type="button" class="se-btn ghost mini" id="btn-daemon-stop" data-i18n="sched.daemon_stop">停止周期</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="se-home-card">
+                <div class="se-home-card-head">
+                  <h2 data-i18n="pol.title">定期删除与存储策略</h2>
+                  <span class="se-muted tabular" id="pol-pending-meta">--</span>
                 </div>
-              </form>
-            </section>
+                <form id="log-policy-form" class="se-form-grid cols-2">
+                  <label class="se-field">
+                    <span data-i18n="pol.enabled">自动清理</span>
+                    <select name="enabled" id="lp-enabled">
+                      <option value="1" data-i18n="common.enabled">已启用</option>
+                      <option value="0" data-i18n="common.disabled">已停用</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.min_level">最低入库级别</span>
+                    <select name="min_level" id="lp-min-level">
+                      <option value="DEBUG">DEBUG</option>
+                      <option value="INFO">INFO</option>
+                      <option value="WARN">WARN</option>
+                      <option value="ERROR">ERROR</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.retention">常规保留天数</span>
+                    <select name="retention_days" id="lp-retention">
+                      <option value="7">7 天</option>
+                      <option value="15">15 天</option>
+                      <option value="30">30 天</option>
+                      <option value="60">60 天</option>
+                      <option value="90">90 天</option>
+                      <option value="180">180 天</option>
+                      <option value="365">365 天</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.keep_err">ERROR 保留天数</span>
+                    <select name="keep_error_days" id="lp-keep-err">
+                      <option value="30">30 天</option>
+                      <option value="60">60 天</option>
+                      <option value="90">90 天</option>
+                      <option value="180">180 天</option>
+                      <option value="365">365 天</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.max_rows">最大保留条数</span>
+                    <select name="max_rows" id="lp-max-rows">
+                      <option value="5000">5,000</option>
+                      <option value="20000">20,000</option>
+                      <option value="50000">50,000</option>
+                      <option value="100000">100,000</option>
+                      <option value="500000">500,000</option>
+                    </select>
+                  </label>
+                  <label class="se-field">
+                    <span data-i18n="pol.interval">清理周期</span>
+                    <select name="cleanup_interval_hours" id="lp-interval">
+                      <option value="1">1 h</option>
+                      <option value="6">6 h</option>
+                      <option value="12">12 h</option>
+                      <option value="24">24 h</option>
+                      <option value="168">168 h</option>
+                    </select>
+                  </label>
+                  <div class="se-tool-group full" style="margin-top:2px">
+                    <button type="submit" class="se-btn primary mini" data-i18n="pol.save">保存策略</button>
+                    <button type="button" class="se-btn ghost mini" id="btn-preview-purge" data-i18n="pol.preview">预估</button>
+                    <button type="button" class="se-btn danger-ghost mini" id="btn-run-purge" data-i18n="pol.purge_now">立即清理</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="se-home-card" style="flex:1;min-height:0">
+                <div class="se-home-card-head"><h2 data-i18n="dist.title">阶段分布统计</h2></div>
+                <div class="se-stage-bars" id="log-stage-bars"></div>
+              </div>
+            </div>
           </div>
         </section>
       </div>

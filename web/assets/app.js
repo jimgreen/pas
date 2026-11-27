@@ -22,8 +22,8 @@ const sourceLabel = s => s === 'manual' ? '人工触发' : '周期自动';
 const number = v => v == null ? '—' : String(Number(Number(v).toPrecision(5)));
 const pageSize = () => {
   const mode=state.tabs[task()],mobile=innerWidth<700;
-  const reserved=mode==='diagnostics'?(mobile?630:540):mode==='details'?(mobile?570:500):(mobile?570:460);
-  return Math.max(1,Math.min(8,Math.floor((innerHeight-reserved)/36)));
+  const reserved=mode==='diagnostics'?(mobile?360:290):(mobile?300:220);
+  return Math.max(12,Math.min(36,Math.floor((innerHeight-reserved)/30)));
 };
 const colSize = () => innerWidth < 700 ? 3 : 6;
 const task = () => state.route.match(/^\/analysis\/(se|lf|ca)/)?.[1];
@@ -54,11 +54,11 @@ function runTable(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>任务 / 来源</th><th>状态</th><th>开始时间</th><th>耗时 / 操作</th></tr></thead><tbody>${rows.map(r=>`<tr><td title="${sourceLabel(r.execution_source)}">${r.task_type.toUpperCase()} · ${r.execution_source==='manual'?'人工':'周期'}</td><td>${badge(r.status)}</td><td data-value="${esc(r.started_at)}" title="${esc(r.started_at)}">${esc(r.started_at)}</td><td><a href="${pageUrl(`/analysis/${r.task_type}`,`?run=${r.run_id}`)}">${r.elapsed_seconds==null?'查看':Number(r.elapsed_seconds).toFixed(2)+'s'} →</a></td></tr>`).join('')}</tbody></table></div>`;
 }
 function jobsPanel(name) {
-  const jobs = (state.status.jobs || []).filter(j=>!name || j.task===name).slice(-3).reverse();
-  return jobs.length ? `<div class="job-list">${jobs.map(j=>`<div class="job-row"><strong>${j.task.toUpperCase()}</strong>${badge(j.status)}<span title="${esc(j.error_message || j.started_at || j.submitted_at)}">${esc(j.error_message || (j.elapsed_seconds == null ? sourceLabel(j.execution_source) : Number(j.elapsed_seconds).toFixed(2)+' s'))}</span>${j.run_id?`<a class="mini" href="${pageUrl(`/analysis/${j.task}`,`?run=${j.run_id}`)}">结果 #${j.run_id}</a>`:''}</div>`).join('')}</div>` : empty('暂无本次服务启动后的任务');
+  const jobs = (state.status.jobs || []).filter(j=>!name || j.task===name).slice(-8).reverse();
+  return jobs.length ? `<div class="job-list">${jobs.map(j=>`<div class="job-row"><strong>${j.task.toUpperCase()}</strong>${badge(j.status)}<span title="${esc(j.error_message || j.started_at || j.submitted_at)}">${esc(j.error_message || (j.elapsed_seconds == null ? sourceLabel(j.execution_source) : Number(j.elapsed_seconds).toFixed(2)+' s'))}</span>${j.run_id?`<a class="mini" href="${pageUrl(`/analysis/${j.task}`,`?run=${j.run_id}`)}">#${j.run_id}</a>`:''}</div>`).join('')}</div>` : empty('—');
 }
 function serviceControls() {
-  return `<div class="btn-row"><button type="button" class="primary" data-action="all">执行全部</button><button type="button" class="mini" data-action="retry-failed">重试失败任务</button><button type="button" class="mini" data-action="daemon-start">启动周期</button><button type="button" class="mini" data-action="daemon-stop">停止周期</button></div><p class="muted">停止周期后，已接受的计算仍会完成并保存结果。</p>`;
+  return `<div class="btn-row"><button type="button" class="primary" data-action="all">执行全部</button><button type="button" class="mini" data-action="retry-failed">重试失败</button><button type="button" class="mini" data-action="daemon-start">启动周期</button><button type="button" class="mini" data-action="daemon-stop">停止周期</button></div>`;
 }
 const TREND_METRICS={runs:'执行次数',succeeded:'成功次数',failed:'失败次数',avg_elapsed_seconds:'平均耗时（秒）'};
 function trendChart(points) {
@@ -101,7 +101,8 @@ async function history(name) {
   if(name)params.set('task',name);
   else for(const [key,value] of Object.entries(state.filter))if(value)params.set(key,value);
   const data=await api(`/api/runs?${params}`);
-  return `<section class="card full-panel"><div class="section-head"><h2>运行历史</h2><div class="btn-row">${(name?[name]:TASKS).map(button).join('')}</div></div>${name?'':`<div class="filter-row">${[['task',[['se','SE'],['lf','LF'],['ca','CA']]],['status',[['succeeded','成功'],['failed','失败'],['running','运行中']]],['source',[['manual','人工'],['schedule','周期']]]].map(([key,options])=>`<select aria-label="${key}" data-filter="${key}"><option value="">全部${{task:'任务',status:'状态',source:'来源'}[key]}</option>${options.map(([v,l])=>`<option value="${v}" ${state.filter[key]===v?'selected':''}>${l}</option>`).join('')}</select>`).join('')}<button class="mini" data-action="clear">重置</button></div>`}${runTable(data.data)}${pager(state.page,data.meta.total,'history')}</section>`;
+  const filters=name?'':`${[['task',[['se','SE'],['lf','LF'],['ca','CA']]],['status',[['succeeded','成功'],['failed','失败'],['running','运行中']]],['source',[['manual','人工'],['schedule','周期']]]].map(([key,options])=>`<select aria-label="${key}" data-filter="${key}"><option value="">全部${{task:'任务',status:'状态',source:'来源'}[key]}</option>${options.map(([v,l])=>`<option value="${v}" ${state.filter[key]===v?'selected':''}>${l}</option>`).join('')}</select>`).join('')}<button class="mini" data-action="clear">重置</button>`;
+  return `<section class="card full-panel"><div class="pas-flat-bar"><div class="pas-flat-group"><strong style="font-size:13.5px">运行历史</strong><span class="badge tabular">${data.meta.total} 条</span>${filters}</div><div class="pas-flat-group">${(name?[name]:TASKS).map(button).join('')}</div></div>${runTable(data.data)}${pager(state.page,data.meta.total,'history')}</section>`;
 }
 const fieldLabels={measurement_name:'量测',measurement_type:'类型',measurement_idx:'量测序号',device_name:'设备',device_type:'设备类型',value:'原值',estimated_value:'估计值',residual:'残差',normalized_residual:'标准化残差',valid:'有效',source:'来源',reason:'原因',device_key:'设备',domain:'域',node_from:'首端节点',node_to:'末端节点',voltage_from:'首端电压',voltage_to:'末端电压',p_from:'首端 P',q_from:'首端 Q',p_to:'末端 P',q_to:'末端 Q',current_from:'首端电流',current_to:'末端电流',contingency:'故障场景',risk_source:'风险来源',risk_type:'风险类型',risk_info:'风险说明',risk_value_real:'风险值',risk_value_text:'风险值文本',risk_dist:'风险对象',created_at:'写入时间'};
 function dataTable(data,cfg,name) {
@@ -211,27 +212,108 @@ async function workspace() {
 async function settings() {
   let content;
   const cfg=(await api('/api/config')).data;
-  const health=state.settingsTab==='database'?(await api('/api/health')).data:null;
-  if(state.settingsTab==='schedule')content=`<div class="settings-select"><select aria-label="调度任务" data-schedule-task>${TASKS.map(t=>`<option value="${t}" ${state.scheduleTask===t?'selected':''}>${LABELS[t]}</option>`).join('')}</select></div>${controlView(cfg,state.scheduleTask)}`;
-  else if(state.settingsTab==='datasource') {
+  if(state.settingsTab==='schedule') {
+    const [runsResp, pipeResp] = await Promise.all([
+      api('/api/runs?limit=20').catch(()=>({data:[]})),
+      api('/api/pipeline/status').catch(()=>({data:null})),
+    ]);
+    const recentRuns = runsResp.data || [];
+    const cascade = pipeResp?.data?.cascade_policy || {};
+    const daemonOn = Boolean(state.status?.daemon_running ?? pipeResp?.data?.scheduler?.daemon_running);
+    const schedCards = TASKS.map(name => {
+      const tc = cfg.tasks?.[name] || {};
+      const last = recentRuns.find(r => r.task_type === name);
+      return `<form data-schedule="${name}" class="card pas-sched-card">
+        <div class="section-head">
+          <h2>${LABELS[name]}</h2>
+          <span class="badge ${tc.enabled?'success':''}">${tc.enabled?'周期启用':'已停用'}</span>
+        </div>
+        <div class="pas-sched-row">
+          <label class="pas-sched-field">
+            <span>周期 (s)</span>
+            <input name="period" type="number" min="1" max="604800" step="any" required value="${tc.period_seconds ?? 60}" class="tabular">
+          </label>
+          <label class="pas-sched-check">
+            <input type="checkbox" name="enabled" ${tc.enabled?'checked':''}>
+            <span>自动执行</span>
+          </label>
+        </div>
+        <div class="pas-sched-foot">
+          <span class="pas-sched-last tabular">${last ? `#${last.run_id} · ${statusLabel(last.status)} · ${last.elapsed_seconds!=null?Number(last.elapsed_seconds).toFixed(2)+'s':'—'}` : '—'}</span>
+          <div class="btn-row">
+            <button type="submit" class="primary">保存</button>
+            ${button(name)}
+          </div>
+        </div>
+      </form>`;
+    }).join('');
+    content = `<div class="pas-settings-sched-layout">
+      <div class="pas-sched-grid">${schedCards}</div>
+      <div class="pas-settings-split">
+        <section class="card pas-side-stack">
+          <div class="section-head">
+            <h2>后台守护与级联</h2>
+            <span class="badge ${daemonOn?'success':'running'}">${daemonOn?'调度运行中':'调度已停止'}</span>
+          </div>
+          ${serviceControls()}
+          <div class="pas-cascade-row">
+            <label class="pas-sched-check"><input type="checkbox" data-cascade="se_to_lf" ${cascade.se_to_lf?'checked':''}><span>SE 收敛自动触发 LF</span></label>
+            <label class="pas-sched-check"><input type="checkbox" data-cascade="lf_to_ca" ${cascade.lf_to_ca?'checked':''}><span>LF 收敛自动触发 CA</span></label>
+          </div>
+          <div class="pas-sub-sep"></div>
+          <div class="section-head"><h2>实时任务队列</h2><span class="badge tabular">${(state.status.jobs||[]).length}</span></div>
+          <div class="pas-jobs-scroll" data-jobs="">${jobsPanel(null)}</div>
+        </section>
+        <section class="card full-panel">
+          <div class="section-head">
+            <h2>近期调度与执行记录</h2>
+            <a class="mini" href="/runs.html">全部历史 →</a>
+          </div>
+          ${runTable(recentRuns)}
+        </section>
+      </div>
+    </div>`;
+  } else if(state.settingsTab==='datasource') {
     const w=cfg.workspace||{};
+    let dsMeta='—';
     let dsCards='<div class="empty">加载中…</div>';
     try {
       const ds=(await api('/api/datasources/health')).data;
       const items=ds.items||[];
-      dsCards=`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">健康数据源：<strong>${ds.ok_count} / ${ds.total}</strong>（缺失 ${ds.missing_count}）</div><div class="pas-ds-grid">${items.map(it=>`<div class="pas-ds-item"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong>${esc(it.label)}</strong><span class="badge ${it.status==='ok'?'success':it.status==='missing'?'failed':'running'}">${it.status==='ok'?'正常':it.status==='missing'?'缺失':'只读告警'} · ${esc(it.mode)}</span></div><div style="margin-top:4px;font-size:11.5px;color:var(--text-secondary)" class="tabular">大小：${esc(it.size_text)} · 更新：${esc(it.mtime||'—')}</div><div class="ds-path">${esc(it.path||'未配置')}</div></div>`).join('')}</div>`;
+      dsMeta=`正常 ${ds.ok_count} / ${ds.total}${ds.missing_count?` · 缺失 ${ds.missing_count}`:''}`;
+      dsCards=`<div class="pas-ds-grid">${items.map(it=>`<div class="pas-ds-item"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong>${esc(it.label)}</strong><span class="badge ${it.status==='ok'?'success':it.status==='missing'?'failed':'running'}">${it.status==='ok'?'正常':it.status==='missing'?'缺失':'只读告警'} · ${esc(it.mode)}</span></div><div style="margin-top:4px;font-size:11.5px;color:var(--text-secondary)" class="tabular">${esc(it.size_text)} · ${esc(it.mtime||'—')}</div><div class="ds-path" data-value="${esc(it.path||'未配置')}" title="点击查看完整路径">${esc(it.path||'未配置')}</div></div>`).join('')}</div>`;
     } catch(err) { dsCards=`<div class="error-text">${esc(err.message)}</div>`; }
-    const dirRows=[['根目录',w.workspace_root],['运行态 / 场景',`${w.runtime||'—'} / ${w.scenario||'—'}`],['工作目录',w.workspace_directory],['计算内核',cfg.kernel_root]].map(([l,v])=>`<div class="workspace-row"><strong>${esc(l)}</strong><button class="workspace-path ghost" data-value="${esc(v||'未配置')}" title="查看完整路径">${esc(v||'未配置')}</button></div>`).join('');
-    content=`<section class="card full-panel" style="overflow:auto"><h2>工作目录与数据源体检</h2>${dirRows}<div style="margin-top:10px">${dsCards}</div></section>`;
-  }
-  else if(state.settingsTab==='logs') {
+    const dirCards=[['根目录',w.workspace_root],['运行态 / 场景',`${w.runtime||'—'} / ${w.scenario||'—'}`],['工作目录',w.workspace_directory],['计算内核',cfg.kernel_root]].map(([l,v])=>`<div class="pas-dir-card"><span>${esc(l)}</span><strong class="tabular" data-value="${esc(v||'未配置')}" title="${esc(v||'未配置')}">${esc(v||'未配置')}</strong></div>`).join('');
+    content=`<div class="pas-settings-sched-layout">
+      <div class="pas-dir-grid">${dirCards}</div>
+      <section class="card full-panel" style="overflow:auto">
+        <div class="section-head"><h2>全平台数据源健康体检</h2><span class="badge tabular">${esc(dsMeta)}</span></div>
+        ${dsCards}
+      </section>
+    </div>`;
+  } else if(state.settingsTab==='logs') {
     const d=await api(`/api/logs?limit=${pageSize()}&offset=${state.logPage*pageSize()}`);
-    content=`<section class="card full-panel"><h2>PAS 日志</h2><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>消息</th><th>上下文</th></tr></thead><tbody>${d.data.map(l=>`<tr><td data-value="${esc(l.created_at)}">${esc(l.created_at)}</td><td>${esc(l.level)}</td><td data-value="${esc(l.message)}">${esc(l.message)}</td><td data-value="${esc(l.context_json)}">${esc(l.context_json)}</td></tr>`).join('')}</tbody></table></div>${pager(state.logPage,d.meta.total,'logs')}</section>`;
+    content=`<section class="card full-panel"><div class="section-head"><h2>PAS 系统运行日志</h2><span class="badge tabular">${d.meta.total} 条</span></div><div class="table-wrap"><table><thead><tr><th style="width:168px">时间</th><th style="width:76px">级别</th><th>消息</th><th style="width:28%">上下文</th></tr></thead><tbody>${d.data.map(l=>`<tr><td class="tabular" data-value="${esc(l.created_at)}">${esc(l.created_at)}</td><td><span class="badge ${l.level==='ERROR'?'failed':l.level==='WARN'?'running':'success'}">${esc(l.level)}</span></td><td data-value="${esc(l.message)}">${esc(l.message)}</td><td class="tabular" data-value="${esc(l.context_json)}">${esc(l.context_json)}</td></tr>`).join('')}</tbody></table></div>${pager(state.logPage,d.meta.total,'logs')}</section>`;
   } else {
+    const [healthResp, runsResp] = await Promise.all([
+      api('/api/health?lite=1').catch(()=>api('/api/health')),
+      api('/api/runs?limit=24').catch(()=>({data:[]})),
+    ]);
+    const health = healthResp.data;
+    const recentRuns = runsResp.data || [];
     const databases=health?.databases||{};
     const dbRows=[['PAS',databases.pas],...TASKS.map(t=>[t.toUpperCase(),databases[t]])].map(([name,item])=>`<div class="health-row"><strong>${name}</strong><span>${item?healthBadge(item.sqlite==='ok'&&item.exists):healthBadge(false)}</span><span class="health-path" tabindex="0" data-value="${esc(item?.path||'—')}" title="点击查看完整路径">${esc(item?.path||'—')}</span></div>`).join('');
-    const taskRows=TASKS.map(name=>{const item=health?.tasks?.[name]||{};const latest=item.latest_run;return `<div class="health-row"><strong>${name.toUpperCase()}</strong><span>${healthBadge(item.inputs_ready!==false)}</span><span>${item.inputs_ready===false?`缺少：${esc((item.missing_inputs||[]).join('、'))}`:`最近 ${latest?`${statusLabel(latest.status)} · #${latest.run_id}`:'暂无运行'}`}</span></div>`;}).join('');
-    content=`<div class="two health-grid"><section class="card"><div class="section-head"><h2>SQLite 数据库</h2>${healthBadge(health?.status==='ok')}</div>${dbRows}<div class="health-row"><strong>内核</strong><span>${healthBadge(Boolean(cfg.kernel_root))}</span><span class="health-path" tabindex="0" data-value="${esc(cfg.kernel_root)}" title="点击查看完整路径">${esc(cfg.kernel_root)}</span></div></section><section class="card"><div class="section-head"><h2>任务输入与最近运行</h2>${healthBadge(health?.status==='ok')}</div>${taskRows}</section></div>`;
+    const taskRows=TASKS.map(name=>{const item=health?.tasks?.[name]||{};const latest=item.latest_run||recentRuns.find(r=>r.task_type===name);return `<div class="health-row"><strong>${name.toUpperCase()}</strong><span>${healthBadge(item.inputs_ready!==false)}</span><span>${item.inputs_ready===false?`缺少：${esc((item.missing_inputs||[]).join('、'))}`:`最近 ${latest?`${statusLabel(latest.status)} · #${latest.run_id}`:'暂无运行'}`}</span></div>`;}).join('');
+    content=`<div class="pas-settings-sched-layout">
+      <div class="two health-grid">
+        <section class="card"><div class="section-head"><h2>SQLite 数据库</h2>${healthBadge(health?.status==='ok')}</div>${dbRows}<div class="health-row"><strong>内核</strong><span>${healthBadge(Boolean(cfg.kernel_root))}</span><span class="health-path" tabindex="0" data-value="${esc(cfg.kernel_root)}" title="点击查看完整路径">${esc(cfg.kernel_root)}</span></div></section>
+        <section class="card"><div class="section-head"><h2>任务输入与最近状态</h2>${healthBadge(health?.status==='ok')}</div>${taskRows}</section>
+      </div>
+      <section class="card full-panel">
+        <div class="section-head"><h2>最近跨库运行落库记录</h2><a class="mini" href="/runs.html">全部历史 →</a></div>
+        ${runTable(recentRuns)}
+      </section>
+    </div>`;
   }
   return tabs([['schedule','调度参数'],['datasource','数据源与目录'],['database','数据库'],['logs','运行日志']],state.settingsTab)+`<div class="analysis-body">${content}</div>`;
 }
@@ -300,13 +382,21 @@ document.addEventListener('submit',async e=>{
     notify(`${LABELS[name]} 调度参数已保存并生效`);await refreshStatus();
   } catch(err){notify(err.message,true);}
 });
-document.addEventListener('change',e=>{
+document.addEventListener('change',async e=>{
   if(e.target.matches('[data-trend]')){state.trend[e.target.dataset.trend]=e.target.value;state.trend.page=0;render();}
   if(e.target.matches('[data-detail-view],[data-detail-sort]')){state.browse[task()][e.target.hasAttribute('data-detail-view')?'view':'sort']=e.target.value;state.browse[task()].page=0;render();}
 
   if(e.target.matches('[data-filter]')){state.filter[e.target.dataset.filter]=e.target.value;state.page=0;render();}
   if(e.target.matches('[data-table]')){Object.assign(state.browse[task()],{table:e.target.value,page:0,col:0});render();}
   if(e.target.matches('[data-schedule-task]')){state.scheduleTask=e.target.value;render();}
+  if(e.target.matches('[data-cascade]')){
+    try {
+      const seToLf = Boolean(document.querySelector('[data-cascade="se_to_lf"]')?.checked);
+      const lfToCa = Boolean(document.querySelector('[data-cascade="lf_to_ca"]')?.checked);
+      await api('/api/pipeline/cascade',{se_to_lf:seToLf,lf_to_ca:lfToCa});
+      notify('级联自动触发策略已保存');
+    } catch(err){notify(err.message,true);}
+  }
 });
 document.addEventListener('click',async e=>{
   const el=e.target.closest('button,[data-value]');if(!el||el.disabled)return;
@@ -319,7 +409,7 @@ document.addEventListener('click',async e=>{
     if(el.dataset.diagCol){state.diagCol+=Number(el.dataset.diagCol);return render();}
     if(el.dataset.sort){const c=state.browse[task()];c.direction=c.sort===el.dataset.sort&&c.direction==='asc'?'desc':'asc';c.sort=el.dataset.sort;c.page=0;return render();}
     if(el.dataset.control){state.controlTab=el.dataset.control;return render();}
-    if(el.dataset.tab){const baseRoute=state.route.split('?')[0];if(task())state.tabs[task()]=el.dataset.tab;else if(baseRoute==='/settings')state.settingsTab=el.dataset.tab;else if(baseRoute==='/workspace')state.workspaceTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
+    if(el.dataset.tab){el.closest('.tabs')?.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===el));const baseRoute=state.route.split('?')[0];if(task())state.tabs[task()]=el.dataset.tab;else if(baseRoute==='/settings')state.settingsTab=el.dataset.tab;else if(baseRoute==='/workspace')state.workspaceTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
     if(el.dataset.page){const delta=Number(el.dataset.page);if(el.dataset.scope==='trend')state.trend.page+=delta;else if(el.dataset.scope==='diagnostics')state.diagPage+=delta;else if(el.dataset.scope==='browse')state.browse[task()].page+=delta;else if(el.dataset.scope==='logs')state.logPage+=delta;else state.page+=delta;return render();}
     if(el.dataset.col){state.browse[task()].col+=Number(el.dataset.col);return render();}
     const action=el.dataset.action;

@@ -108,6 +108,56 @@ class PasWebApp:
         for_task = getattr(self.repository, "for_task", None)
         return for_task("ca") if callable(for_task) else self.repository
 
+    def _weather_repo(self) -> Any:
+        ctrl = getattr(self.repository, "control", None)
+        if ctrl is not None and callable(getattr(ctrl, "weather_state_get", None)):
+            return ctrl
+        if callable(getattr(self.repository, "weather_state_get", None)):
+            return self.repository
+        return self._ca_repo()
+
+    def _weather_model_tables(self) -> dict[str, dict[str, Any]] | None:
+        ca_task = getattr(self.config, "tasks", {}).get("ca") or getattr(self.config, "tasks", {}).get("lf")
+        model_file = getattr(ca_task, "model_file", None)
+        if not model_file:
+            return None
+        path = Path(model_file)
+        if not path.is_file() or path.suffix.lower() not in SQLITE_SUFFIXES:
+            return None
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return None
+        cache = getattr(self, "_weather_mt_cache", None)
+        if cache and cache[0] == str(path) and cache[1] == mtime:
+            return cache[2]
+        try:
+            mt = read_model_tables(path)
+            self._weather_mt_cache = (str(path), mtime, mt)
+            return mt
+        except (ValueError, OSError, input_store.sqlite3.Error):
+            return None
+
+    def _weather_summary(
+        self,
+        *,
+        include_presets: bool = False,
+        state_override: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from .weather_coupling import (
+            POLAR_WEATHER_PRESETS,
+            WEATHER_PERTURBATION_KINDS,
+            compute_weather_coupling_summary,
+        )
+        state = state_override if state_override is not None else self._weather_repo().weather_state_get()
+        summary = compute_weather_coupling_summary(state, self._weather_model_tables())
+        if include_presets:
+            summary["presets"] = list(POLAR_WEATHER_PRESETS.values())
+            summary["perturbation_kinds"] = [
+                {"kind": k, "label": v} for k, v in WEATHER_PERTURBATION_KINDS.items()
+            ]
+        return summary
+
     def _build_ca_topology_risks(self, *, run_id: int | None = None) -> dict[str, Any]:
         """构建 CA 接线图风险叠加数据（按最新/历史 CA 断面映射每个受影响设备与实母线的风险等级）。"""
         ca_repo = self._ca_repo()
@@ -1463,11 +1513,26 @@ class PasWebApp:
                     return {"ok": True, "data": lf_repo.lf_logs_policy_get()}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
+        # --- 南极气象条件与环境工况耦合只读 API ---
+        if parsed.path == "/api/weather/current":
+            try:
+                return {"ok": True, "data": self._weather_summary(include_presets=True)}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if parsed.path == "/api/weather/history":
+            try:
+                query = parse_qs(parsed.query)
+                limit = _int_query(query, "limit", 60, 1, 500)
+                return {"ok": True, "data": self._weather_repo().weather_history_list(limit=limit)}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
         # --- 全平台 SE → LF → CA 链路态势与深度洞察只读 API ---
         if parsed.path == "/api/pipeline/status":
             try:
                 overview = self._build_pipeline_overview()
-                return {"ok": True, "data": platform_insights.enrich_pipeline_status(self, overview)}
+                enriched = platform_insights.enrich_pipeline_status(self, overview)
+                enriched["weather"] = self._weather_summary(include_presets=False)
+                return {"ok": True, "data": enriched}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
         if parsed.path == "/api/device/profile":
@@ -1507,7 +1572,11 @@ class PasWebApp:
             query = parse_qs(parsed.query)
             try:
                 if parsed.path == "/api/ca/home":
-                    return {"ok": True, "data": ca_repo.ca_home_summary(do_cycle=ca_period)}
+                    data = ca_repo.ca_home_summary(do_cycle=ca_period)
+                    data["weather"] = self._weather_summary(include_presets=False)
+                    return {"ok": True, "data": data}
+                if parsed.path == "/api/ca/health/history":
+                    return {"ok": True, "data": ca_repo.ca_health_history(_int_query(query, "limit", 100, 1, 500))}
                 if parsed.path == "/api/ca/runs/history":
                     return {"ok": True, "data": ca_repo.ca_runs_history(_int_query(query, "limit", 30, 1, 200))}
                 if parsed.path == "/api/ca/topology-risks":
@@ -1556,6 +1625,7 @@ class PasWebApp:
                     }
                 if parsed.path == "/api/ca/model-catalog":
                     from .ca_online import CONTINGENCY_DEVICE_TABLES
+                    from .weather_coupling import WEATHER_PERTURBATION_KINDS
                     cat = self._se_model_catalog()
                     return {
                         "ok": True,
@@ -1564,6 +1634,10 @@ class PasWebApp:
                             "contingency_types": [
                                 {"type": k, "label": v[0], "priority": v[1]}
                                 for k, v in CONTINGENCY_DEVICE_TABLES.items()
+                            ],
+                            "weather_kinds": [
+                                {"kind": k, "label": v}
+                                for k, v in WEATHER_PERTURBATION_KINDS.items()
                             ],
                         },
                     }
@@ -1978,6 +2052,11 @@ class PasWebApp:
                         "ok": True,
                         "data": ca_repo.ca_contingencies_sync(mt, device_types=dts, overwrite=bool(payload.get("overwrite", False))),
                     }
+                if path == "/api/ca/contingencies/seed-weather":
+                    return {
+                        "ok": True,
+                        "data": ca_repo.ca_contingencies_seed_weather(overwrite=bool(payload.get("overwrite", False))),
+                    }
                 if path == "/api/ca/contingencies/bulk-toggle":
                     return {
                         "ok": True,
@@ -2012,6 +2091,16 @@ class PasWebApp:
                             source="operator",
                         ),
                     }
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if path == "/api/weather/current":
+            try:
+                saved = self._weather_repo().weather_state_save(payload)
+                summary = self._weather_summary(include_presets=True, state_override=saved)
+                ca_job = None
+                if bool(payload.get("trigger_ca", False)) and callable(getattr(self.scheduler, "trigger_task_async", None)):
+                    ca_job = self.scheduler.trigger_task_async("ca")
+                return {"ok": True, "data": {**summary, "ca_job": ca_job}}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
         if path.startswith('/api/inputs/'):

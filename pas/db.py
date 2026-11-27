@@ -21,7 +21,9 @@ from .analytics import DETAILS, detail_query, hour_window, merge_trends
 from .ca_online import (
     bulk_toggle_ca_contingencies,
     ca_log_summary,
+    classify_health_grade,
     clear_ca_contingencies,
+    compute_grid_health_assessment,
     delete_ca_contingency,
     ensure_ca_log_policy,
     ensure_ca_params,
@@ -33,8 +35,14 @@ from .ca_online import (
     reset_ca_params,
     save_ca_contingency,
     save_ca_params,
+    seed_ca_weather_contingencies,
     sync_ca_contingencies_from_model,
     update_ca_log_policy,
+)
+from .weather_coupling import (
+    ensure_weather_state,
+    list_weather_history,
+    save_weather_state,
 )
 from .dbdef import build_dbdef_rows, load_catalog, normalize_dbdef_row, table_names, upsert_dbdef_row
 from .input_store import SE_DEVICE_RESULT_METRICS
@@ -174,6 +182,71 @@ class Repository:
             ensure_se_log_policy(conn)
             if "snapshot_version" not in {row[1] for row in conn.execute("PRAGMA table_info(pas_dbdef_run)")}:
                 conn.execute("ALTER TABLE pas_dbdef_run ADD COLUMN snapshot_version INTEGER NOT NULL DEFAULT 0")
+            # 幂等补齐 ca_statistics / ca_health_history / ca_para / ca_contingency_def 新列与约束（兼容已有历史库）
+            ca_stat_cols = {row[1] for row in conn.execute("PRAGMA table_info(ca_statistics)")}
+            if ca_stat_cols:
+                for col, ddl in (
+                    ("health_grade", "TEXT NOT NULL DEFAULT ''"),
+                    ("health_label", "TEXT NOT NULL DEFAULT ''"),
+                    ("health_dims_json", "TEXT NOT NULL DEFAULT '{}'"),
+                    ("weather_total_count", "INTEGER NOT NULL DEFAULT 0"),
+                    ("weather_risk_count", "INTEGER NOT NULL DEFAULT 0"),
+                    ("weather_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+                ):
+                    if col not in ca_stat_cols:
+                        conn.execute(f"ALTER TABLE ca_statistics ADD COLUMN {col} {ddl}")
+            ca_hh_cols = {row[1] for row in conn.execute("PRAGMA table_info(ca_health_history)")}
+            if ca_hh_cols:
+                for col, ddl in (
+                    ("weather_total_count", "INTEGER NOT NULL DEFAULT 0"),
+                    ("weather_risk_count", "INTEGER NOT NULL DEFAULT 0"),
+                    ("irradiance_wm2", "REAL"),
+                    ("wind_speed_ms", "REAL"),
+                    ("ambient_temp_c", "REAL"),
+                    ("polar_regime", "TEXT NOT NULL DEFAULT ''"),
+                ):
+                    if col not in ca_hh_cols:
+                        conn.execute(f"ALTER TABLE ca_health_history ADD COLUMN {col} {ddl}")
+            ca_para_cols = {row[1] for row in conn.execute("PRAGMA table_info(ca_para)")}
+            if ca_para_cols and "scan_weather" not in ca_para_cols:
+                conn.execute("ALTER TABLE ca_para ADD COLUMN scan_weather INTEGER NOT NULL DEFAULT 1")
+            cdef_row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='ca_contingency_def'"
+            ).fetchone()
+            if cdef_row:
+                cdef_sql = str(cdef_row[0] or "")
+                cdef_cols = {row[1] for row in conn.execute("PRAGMA table_info(ca_contingency_def)")}
+                if "'Weather'" not in cdef_sql or "perturbation_json" not in cdef_cols:
+                    conn.execute("ALTER TABLE ca_contingency_def RENAME TO _ca_contingency_def_legacy")
+                    conn.execute(
+                        """CREATE TABLE ca_contingency_def (
+                               id INTEGER PRIMARY KEY AUTOINCREMENT,
+                               name TEXT NOT NULL UNIQUE,
+                               category TEXT NOT NULL DEFAULT 'N-1' CHECK (category IN ('N-1', 'N-k', 'Weather')),
+                               items_json TEXT NOT NULL DEFAULT '[]',
+                               perturbation_json TEXT NOT NULL DEFAULT '{}',
+                               target_desc TEXT NOT NULL DEFAULT '',
+                               priority INTEGER NOT NULL DEFAULT 50,
+                               enabled INTEGER NOT NULL DEFAULT 1,
+                               auto_generated INTEGER NOT NULL DEFAULT 0,
+                               note TEXT NOT NULL DEFAULT '',
+                               updated_at TEXT NOT NULL DEFAULT ''
+                           )"""
+                    )
+                    pert_expr = "perturbation_json" if "perturbation_json" in cdef_cols else "'{}'"
+                    conn.execute(
+                        f"""INSERT INTO ca_contingency_def(
+                                id, name, category, items_json, perturbation_json, target_desc,
+                                priority, enabled, auto_generated, note, updated_at
+                            )
+                            SELECT id, name, category, items_json, {pert_expr}, target_desc,
+                                   priority, enabled, auto_generated, note, updated_at
+                            FROM _ca_contingency_def_legacy"""
+                    )
+                    conn.execute("DROP TABLE _ca_contingency_def_legacy")
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_ca_contingency_def_enabled ON ca_contingency_def(enabled, priority, id)"
+                    )
             # 回收服务异常退出遗留的僵尸 running 任务，避免前端长期显示假运行态
             conn.execute(
                 """UPDATE calculation_run
@@ -2359,6 +2432,37 @@ class Repository:
             stamp = calc_time or utc_now()
             k_sec = float(kernel_seconds if kernel_seconds is not None else (result.get("performance") or {}).get("solve_seconds", 0.0) or 0.0)
             e_sec = float(elapsed_seconds if elapsed_seconds is not None else k_sec)
+            health_obj = result.get("ca_health") if isinstance(result.get("ca_health"), dict) else None
+            if health_obj is None:
+                health_obj = compute_grid_health_assessment(
+                    base_converged=bool(int(st.get("base_converged", 1))),
+                    n0_risk_count=int(st.get("n0_risk_count", 0)),
+                    n1_total_count=int(st.get("n1_total_count", 0)),
+                    n1_converged_count=int(st.get("n1_converged_count", 0)),
+                    n1_diverged_count=int(st.get("n1_diverged_count", 0)),
+                    n1_risk_count=int(st.get("n1_risk_count", 0)),
+                    nk_total_count=int(st.get("nk_total_count", 0)),
+                    nk_risk_count=int(st.get("nk_risk_count", 0)),
+                    critical_count=int(st.get("critical_count", 0)),
+                    high_count=int(st.get("high_count", 0)),
+                    medium_count=int(st.get("medium_count", 0)),
+                    low_count=int(st.get("low_count", 0)),
+                    max_loading_pct=float(st.get("max_loading_pct", 0.0)),
+                    min_v_pu=st.get("min_v_pu"),
+                    max_v_pu=st.get("max_v_pu"),
+                    max_load_loss_kw=float(st.get("max_load_loss_kw", 0.0)),
+                    affected_devices=int(st.get("affected_devices", 0)),
+                )
+            h_score = float(st.get("security_score", health_obj["health_score"]))
+            h_grade = str(st.get("health_grade") or health_obj["health_grade"] or "C")
+            h_label = str(st.get("health_label") or health_obj["health_label"] or "注意")
+            h_dims = st.get("health_dims") if isinstance(st.get("health_dims"), dict) else (health_obj.get("dimensions") or {})
+            h_dims_json = json.dumps(h_dims, ensure_ascii=False)
+            h_summary = str(st.get("health_summary") or health_obj.get("summary_text") or "")
+            w_snap = st.get("weather_snapshot") if isinstance(st.get("weather_snapshot"), dict) else {}
+            w_snap_json = json.dumps(w_snap, ensure_ascii=False)
+            w_tot = int(st.get("weather_total_count", 0))
+            w_risk = int(st.get("weather_risk_count", 0))
             conn.execute(
                 """INSERT OR REPLACE INTO ca_statistics(
                        run_id, calc_time, source_lf_run_id, source_se_run_id, base_converged,
@@ -2370,8 +2474,10 @@ class Repository:
                        min_v_pu, min_v_bus, max_v_pu, max_v_bus,
                        max_load_loss_kw, worst_contingency,
                        elapsed_seconds, kernel_seconds,
-                       u_unit, p_unit, i_unit, failure_reason
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       u_unit, p_unit, i_unit, failure_reason,
+                       health_grade, health_label, health_dims_json,
+                       weather_total_count, weather_risk_count, weather_snapshot_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_id,
                     stamp,
@@ -2379,7 +2485,7 @@ class Repository:
                     st.get("source_se_run_id"),
                     int(st.get("base_converged", 1)),
                     str(st.get("risk_level") or result.get("risk_level") or "安全"),
-                    float(st.get("security_score", 100.0)),
+                    h_score,
                     int(st.get("n0_risk_count", 0)),
                     int(st.get("n1_total_count", 0)),
                     int(st.get("n1_converged_count", 0)),
@@ -2405,6 +2511,54 @@ class Repository:
                     str(st.get("p_unit") or "kW"),
                     str(st.get("i_unit") or "A"),
                     str(st.get("failure_reason") or ""),
+                    h_grade,
+                    h_label,
+                    h_dims_json,
+                    w_tot,
+                    w_risk,
+                    w_snap_json,
+                ),
+            )
+            conn.execute(
+                """INSERT OR REPLACE INTO ca_health_history(
+                       run_id, calc_time, source_lf_run_id, source_se_run_id,
+                       health_score, health_grade, health_label, risk_level,
+                       base_score, voltage_score, loading_score, n1_score, supply_score,
+                       base_converged, n0_risk_count, n1_total_count, n1_converged_count, n1_risk_count,
+                       weather_total_count, weather_risk_count,
+                       irradiance_wm2, wind_speed_ms, ambient_temp_c, polar_regime,
+                       max_loading_pct, min_v_pu, max_load_loss_kw, affected_devices, summary_text
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_id,
+                    stamp,
+                    st.get("source_lf_run_id"),
+                    st.get("source_se_run_id"),
+                    h_score,
+                    h_grade,
+                    h_label,
+                    str(st.get("risk_level") or result.get("risk_level") or "安全"),
+                    float(h_dims.get("base", h_score)),
+                    float(h_dims.get("voltage", h_score)),
+                    float(h_dims.get("loading", h_score)),
+                    float(h_dims.get("n1", h_score)),
+                    float(h_dims.get("supply", h_score)),
+                    int(st.get("base_converged", 1)),
+                    int(st.get("n0_risk_count", 0)),
+                    int(st.get("n1_total_count", 0)),
+                    int(st.get("n1_converged_count", 0)),
+                    int(st.get("n1_risk_count", 0)),
+                    w_tot,
+                    w_risk,
+                    w_snap.get("irradiance_wm2"),
+                    w_snap.get("wind_speed_ms"),
+                    w_snap.get("ambient_temp_c"),
+                    str(w_snap.get("polar_regime") or ""),
+                    float(st.get("max_loading_pct", 0.0)),
+                    st.get("min_v_pu"),
+                    float(st.get("max_load_loss_kw", 0.0)),
+                    int(st.get("affected_devices", health_obj.get("affected_devices", 0))),
+                    h_summary,
                 ),
             )
         conts = result.get("ca_contingencies") or ()
@@ -2953,6 +3107,39 @@ class Repository:
         return res
 
     @synchronized
+    def ca_contingencies_seed_weather(self, *, overwrite: bool = False) -> dict[str, Any]:
+        conn = self._connection()
+        res = seed_ca_weather_contingencies(conn, overwrite=overwrite)
+        conn.commit()
+        return res
+
+    @synchronized
+    def weather_state_get(self) -> dict[str, Any]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        res = ensure_weather_state(conn)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return res
+
+    @synchronized
+    def weather_state_save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        conn = self._connection()
+        res = save_weather_state(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def weather_history_list(self, limit: int = 60) -> list[dict[str, Any]]:
+        conn = self._connection()
+        was_in_tx = conn.in_transaction
+        ensure_weather_state(conn)
+        rows = list_weather_history(conn, limit=limit)
+        if not was_in_tx and conn.in_transaction:
+            conn.commit()
+        return rows
+
+    @synchronized
     def ca_contingencies_bulk_toggle(self, *, enabled: bool, category: str = "", device_type: str = "") -> int:
         conn = self._connection()
         cnt = bulk_toggle_ca_contingencies(conn, enabled=enabled, category=category, device_type=device_type)
@@ -3054,15 +3241,151 @@ class Repository:
     @synchronized
     def ca_runs_history(self, limit: int = 30) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 200))
-        return self._rows(
-            """SELECT run_id, calc_time, source_lf_run_id, source_se_run_id, base_converged,
-                      risk_level, security_score, n0_risk_count, n1_total_count, n1_risk_count,
-                      nk_total_count, nk_risk_count, critical_count, high_count, medium_count, low_count,
-                      worst_contingency, elapsed_seconds
-               FROM ca_statistics
-               ORDER BY run_id DESC LIMIT ?""",
+        rows = self._rows(
+            """SELECT s.run_id, s.calc_time, s.source_lf_run_id, s.source_se_run_id, s.base_converged,
+                      s.risk_level, s.security_score, s.health_grade, s.health_label,
+                      s.n0_risk_count, s.n1_total_count, s.n1_risk_count,
+                      s.nk_total_count, s.nk_risk_count, s.critical_count, s.high_count, s.medium_count, s.low_count,
+                      s.worst_contingency, s.elapsed_seconds,
+                      h.health_score AS hist_health_score, h.health_grade AS hist_grade, h.health_label AS hist_label
+               FROM ca_statistics s
+               LEFT JOIN ca_health_history h ON h.run_id = s.run_id
+               ORDER BY s.run_id DESC LIMIT ?""",
             (limit,),
         )
+        for r in rows:
+            if r.get("hist_health_score") is not None:
+                r["health_score"] = round(float(r["hist_health_score"]), 1)
+                r["health_grade"] = r.get("hist_grade") or r.get("health_grade") or ""
+                r["health_label"] = r.get("hist_label") or r.get("health_label") or ""
+            else:
+                g, lbl = classify_health_grade(
+                    float(r.get("security_score") or 0.0),
+                    base_converged=bool(r.get("base_converged", 1)),
+                    critical_count=int(r.get("critical_count") or 0),
+                )
+                r["health_score"] = round(float(r.get("security_score") or 0.0), 1)
+                r["health_grade"] = r.get("health_grade") or g
+                r["health_label"] = r.get("health_label") or lbl
+        return rows
+
+    @synchronized
+    def ca_health_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        """查询 CA 电网健康评估历史（优先读取 ca_health_history，缺失的历史记录按五维模型回填）。"""
+        limit = max(1, min(int(limit), 500))
+        rows = self._rows(
+            """SELECT s.run_id, s.calc_time, s.source_lf_run_id, s.source_se_run_id, s.base_converged,
+                      s.risk_level, s.security_score, s.n0_risk_count,
+                      s.n1_total_count, s.n1_converged_count, s.n1_diverged_count, s.n1_risk_count,
+                      s.nk_total_count, s.nk_risk_count,
+                      s.weather_total_count, s.weather_risk_count, s.weather_snapshot_json,
+                      s.critical_count, s.high_count, s.medium_count, s.low_count,
+                      s.max_loading_pct, s.min_v_pu, s.max_v_pu, s.max_load_loss_kw,
+                      h.health_score AS h_score, h.health_grade AS h_grade, h.health_label AS h_label,
+                      h.base_score, h.voltage_score, h.loading_score, h.n1_score, h.supply_score,
+                      h.irradiance_wm2, h.wind_speed_ms, h.ambient_temp_c, h.polar_regime,
+                      h.affected_devices, h.summary_text
+               FROM ca_statistics s
+               LEFT JOIN ca_health_history h ON h.run_id = s.run_id
+               ORDER BY s.run_id DESC LIMIT ?""",
+            (limit,),
+        )
+        out: list[dict[str, Any]] = []
+        for r in reversed(rows):
+            w_snap: dict[str, Any] = {}
+            try:
+                w_snap = json.loads(r.get("weather_snapshot_json") or "{}")
+            except (TypeError, ValueError):
+                w_snap = {}
+            w_irr = r.get("irradiance_wm2") if r.get("irradiance_wm2") is not None else w_snap.get("irradiance_wm2")
+            w_spd = r.get("wind_speed_ms") if r.get("wind_speed_ms") is not None else w_snap.get("wind_speed_ms")
+            w_tmp = r.get("ambient_temp_c") if r.get("ambient_temp_c") is not None else w_snap.get("ambient_temp_c")
+            w_reg = str(r.get("polar_regime") or w_snap.get("polar_regime") or "")
+            if r.get("h_score") is not None:
+                out.append(
+                    {
+                        "run_id": int(r["run_id"]),
+                        "calc_time": r["calc_time"],
+                        "source_lf_run_id": r.get("source_lf_run_id"),
+                        "source_se_run_id": r.get("source_se_run_id"),
+                        "health_score": round(float(r["h_score"]), 1),
+                        "health_grade": str(r.get("h_grade") or "C"),
+                        "health_label": str(r.get("h_label") or "注意"),
+                        "risk_level": str(r.get("risk_level") or "安全"),
+                        "dimensions": {
+                            "base": round(float(r.get("base_score") or 0.0), 1),
+                            "voltage": round(float(r.get("voltage_score") or 0.0), 1),
+                            "loading": round(float(r.get("loading_score") or 0.0), 1),
+                            "n1": round(float(r.get("n1_score") or 0.0), 1),
+                            "supply": round(float(r.get("supply_score") or 0.0), 1),
+                        },
+                        "n0_risk_count": int(r.get("n0_risk_count") or 0),
+                        "n1_total_count": int(r.get("n1_total_count") or 0),
+                        "n1_converged_count": int(r.get("n1_converged_count") or 0),
+                        "n1_risk_count": int(r.get("n1_risk_count") or 0),
+                        "weather_total_count": int(r.get("weather_total_count") or 0),
+                        "weather_risk_count": int(r.get("weather_risk_count") or 0),
+                        "irradiance_wm2": w_irr,
+                        "wind_speed_ms": w_spd,
+                        "ambient_temp_c": w_tmp,
+                        "polar_regime": w_reg,
+                        "max_loading_pct": round(float(r.get("max_loading_pct") or 0.0), 2),
+                        "min_v_pu": r.get("min_v_pu"),
+                        "max_load_loss_kw": round(float(r.get("max_load_loss_kw") or 0.0), 2),
+                        "affected_devices": int(r.get("affected_devices") or 0),
+                        "summary_text": str(r.get("summary_text") or ""),
+                    }
+                )
+            else:
+                calc = compute_grid_health_assessment(
+                    base_converged=bool(r.get("base_converged", 1)),
+                    n0_risk_count=int(r.get("n0_risk_count") or 0),
+                    n1_total_count=int(r.get("n1_total_count") or 0),
+                    n1_converged_count=int(r.get("n1_converged_count") or 0),
+                    n1_diverged_count=int(r.get("n1_diverged_count") or 0),
+                    n1_risk_count=int(r.get("n1_risk_count") or 0),
+                    nk_total_count=int(r.get("nk_total_count") or 0),
+                    nk_risk_count=int(r.get("nk_risk_count") or 0),
+                    weather_total_count=int(r.get("weather_total_count") or 0),
+                    weather_risk_count=int(r.get("weather_risk_count") or 0),
+                    critical_count=int(r.get("critical_count") or 0),
+                    high_count=int(r.get("high_count") or 0),
+                    medium_count=int(r.get("medium_count") or 0),
+                    low_count=int(r.get("low_count") or 0),
+                    max_loading_pct=float(r.get("max_loading_pct") or 0.0),
+                    min_v_pu=r.get("min_v_pu"),
+                    max_v_pu=r.get("max_v_pu"),
+                    max_load_loss_kw=float(r.get("max_load_loss_kw") or 0.0),
+                )
+                out.append(
+                    {
+                        "run_id": int(r["run_id"]),
+                        "calc_time": r["calc_time"],
+                        "source_lf_run_id": r.get("source_lf_run_id"),
+                        "source_se_run_id": r.get("source_se_run_id"),
+                        "health_score": calc["health_score"],
+                        "health_grade": calc["health_grade"],
+                        "health_label": calc["health_label"],
+                        "risk_level": str(r.get("risk_level") or calc["risk_level"]),
+                        "dimensions": calc["dimensions"],
+                        "n0_risk_count": int(r.get("n0_risk_count") or 0),
+                        "n1_total_count": int(r.get("n1_total_count") or 0),
+                        "n1_converged_count": int(r.get("n1_converged_count") or 0),
+                        "n1_risk_count": int(r.get("n1_risk_count") or 0),
+                        "weather_total_count": int(r.get("weather_total_count") or 0),
+                        "weather_risk_count": int(r.get("weather_risk_count") or 0),
+                        "irradiance_wm2": w_irr,
+                        "wind_speed_ms": w_spd,
+                        "ambient_temp_c": w_tmp,
+                        "polar_regime": w_reg,
+                        "max_loading_pct": round(float(r.get("max_loading_pct") or 0.0), 2),
+                        "min_v_pu": r.get("min_v_pu"),
+                        "max_load_loss_kw": round(float(r.get("max_load_loss_kw") or 0.0), 2),
+                        "affected_devices": calc["affected_devices"],
+                        "summary_text": calc["summary_text"],
+                    }
+                )
+        return out
 
     @synchronized
     def ca_history_stats(self, limit: int = 100) -> list[dict[str, Any]]:
@@ -3115,7 +3438,12 @@ class Repository:
         sched_rows = self._rows("SELECT * FROM schedule WHERE task_type = 'ca' LIMIT 1")
         schedule = sched_rows[0] if sched_rows else None
         def_counts = conn.execute(
-            "SELECT COUNT(*) AS total, COALESCE(SUM(enabled = 1), 0) AS enabled, COALESCE(SUM(category = 'N-1'), 0) AS n1, COALESCE(SUM(category = 'N-k'), 0) AS nk FROM ca_contingency_def"
+            """SELECT COUNT(*) AS total,
+                      COALESCE(SUM(enabled = 1), 0) AS enabled,
+                      COALESCE(SUM(category = 'N-1'), 0) AS n1,
+                      COALESCE(SUM(category = 'N-k'), 0) AS nk,
+                      COALESCE(SUM(category = 'Weather'), 0) AS weather
+               FROM ca_contingency_def"""
         ).fetchone()
         recent_runs = self._rows(
             """SELECT r.run_id, r.status, r.started_at, r.elapsed_seconds, r.execution_source,
@@ -3200,10 +3528,21 @@ class Repository:
 
         log_rows = self._rows("SELECT * FROM ca_run_log ORDER BY log_id DESC LIMIT 1")
         latest_log = log_rows[0] if log_rows else None
+        health_hist = self.ca_health_history(limit=120)
+        latest_health = health_hist[-1] if health_hist else None
+        if latest and latest_health:
+            latest = dict(latest)
+            latest["health_score"] = latest_health["health_score"]
+            latest["health_grade"] = latest_health["health_grade"]
+            latest["health_label"] = latest_health["health_label"]
+            latest["health_dims"] = latest_health["dimensions"]
+            latest["health_summary"] = latest_health["summary_text"]
         if not was_in_tx and conn.in_transaction:
             conn.commit()
         return {
             "latest": latest,
+            "health": latest_health,
+            "health_history": health_hist,
             "params": params,
             "schedule": schedule,
             "contingency_defs": {
@@ -3211,6 +3550,7 @@ class Repository:
                 "enabled": int(def_counts["enabled"] or 0),
                 "n1": int(def_counts["n1"] or 0),
                 "nk": int(def_counts["nk"] or 0),
+                "weather": int(def_counts["weather"] or 0),
             },
             "recent_runs": recent_runs,
             "trend_series": trend,
@@ -3677,6 +4017,21 @@ class RepositoryHub:
     def ca_contingencies_sync(self, model_tables, **kwargs):
         return self.for_task("ca").ca_contingencies_sync(model_tables, **kwargs)
 
+    def ca_contingencies_seed_weather(self, **kwargs):
+        return self.for_task("ca").ca_contingencies_seed_weather(**kwargs)
+
+    def weather_state_get(self):
+        target = self.control if self.control is not None else self.for_task("ca")
+        return target.weather_state_get()
+
+    def weather_state_save(self, payload):
+        target = self.control if self.control is not None else self.for_task("ca")
+        return target.weather_state_save(payload)
+
+    def weather_history_list(self, limit=60):
+        target = self.control if self.control is not None else self.for_task("ca")
+        return target.weather_history_list(limit=limit)
+
     def ca_contingencies_bulk_toggle(self, **kwargs):
         return self.for_task("ca").ca_contingencies_bulk_toggle(**kwargs)
 
@@ -3706,6 +4061,9 @@ class RepositoryHub:
 
     def ca_runs_history(self, limit=30):
         return self.for_task("ca").ca_runs_history(limit)
+
+    def ca_health_history(self, limit=100):
+        return self.for_task("ca").ca_health_history(limit)
 
     def ca_history_stats(self, limit=100):
         return self.for_task("ca").ca_history_stats(limit)

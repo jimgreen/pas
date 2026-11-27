@@ -2267,16 +2267,58 @@ CREATE TABLE IF NOT EXISTS ca_statistics (
     u_unit TEXT NOT NULL DEFAULT 'V',
     p_unit TEXT NOT NULL DEFAULT 'kW',
     i_unit TEXT NOT NULL DEFAULT 'A',
-    failure_reason TEXT NOT NULL DEFAULT ''
+    failure_reason TEXT NOT NULL DEFAULT '',
+    health_grade TEXT NOT NULL DEFAULT '',
+    health_label TEXT NOT NULL DEFAULT '',
+    health_dims_json TEXT NOT NULL DEFAULT '{}',
+    weather_total_count INTEGER NOT NULL DEFAULT 0,
+    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+    weather_snapshot_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_ca_statistics_time ON ca_statistics(calc_time DESC);
 
--- 预想故障定义库（支持 N-1 模型自动同步与 N-k 多元件组合故障）
+-- CA 每次计算的电网健康打分与定级历史表（五维评估快照 + 南极气象工况关联）
+CREATE TABLE IF NOT EXISTS ca_health_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL UNIQUE REFERENCES calculation_run(run_id) ON DELETE CASCADE,
+    calc_time TEXT NOT NULL,
+    source_lf_run_id INTEGER,
+    source_se_run_id INTEGER,
+    health_score REAL NOT NULL DEFAULT 100.0,
+    health_grade TEXT NOT NULL DEFAULT 'A',
+    health_label TEXT NOT NULL DEFAULT '优秀',
+    risk_level TEXT NOT NULL DEFAULT '安全',
+    base_score REAL NOT NULL DEFAULT 100.0,
+    voltage_score REAL NOT NULL DEFAULT 100.0,
+    loading_score REAL NOT NULL DEFAULT 100.0,
+    n1_score REAL NOT NULL DEFAULT 100.0,
+    supply_score REAL NOT NULL DEFAULT 100.0,
+    base_converged INTEGER NOT NULL DEFAULT 1,
+    n0_risk_count INTEGER NOT NULL DEFAULT 0,
+    n1_total_count INTEGER NOT NULL DEFAULT 0,
+    n1_converged_count INTEGER NOT NULL DEFAULT 0,
+    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+    weather_total_count INTEGER NOT NULL DEFAULT 0,
+    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+    irradiance_wm2 REAL,
+    wind_speed_ms REAL,
+    ambient_temp_c REAL,
+    polar_regime TEXT NOT NULL DEFAULT '',
+    max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    min_v_pu REAL,
+    max_load_loss_kw REAL NOT NULL DEFAULT 0.0,
+    affected_devices INTEGER NOT NULL DEFAULT 0,
+    summary_text TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ca_health_history_time ON ca_health_history(calc_time DESC);
+
+-- 预想故障与气象/负荷扰动定义库（支持 N-1 设备退出、N-k 组合故障与 Weather 气象/负荷扰动）
 CREATE TABLE IF NOT EXISTS ca_contingency_def (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    category TEXT NOT NULL DEFAULT 'N-1' CHECK (category IN ('N-1', 'N-k')),
+    category TEXT NOT NULL DEFAULT 'N-1' CHECK (category IN ('N-1', 'N-k', 'Weather')),
     items_json TEXT NOT NULL DEFAULT '[]',
+    perturbation_json TEXT NOT NULL DEFAULT '{}',
     target_desc TEXT NOT NULL DEFAULT '',
     priority INTEGER NOT NULL DEFAULT 50,
     enabled INTEGER NOT NULL DEFAULT 1,
@@ -2335,6 +2377,7 @@ CREATE TABLE IF NOT EXISTS ca_para (
     use_lf_base INTEGER NOT NULL DEFAULT 1,
     scan_n1 INTEGER NOT NULL DEFAULT 1,
     scan_nk INTEGER NOT NULL DEFAULT 1,
+    scan_weather INTEGER NOT NULL DEFAULT 1,
     max_scan_count INTEGER NOT NULL DEFAULT 40,
     v_min_pu REAL NOT NULL DEFAULT 0.93,
     v_max_pu REAL NOT NULL DEFAULT 1.07,
@@ -2373,3 +2416,38 @@ CREATE TABLE IF NOT EXISTS ca_log_policy (
     last_deleted_count INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT ''
 );
+
+-- ============================================================================
+-- 南极极地气象条件与环境工况耦合表（实时工况配置 + 历史归档）
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS pas_weather_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    irradiance_wm2 REAL NOT NULL DEFAULT 420.0,
+    wind_speed_ms REAL NOT NULL DEFAULT 9.5,
+    ambient_temp_c REAL NOT NULL DEFAULT -18.5,
+    pressure_hpa REAL NOT NULL DEFAULT 982.0,
+    humidity_pct REAL NOT NULL DEFAULT 58.0,
+    snow_icing_level INTEGER NOT NULL DEFAULT 0,
+    polar_regime TEXT NOT NULL DEFAULT 'normal',
+    load_factor REAL NOT NULL DEFAULT 1.0,
+    source TEXT NOT NULL DEFAULT 'preset',
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS pas_weather_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recorded_at TEXT NOT NULL,
+    irradiance_wm2 REAL NOT NULL DEFAULT 420.0,
+    wind_speed_ms REAL NOT NULL DEFAULT 9.5,
+    ambient_temp_c REAL NOT NULL DEFAULT -18.5,
+    pressure_hpa REAL NOT NULL DEFAULT 982.0,
+    humidity_pct REAL NOT NULL DEFAULT 58.0,
+    snow_icing_level INTEGER NOT NULL DEFAULT 0,
+    polar_regime TEXT NOT NULL DEFAULT 'normal',
+    load_factor REAL NOT NULL DEFAULT 1.0,
+    source TEXT NOT NULL DEFAULT 'manual',
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_pas_weather_history_time ON pas_weather_history(recorded_at DESC);

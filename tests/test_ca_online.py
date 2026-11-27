@@ -10,8 +10,14 @@ import pytest
 
 from pas.ca_online import (
     DEFAULT_CA_PARAMS,
+    classify_health_grade,
+    compute_grid_health_assessment,
     compute_security_score_and_level,
     evaluate_lf_state_risks,
+)
+from pas.weather_coupling import (
+    build_weather_perturbation_overrides,
+    compute_weather_coupling_summary,
 )
 from pas.db import Repository, RepositoryHub
 from pas.scheduler import Scheduler
@@ -411,7 +417,15 @@ def test_ca_web_apis_pipeline_chain_and_pages(tmp_path: Path) -> None:
         assert cas["data"] == {"se_to_lf": True, "lf_to_ca": True}
 
         # 4. CA 全套只读与写 REST 接口
-        assert app.api_get("/api/ca/home")["ok"] is True
+        ca_home = app.api_get("/api/ca/home")
+        assert ca_home["ok"] is True
+        assert ca_home["data"]["health"]["health_grade"] in ("A", "B", "C", "D", "E")
+        assert isinstance(ca_home["data"]["health_history"], list)
+        assert len(ca_home["data"]["health_history"]) >= 1
+        ca_hh = app.api_get("/api/ca/health/history?limit=10")
+        assert ca_hh["ok"] is True
+        assert len(ca_hh["data"]) >= 1
+        assert set(ca_hh["data"][0]["dimensions"].keys()) == {"base", "voltage", "loading", "n1", "supply"}
         assert app.api_get("/api/ca/runs/history")["ok"] is True
         topo = app.api_get("/api/ca/topology-risks")
         assert topo["ok"] is True
@@ -453,6 +467,164 @@ def test_ca_web_apis_pipeline_chain_and_pages(tmp_path: Path) -> None:
         assert "/assets/overview-app.js" in ov_html
         for nav_page in ("overview.html", "se-main.html", "lf-main.html", "runs.html", "settings.html"):
             assert 'href="/ca-main.html"' in (web_root / nav_page).read_text(encoding="utf-8")
+    finally:
+        sched.shutdown()
+        hub.close()
+
+
+def test_ca_grid_health_assessment_and_history(tmp_path: Path) -> None:
+    """验证 CA 五维电网健康评分、A-E 定级硬约束与 ca_health_history 历史持久化。"""
+    # 1. 全安全场景 -> A 级优秀
+    ok_res = compute_grid_health_assessment(
+        base_converged=True,
+        n0_risk_count=0,
+        n1_total_count=20,
+        n1_converged_count=20,
+        n1_diverged_count=0,
+        n1_risk_count=0,
+        max_loading_pct=42.0,
+        min_v_pu=0.985,
+        max_v_pu=1.015,
+        max_load_loss_kw=0.0,
+    )
+    assert ok_res["health_grade"] == "A"
+    assert ok_res["health_label"] == "优秀"
+    assert ok_res["health_score"] >= 92.0
+
+    # 2. 局部母线偏低 + 40 项 N-1 全部收敛 -> 不得归零，具备趋势区分度
+    partial_res = compute_grid_health_assessment(
+        base_converged=True,
+        n0_risk_count=2,
+        n1_total_count=40,
+        n1_converged_count=40,
+        n1_diverged_count=0,
+        n1_risk_count=80,
+        critical_count=80,
+        max_loading_pct=58.0,
+        min_v_pu=0.86,
+        max_v_pu=1.02,
+        max_load_loss_kw=0.0,
+        affected_devices=2,
+        total_devices=45,
+        n1_worsened_count=0,
+    )
+    assert 35.0 <= partial_res["health_score"] <= 90.0
+    assert partial_res["health_grade"] in ("B", "C", "D")
+    assert partial_res["dimensions"]["loading"] > 80.0
+    assert partial_res["dimensions"]["supply"] == 100.0
+
+    # 3. N-1 存在发散场景 -> 定级上限不超过 C；基态发散 -> E 级 0.0 分
+    g_div, _ = classify_health_grade(92.0, base_converged=True, n1_diverged_count=1)
+    assert g_div == "C"
+    div_res = compute_grid_health_assessment(base_converged=False)
+    assert div_res["health_grade"] == "E"
+    assert div_res["health_score"] == 0.0
+
+    # 4. 多次运行落库写入 ca_health_history 并按时间正序（旧→新）供趋势与历史明细消费
+    repo = Repository(tmp_path / "ca_health.db")
+    repo.initialize()
+    try:
+        r1 = _record_run(repo, "ca", _sample_ca_result(source_lf_run_id=10, critical=1, high=1))
+        r2 = _record_run(repo, "ca", _sample_ca_result(source_lf_run_id=11, critical=0, high=0))
+        hist = repo.ca_health_history(limit=10)
+        assert len(hist) == 2
+        assert [h["run_id"] for h in hist] == [r1, r2]
+        assert hist[-1]["health_grade"] == "A"
+        assert hist[-1]["health_score"] > hist[0]["health_score"]
+        assert set(hist[-1]["dimensions"].keys()) == {"base", "voltage", "loading", "n1", "supply"}
+    finally:
+        repo.close()
+
+
+def test_polar_weather_coupling_perturbations_and_apis(tmp_path: Path) -> None:
+    """验证南极气象耦合计算、气象/负荷预想扰动覆盖翻译与气象 REST API 全链路。"""
+    model_tables = {
+        "ACGenerator": {
+            "rows": [
+                {"idx": 1, "name": "交流风电-1", "dev_type": "ac-wind-source", "control_type": "PQ", "p_set": 6.0, "q_set": 1.0, "rated_capacity": 10.0, "run_stat": 1},
+                {"idx": 25, "name": "交流光伏-25", "dev_type": "ac-pv-source", "control_type": "PV", "p_set": 8.0, "q_set": 0.0, "rated_capacity": 20.0, "run_stat": 1},
+                {"idx": 27, "name": "柴发-27", "dev_type": "ac-diesel-source", "control_type": "PH", "p_set": 0.0, "q_set": 0.0, "rated_capacity": 300.0, "run_stat": 1},
+            ]
+        },
+        "DCGenerator": {
+            "rows": [
+                {"idx": 1, "name": "直流光伏-1", "dev_type": "dc-pv-source", "control_type": "P", "p_set": 15.0, "rated_capacity": 50.0, "run_stat": 1},
+            ]
+        },
+        "ACWindGen": {
+            "rows": [{"idx": 1, "idx_acgenerator": 1, "cut_in_wind_speed": 3.0, "rated_wind_speed": 12.0, "cut_out_wind_speed": 35.0}]
+        },
+        "ACPVGen": {
+            "rows": [{"idx": 1, "idx_acgenerator": 25, "reference_irradiance": 1000.0, "reference_temperature": 25.0, "temperature_coefficient": -0.004}]
+        },
+        "DCPVGen": {
+            "rows": [{"idx": 1, "idx_dcgenerator": 1, "reference_irradiance": 1000.0, "reference_temperature": 25.0, "temperature_coefficient": -0.004}]
+        },
+        "ACLoad": {
+            "rows": [{"idx": 1, "name": "交流负荷-1", "pbase": 150.0, "p_set": 150.0, "qbase": 50.0, "run_stat": 1}]
+        },
+        "DCLoad": {
+            "rows": [{"idx": 1, "name": "直流负荷-1", "pbase": 20.0, "run_stat": 1}]
+        },
+    }
+
+    # 1. 暴风雪极端工况：辐照 0 + 风速 38 m/s 超切出 + -42℃ 电池低温折减
+    blizz = compute_weather_coupling_summary(
+        {"irradiance_wm2": 0.0, "wind_speed_ms": 38.0, "ambient_temp_c": -42.0, "snow_icing_level": 3, "polar_regime": "blizzard"},
+        model_tables,
+    )
+    assert blizz["alert_level"] == "extreme"
+    assert blizz["coupling"]["pv_avail_kw"] == 0.0
+    assert blizz["coupling"]["wind_avail_kw"] == 0.0
+    assert blizz["coupling"]["wind_cutout_count"] == 1
+    assert blizz["coupling"]["storage_avail_pct"] < 80.0
+
+    # 2. 气象扰动覆盖翻译：太阳辐照归 0 / 风速归 0 / 负荷陡升 +35% / 负荷陡降 -40%
+    ovr_pv0, _ = build_weather_perturbation_overrides({"kind": "irradiance_zero", "irradiance_wm2": 0.0, "pv_scale": 0.0}, None, model_tables)
+    assert ovr_pv0["DCGenerator"][1]["p_set"] == 0.0
+    assert ovr_pv0["ACGenerator"][25]["p_set"] == 0.0
+
+    ovr_w0, _ = build_weather_perturbation_overrides({"kind": "wind_zero", "wind_speed_ms": 0.0, "wind_scale": 0.0}, None, model_tables)
+    assert ovr_w0["ACGenerator"][1]["p_set"] == 0.0
+    assert 27 not in ovr_w0["ACGenerator"]  # 平衡节点柴发不受风速置零影响
+
+    ovr_ls, meta_ls = build_weather_perturbation_overrides({"kind": "load_surge", "load_scale": 1.35}, None, model_tables)
+    assert meta_ls["load_scale_applied"] == pytest.approx(1.35)
+    assert ovr_ls["ACLoad"][1]["pbase"] == pytest.approx(202.5)
+    assert ovr_ls["DCLoad"][1]["pbase"] == pytest.approx(27.0)
+
+    ovr_ld, meta_ld = build_weather_perturbation_overrides({"kind": "load_drop", "load_scale": 0.60}, None, model_tables)
+    assert meta_ld["load_scale_applied"] == pytest.approx(0.60)
+    assert ovr_ld["ACLoad"][1]["pbase"] == pytest.approx(90.0)
+
+    # 3. REST API：气象工况读写、历史记录与一键生成气象预想扰动集
+    app, hub, sched, _ = _make_full_app(tmp_path)
+    try:
+        cur = app.api_get("/api/weather/current")
+        assert cur["ok"] is True
+        assert len(cur["data"]["presets"]) >= 6
+
+        upd = app.api_post(
+            "/api/weather/current",
+            {"preset": "blizzard", "irradiance_wm2": 0.0, "wind_speed_ms": 38.0, "ambient_temp_c": -42.0, "snow_icing_level": 3},
+        )
+        assert upd["ok"] is True
+        assert upd["data"]["alert_level"] == "extreme"
+        assert upd["data"]["irradiance_wm2"] == 0.0
+
+        hist = app.api_get("/api/weather/history?limit=10")
+        assert hist["ok"] is True and len(hist["data"]) >= 2
+
+        seed_w = app.api_post("/api/ca/contingencies/seed-weather", {})
+        assert seed_w["ok"] is True and seed_w["data"]["weather_total"] >= 6
+
+        custom_w = app.api_post(
+            "/api/ca/contingencies/defs",
+            {"category": "Weather", "name": "气象:自定义强降载", "priority": 18, "perturbation": {"kind": "load_drop", "load_scale": 0.55}},
+        )
+        assert custom_w["ok"] is True
+        assert custom_w["data"]["category"] == "Weather"
+        assert custom_w["data"]["perturbation"]["load_scale"] == pytest.approx(0.55)
     finally:
         sched.shutdown()
         hub.close()

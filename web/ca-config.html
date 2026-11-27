@@ -81,7 +81,7 @@
       <div class="se-workspace">
         <div class="pas-stack-layout">
           <section class="pas-compact-param-card">
-            <div class="se-form-grid">
+            <div class="se-form-grid cols-5">
               <label class="se-field">
                 <span data-i18n="param.use_lf_base">LF 基态注入</span>
                 <select id="cp-use-lf">
@@ -99,6 +99,13 @@
               <label class="se-field">
                 <span data-i18n="param.scan_nk">启用 N-k 扫描</span>
                 <select id="cp-scan-nk">
+                  <option value="1" data-i18n="opt.enabled">启用</option>
+                  <option value="0" data-i18n="opt.disabled">停用</option>
+                </select>
+              </label>
+              <label class="se-field">
+                <span>启用气象扰动扫描</span>
+                <select id="cp-scan-weather">
                   <option value="1" data-i18n="opt.enabled">启用</option>
                   <option value="0" data-i18n="opt.disabled">停用</option>
                 </select>

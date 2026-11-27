@@ -49,6 +49,11 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             result_repositories["ca"].ca_contingencies_sync(read_model_tables(Path(ca_task.model_file)))
         except (ValueError, OSError, sqlite3.Error):
             pass
+    if not result_repositories["ca"].ca_contingencies_list(category="Weather"):
+        try:
+            result_repositories["ca"].ca_contingencies_seed_weather()
+        except (ValueError, OSError, sqlite3.Error):
+            pass
     if repository.control is not None:
         repository.control.set_config("workspace", {key: str(getattr(config, key) or "") for key in
             ("workspace_root", "runtime", "scenario", "workspace_directory")})
@@ -151,6 +156,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             except (ValueError, OSError, sqlite3.Error):
                 pass
         device_limits = ca_repo.ca_device_limits_map()
+        weather_state = repository.weather_state_get()
         return kernels.run_ca(
             current_task,
             config.kernel_root,
@@ -164,6 +170,7 @@ def _build_scheduler(config_path: str, **workspace_options) -> tuple[Scheduler, 
             lf_para_file=lf_task_cur.parameter_file,
             contingencies=contingencies,
             device_limits=device_limits,
+            weather_state=weather_state,
             stage_logger=stage_logger,
         )
 

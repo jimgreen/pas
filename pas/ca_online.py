@@ -11,11 +11,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .se_log import utc_now
+from .weather_coupling import (
+    DEFAULT_WEATHER_CONTINGENCIES,
+    format_perturbation_desc,
+    normalize_weather_perturbation,
+)
 
 DEFAULT_CA_PARAMS: dict[str, Any] = {
     "use_lf_base": 1,
     "scan_n1": 1,
     "scan_nk": 1,
+    "scan_weather": 1,
     "max_scan_count": 40,
     "v_min_pu": 0.93,
     "v_max_pu": 1.07,
@@ -72,6 +78,7 @@ def _validate_ca_params(payload: dict[str, Any], base: dict[str, Any]) -> dict[s
         "use_lf_base": (0, 1),
         "scan_n1": (0, 1),
         "scan_nk": (0, 1),
+        "scan_weather": (0, 1),
         "max_scan_count": (1, 500),
         "do_cycle": (5, 604800),
     }
@@ -104,14 +111,15 @@ def ensure_ca_params(conn: sqlite3.Connection, *, do_cycle: int | float = 300) -
     now = utc_now()
     conn.execute(
         """INSERT OR REPLACE INTO ca_para(
-               id, use_lf_base, scan_n1, scan_nk, max_scan_count,
+               id, use_lf_base, scan_n1, scan_nk, scan_weather, max_scan_count,
                v_min_pu, v_max_pu, overload_warn_pct, overload_limit_pct,
                load_loss_threshold_kw, do_cycle, updated_at
-           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             defaults["use_lf_base"],
             defaults["scan_n1"],
             defaults["scan_nk"],
+            defaults["scan_weather"],
             defaults["max_scan_count"],
             defaults["v_min_pu"],
             defaults["v_max_pu"],
@@ -132,14 +140,15 @@ def save_ca_params(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[st
     now = utc_now()
     conn.execute(
         """INSERT OR REPLACE INTO ca_para(
-               id, use_lf_base, scan_n1, scan_nk, max_scan_count,
+               id, use_lf_base, scan_n1, scan_nk, scan_weather, max_scan_count,
                v_min_pu, v_max_pu, overload_warn_pct, overload_limit_pct,
                load_loss_threshold_kw, do_cycle, updated_at
-           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             updated["use_lf_base"],
             updated["scan_n1"],
             updated["scan_nk"],
+            updated["scan_weather"],
             updated["max_scan_count"],
             updated["v_min_pu"],
             updated["v_max_pu"],
@@ -157,7 +166,7 @@ def save_ca_params(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[st
         source="operator",
         message=(
             f"更新 CA 参数：use_lf_base={updated['use_lf_base']}, scan_n1={updated['scan_n1']}, "
-            f"max_scan={updated['max_scan_count']}, V=[{updated['v_min_pu']},{updated['v_max_pu']}]pu"
+            f"scan_weather={updated['scan_weather']}, max_scan={updated['max_scan_count']}, V=[{updated['v_min_pu']},{updated['v_max_pu']}]pu"
         ),
         detail=updated,
     )
@@ -170,14 +179,15 @@ def reset_ca_params(conn: sqlite3.Connection) -> dict[str, Any]:
     now = utc_now()
     conn.execute(
         """INSERT OR REPLACE INTO ca_para(
-               id, use_lf_base, scan_n1, scan_nk, max_scan_count,
+               id, use_lf_base, scan_n1, scan_nk, scan_weather, max_scan_count,
                v_min_pu, v_max_pu, overload_warn_pct, overload_limit_pct,
                load_loss_threshold_kw, do_cycle, updated_at
-           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             defaults["use_lf_base"],
             defaults["scan_n1"],
             defaults["scan_nk"],
+            defaults["scan_weather"],
             defaults["max_scan_count"],
             defaults["v_min_pu"],
             defaults["v_max_pu"],
@@ -245,6 +255,10 @@ def _decode_contingency_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]
         d["items"] = json.loads(d.get("items_json") or "[]")
     except (TypeError, ValueError):
         d["items"] = []
+    try:
+        d["perturbation"] = json.loads(d.get("perturbation_json") or "{}")
+    except (TypeError, ValueError):
+        d["perturbation"] = {}
     return d
 
 
@@ -289,16 +303,28 @@ def save_ca_contingency(
     *,
     contingency_id: int | None = None,
 ) -> dict[str, Any]:
-    items = _normalize_contingency_items(payload.get("items"))
-    category = "N-1" if len(items) == 1 else "N-k"
-    if payload.get("category") in ("N-1", "N-k"):
-        category = str(payload["category"])
-        if len(items) > 1:
-            category = "N-k"
-    target_desc = _format_target_desc(items)
-    name = str(payload.get("name") or "").strip()
-    if not name:
-        name = f"{category}:{items[0]['device_name']}" if len(items) == 1 else f"N-{len(items)}:{'+'.join(x['device_name'] for x in items[:2])}"
+    req_cat = str(payload.get("category") or "").strip()
+    is_weather = req_cat == "Weather" or (not payload.get("items") and isinstance(payload.get("perturbation"), (dict, str)))
+    if is_weather:
+        pert = normalize_weather_perturbation(payload.get("perturbation") or payload)
+        items: list[dict[str, Any]] = []
+        category = "Weather"
+        target_desc = format_perturbation_desc(pert)
+        name = str(payload.get("name") or "").strip() or f"气象:{target_desc}"
+        pert_json = json.dumps(pert, ensure_ascii=False)
+    else:
+        items = _normalize_contingency_items(payload.get("items"))
+        category = "N-1" if len(items) == 1 else "N-k"
+        if req_cat in ("N-1", "N-k"):
+            category = req_cat
+            if len(items) > 1:
+                category = "N-k"
+        target_desc = _format_target_desc(items)
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            name = f"{category}:{items[0]['device_name']}" if len(items) == 1 else f"N-{len(items)}:{'+'.join(x['device_name'] for x in items[:2])}"
+        pert_json = "{}"
+
     priority = max(1, min(999, int(payload.get("priority", 50))))
     enabled = 1 if int(payload.get("enabled", 1)) else 0
     auto_gen = 1 if int(payload.get("auto_generated", 0)) else 0
@@ -309,25 +335,26 @@ def save_ca_contingency(
     if contingency_id is not None:
         conn.execute(
             """UPDATE ca_contingency_def
-               SET name=?, category=?, items_json=?, target_desc=?, priority=?, enabled=?, note=?, updated_at=?
+               SET name=?, category=?, items_json=?, perturbation_json=?, target_desc=?, priority=?, enabled=?, note=?, updated_at=?
                WHERE id=?""",
-            (name, category, items_json, target_desc, priority, enabled, note, now, int(contingency_id)),
+            (name, category, items_json, pert_json, target_desc, priority, enabled, note, now, int(contingency_id)),
         )
         rid = int(contingency_id)
     else:
         cur = conn.execute(
             """INSERT INTO ca_contingency_def(
-                   name, category, items_json, target_desc, priority, enabled, auto_generated, note, updated_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   name, category, items_json, perturbation_json, target_desc, priority, enabled, auto_generated, note, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                    category=excluded.category,
                    items_json=excluded.items_json,
+                   perturbation_json=excluded.perturbation_json,
                    target_desc=excluded.target_desc,
                    priority=excluded.priority,
                    enabled=excluded.enabled,
                    note=excluded.note,
                    updated_at=excluded.updated_at""",
-            (name, category, items_json, target_desc, priority, enabled, auto_gen, note, now),
+            (name, category, items_json, pert_json, target_desc, priority, enabled, auto_gen, note, now),
         )
         row = conn.execute("SELECT id FROM ca_contingency_def WHERE name=?", (name,)).fetchone()
         rid = int(row["id"]) if row else int(cur.lastrowid)
@@ -337,13 +364,58 @@ def save_ca_contingency(
         level="INFO",
         stage="contingency_change",
         source="operator",
-        message=f"保存预想故障：{name}（{category}，启用={enabled}）",
-        detail={"id": rid, "name": name, "category": category, "items": items},
+        message=f"保存预想扰动：{name}（{category}，启用={enabled}）",
+        detail={"id": rid, "name": name, "category": category, "items": items, "perturbation": json.loads(pert_json)},
     )
     saved = conn.execute("SELECT * FROM ca_contingency_def WHERE id=?", (rid,)).fetchone()
     if saved is None:
         raise ValueError(f"预想故障 #{rid} 不存在")
     return _decode_contingency_row(saved)
+
+
+def seed_ca_weather_contingencies(
+    conn: sqlite3.Connection,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """一键生成/恢复标准南极气象与负荷预想扰动集（辐照归0/风速归0/超切出/负荷陡升陡降/暴风雪）。"""
+    if overwrite:
+        conn.execute("DELETE FROM ca_contingency_def WHERE category = 'Weather' AND auto_generated = 1")
+    now = utc_now()
+    inserted = 0
+    skipped = 0
+    for tpl in DEFAULT_WEATHER_CONTINGENCIES:
+        cname = str(tpl["name"])
+        exists = conn.execute("SELECT id FROM ca_contingency_def WHERE name=?", (cname,)).fetchone()
+        if exists is not None:
+            skipped += 1
+            continue
+        pert = normalize_weather_perturbation(tpl["perturbation"])
+        conn.execute(
+            """INSERT INTO ca_contingency_def(
+                   name, category, items_json, perturbation_json, target_desc,
+                   priority, enabled, auto_generated, note, updated_at
+               ) VALUES (?, 'Weather', '[]', ?, ?, ?, 1, 1, ?, ?)""",
+            (
+                cname,
+                json.dumps(pert, ensure_ascii=False),
+                format_perturbation_desc(pert),
+                int(tpl.get("priority", 15)),
+                str(tpl.get("note") or ""),
+                now,
+            ),
+        )
+        inserted += 1
+    total_w = int(conn.execute("SELECT COUNT(*) FROM ca_contingency_def WHERE category = 'Weather'").fetchone()[0] or 0)
+    record_ca_log(
+        conn,
+        level="INFO",
+        stage="contingency_change",
+        source="system",
+        message=f"生成南极气象/负荷预想扰动：新增 {inserted} 条，已存在 {skipped} 条，气象类总计 {total_w} 条",
+        detail={"inserted": inserted, "skipped": skipped, "weather_total": total_w},
+    )
+    return {"inserted": inserted, "skipped": skipped, "weather_total": total_w}
 
 
 def delete_ca_contingency(conn: sqlite3.Connection, contingency_id: int) -> bool:
@@ -606,6 +678,212 @@ def evaluate_lf_state_risks(
     }
 
 
+HEALTH_GRADE_BANDS: tuple[tuple[float, str, str], ...] = (
+    (90.0, "A", "优秀"),
+    (75.0, "B", "良好"),
+    (60.0, "C", "注意"),
+    (40.0, "D", "预警"),
+    (0.0, "E", "危急"),
+)
+
+
+def classify_health_grade(
+    score: float,
+    *,
+    base_converged: bool = True,
+    n1_diverged_count: int = 0,
+    critical_count: int = 0,
+) -> tuple[str, str]:
+    """根据健康分与关键硬约束映射五级电网健康定级（A 优秀 ~ E 危急）。"""
+    if not base_converged:
+        return "E", "危急"
+    val = max(0.0, min(100.0, float(score)))
+    grade, label = "E", "危急"
+    for floor_val, g, lbl in HEALTH_GRADE_BANDS:
+        if val >= floor_val:
+            grade, label = g, lbl
+            break
+    # 存在发散场景时最高不超过 C（注意）；存在严重越限时最高不超过 B（良好）
+    if n1_diverged_count > 0 and grade in ("A", "B"):
+        grade, label = "C", "注意"
+    elif critical_count > 0 and grade == "A":
+        grade, label = "B", "良好"
+    return grade, label
+
+
+def compute_grid_health_assessment(
+    *,
+    base_converged: bool,
+    n0_risk_count: int = 0,
+    n1_total_count: int = 0,
+    n1_converged_count: int = 0,
+    n1_diverged_count: int = 0,
+    n1_risk_count: int = 0,
+    nk_total_count: int = 0,
+    nk_risk_count: int = 0,
+    weather_total_count: int = 0,
+    weather_diverged_count: int = 0,
+    weather_risk_count: int = 0,
+    critical_count: int = 0,
+    high_count: int = 0,
+    medium_count: int = 0,
+    low_count: int = 0,
+    max_loading_pct: float = 0.0,
+    min_v_pu: float | None = None,
+    max_v_pu: float | None = None,
+    max_load_loss_kw: float = 0.0,
+    base_load_kw: float = 0.0,
+    v_min_pu: float = 0.93,
+    v_max_pu: float = 1.07,
+    overload_warn_pct: float = 80.0,
+    overload_limit_pct: float = 100.0,
+    affected_devices: int = 0,
+    total_devices: int = 0,
+    n1_safe_count: int | None = None,
+    n1_worsened_count: int | None = None,
+    weather_worsened_count: int | None = None,
+) -> dict[str, Any]:
+    """计算电网五维加权健康评分（0-100）与 A–E 健康定级，兼具工程敏感度与趋势区分度。"""
+    if not base_converged:
+        return {
+            "health_score": 0.0,
+            "health_grade": "E",
+            "health_label": "危急",
+            "risk_level": "严重",
+            "dimensions": {
+                "base": 0.0,
+                "voltage": 0.0,
+                "loading": 0.0,
+                "n1": 0.0,
+                "supply": 0.0,
+            },
+            "affected_devices": int(affected_devices),
+            "summary_text": "基态潮流发散，电网处于危急状态（E 级 · 0.0 分）",
+        }
+
+    # 1. 基态健康分（30%）：N-0 风险数平滑递减，不因少数局部越限直接归零
+    if n0_risk_count <= 0:
+        base_score = 100.0
+    else:
+        base_score = max(18.0, 100.0 - min(55.0, n0_risk_count * 16.0) - min(27.0, affected_devices * 3.0))
+
+    # 2. 电压质量分（20%）：综合偏离安全区间幅度与受影响设备占比
+    v_dev = 0.0
+    if min_v_pu is not None and min_v_pu < v_min_pu:
+        v_dev = max(v_dev, (v_min_pu - min_v_pu) / max(v_min_pu, 0.1))
+    if max_v_pu is not None and max_v_pu > v_max_pu:
+        v_dev = max(v_dev, (max_v_pu - v_max_pu) / max(v_max_pu, 0.1))
+    if v_dev <= 0.0:
+        # 在安全带内再按靠近上下限的裕度给 90–100 分
+        margin = 0.05
+        if min_v_pu is not None:
+            margin = min(margin, max(0.0, min_v_pu - v_min_pu))
+        if max_v_pu is not None:
+            margin = min(margin, max(0.0, v_max_pu - max_v_pu))
+        voltage_score = 92.0 + min(8.0, (margin / 0.05) * 8.0)
+    else:
+        # 偏离 1% 扣 ~3.2 分，偏离 15% 约得 52 分，偏离 30%+ 趋近 10 分
+        dev_ratio = (affected_devices / max(1, total_devices)) if total_devices > 0 else 0.0
+        voltage_score = max(8.0, 92.0 - v_dev * 260.0 - dev_ratio * 25.0)
+
+    # 3. 负载裕度分（20%）：按最大负载率相对预警/过载阈值平滑评分
+    lp = max(0.0, float(max_loading_pct or 0.0))
+    if lp <= overload_warn_pct:
+        # 0%->100分, 80%->80分
+        loading_score = 100.0 - (lp / max(overload_warn_pct, 1.0)) * 20.0
+    elif lp <= overload_limit_pct:
+        # 80%->80分, 100%->45分
+        span = max(1.0, overload_limit_pct - overload_warn_pct)
+        loading_score = 80.0 - ((lp - overload_warn_pct) / span) * 35.0
+    else:
+        # >100% 急剧下降，130%+ 趋近 0
+        loading_score = max(0.0, 45.0 - (lp - overload_limit_pct) * 1.5)
+
+    # 4. N-1 / N-k / 气象抗扰动分（20%）：收敛率 + 相对基态无新增恶化的场景通过率
+    pert_total = n1_total_count + weather_total_count
+    pert_diverged = n1_diverged_count + weather_diverged_count
+    if pert_total > 0:
+        pert_conv = n1_converged_count + max(0, weather_total_count - weather_diverged_count)
+        conv_ratio = pert_conv / max(1, pert_total)
+        if n1_worsened_count is not None or weather_worsened_count is not None:
+            w_cnt = int(n1_worsened_count or 0) + int(weather_worsened_count or 0)
+            stable_ratio = max(0.0, (pert_total - w_cnt) / max(1, pert_total))
+        elif n1_safe_count is not None and weather_total_count == 0:
+            stable_ratio = n1_safe_count / max(1, pert_total)
+        else:
+            avg_r = (n1_risk_count + weather_risk_count) / max(1, pert_total)
+            stable_ratio = max(0.0, 1.0 - min(1.0, avg_r * 0.25))
+        n1_score = max(0.0, min(100.0, conv_ratio * 55.0 + stable_ratio * 45.0 - pert_diverged * 12.0))
+        if nk_total_count > 0 and nk_risk_count > 0:
+            n1_score = max(0.0, n1_score - min(12.0, nk_risk_count * 2.0))
+    else:
+        n1_score = 100.0 if (nk_risk_count == 0 and n0_risk_count == 0) else max(60.0, base_score)
+
+    # 5. 供电可靠分（10%）：按最大失电负荷占基态总负荷比例平滑评分
+    loss_kw = max(0.0, float(max_load_loss_kw or 0.0))
+    if loss_kw <= 1e-6:
+        supply_score = 100.0
+    else:
+        denom = max(float(base_load_kw or 0.0), loss_kw, 10.0)
+        loss_ratio = min(1.0, loss_kw / denom)
+        supply_score = max(5.0, 100.0 - loss_ratio * 160.0 - 8.0)
+
+    weighted = (
+        base_score * 0.30
+        + voltage_score * 0.20
+        + loading_score * 0.20
+        + n1_score * 0.20
+        + supply_score * 0.10
+    )
+    # 存在严重/高危风险时适度下限保护但确保不失真
+    if critical_count == 0 and high_count == 0 and medium_count == 0 and low_count == 0:
+        health_score = round(min(100.0, max(92.0, weighted)), 1)
+    else:
+        health_score = round(max(5.0, min(98.0, weighted)), 1)
+
+    grade, label = classify_health_grade(
+        health_score,
+        base_converged=base_converged,
+        n1_diverged_count=n1_diverged_count + weather_diverged_count,
+        critical_count=critical_count,
+    )
+
+    if critical_count > 0:
+        risk_level = "严重"
+    elif high_count > 0:
+        risk_level = "高"
+    elif medium_count > 0:
+        risk_level = "中"
+    elif low_count > 0:
+        risk_level = "低"
+    else:
+        risk_level = "安全"
+
+    dims = {
+        "base": round(base_score, 1),
+        "voltage": round(voltage_score, 1),
+        "loading": round(loading_score, 1),
+        "n1": round(n1_score, 1),
+        "supply": round(supply_score, 1),
+    }
+    weakest_key = min(dims, key=lambda k: dims[k])
+    weakest_cn = {"base": "基态越限", "voltage": "电压质量", "loading": "负载裕度", "n1": "N-1抗扰动", "supply": "供电可靠"}[weakest_key]
+    summary_text = (
+        f"健康评级 {grade}（{label}）· {health_score:.1f}分；"
+        f"薄弱项：{weakest_cn}({dims[weakest_key]:.0f}分)，"
+        f"N-0风险 {n0_risk_count} / N-1收敛 {n1_converged_count}/{n1_total_count}"
+    )
+    return {
+        "health_score": health_score,
+        "health_grade": grade,
+        "health_label": label,
+        "risk_level": risk_level,
+        "dimensions": dims,
+        "affected_devices": int(affected_devices),
+        "summary_text": summary_text,
+    }
+
+
 def compute_security_score_and_level(
     *,
     base_converged: bool,
@@ -614,7 +892,7 @@ def compute_security_score_and_level(
     medium_count: int,
     low_count: int,
 ) -> tuple[float, str]:
-    """根据各等级风险数计算 0–100 安全健康评分与总体风险等级。"""
+    """根据各等级风险数计算 0–100 安全健康评分与总体风险等级（兼容旧调用签名）。"""
     if not base_converged:
         return 0.0, "严重"
     penalty = critical_count * 18.0 + high_count * 8.0 + medium_count * 3.0 + low_count * 1.0

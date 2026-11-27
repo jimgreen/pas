@@ -2274,28 +2274,38 @@
 
   /* ==================== 5. 算法参数 (pas_se_para) + 量测权重 + 试算对比 ==================== */
   async function loadParamsTab() {
-    const isWeights = appState.paramsSubTab === 'weights';
+    const hasSubTab = Boolean(document.getElementById('params-subtab-seg'));
+    const isWeights = hasSubTab && appState.paramsSubTab === 'weights';
     const form = document.getElementById('se-params-form');
     const wtWrap = document.getElementById('weights-table-wrap');
     const wtTools = document.getElementById('weights-toolbar-right');
-    if (form) form.hidden = isWeights;
-    if (wtWrap) wtWrap.hidden = !isWeights;
-    if (wtTools) wtTools.hidden = !isWeights;
-    ['btn-params-reset', 'btn-params-save', 'btn-params-trial'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.hidden = isWeights;
-    });
-    if (isWeights) {
-      const bar = document.getElementById('params-trial-bar');
-      if (bar) bar.hidden = true;
-    }
-    document.querySelectorAll('#params-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.psub === appState.paramsSubTab));
-    if (isWeights) {
-      await loadWeightsTab();
-      return;
+    if (hasSubTab) {
+      if (form) form.hidden = isWeights;
+      if (wtWrap) wtWrap.hidden = !isWeights;
+      if (wtTools) wtTools.hidden = !isWeights;
+      ['btn-params-reset', 'btn-params-save', 'btn-params-trial'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = isWeights;
+      });
+      if (isWeights) {
+        const bar = document.getElementById('params-trial-bar');
+        if (bar) bar.hidden = true;
+      }
+      document.querySelectorAll('#params-subtab-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.psub === appState.paramsSubTab));
+      if (isWeights) {
+        await loadWeightsTab();
+        return;
+      }
+    } else {
+      if (form) form.hidden = false;
+      if (wtWrap) wtWrap.hidden = false;
+      if (wtTools) wtTools.hidden = false;
     }
 
-    const params = await api('/api/se/params');
+    const paramsPromise = api('/api/se/params');
+    const weightsPromise = !hasSubTab ? loadWeightsTab().catch(() => {}) : Promise.resolve();
+    const params = await paramsPromise;
+    await weightsPromise;
     appState.params = params;
     document.getElementById('params-updated-at').textContent = params.updated_at ? fmtTime(params.updated_at) : '—';
     let html = '';

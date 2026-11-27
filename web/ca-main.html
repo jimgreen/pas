@@ -83,17 +83,22 @@
 
           <!-- 核心三栏画布 -->
           <div class="se-home-grid" aria-label="CA Dashboard">
-            <!-- 左栏：安全评分立体仪表盘 + 三道防线状态条 + 风险分级环图 -->
+            <!-- 左栏：电网健康评分立体仪表盘 + 五维健康雷达 + 三道防线 + 风险分级环图 -->
             <section class="se-home-panel accent-stat">
               <div class="se-home-panel-head">
-                <h2 data-i18n="home.security_overview">安全评估与防线</h2>
+                <h2 data-i18n="home.security_overview">电网健康评估</h2>
                 <span class="se-pill ok tabular" id="ca-home-score">—</span>
               </div>
               <div class="se-home-panel-body">
                 <div id="ca-home-gauge"></div>
                 <div class="pas-sub-hd">
-                  <span data-i18n="home.defense_lines">N-0 / N-1 / N-k 安全防线</span>
+                  <span data-i18n="home.health_radar">五维健康画像</span>
                   <span class="se-muted tabular" id="ca-home-elapsed">—</span>
+                </div>
+                <div id="ca-health-radar"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.defense_lines">N-0 / N-1 / N-k 安全防线</span>
                 </div>
                 <div id="ca-defense-bars"></div>
                 <div class="se-kv-divider"></div>
@@ -146,7 +151,8 @@
                 <div class="se-home-panel-head">
                   <h2 data-i18n="home.trend_title">安全健康与风险趋势</h2>
                   <div class="se-tool-group">
-                    <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">安全评分</button>
+                    <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">健康评分</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="health_history" data-i18n="metric.health_hist">健康历史</button>
                     <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险总数</button>
                     <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">最大负载 %</button>
                     <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories" data-i18n="metric.risk_cat">风险分类</button>

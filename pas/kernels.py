@@ -29,6 +29,7 @@ from .input_store import (
 from .ca_online import (
     DEFAULT_CA_PARAMS,
     SEVERITY_RANK,
+    compute_grid_health_assessment,
     compute_security_score_and_level,
     evaluate_lf_state_risks,
 )
@@ -40,6 +41,10 @@ from .lf_online import (
 )
 from .se_bad import detect_suspect_statuses
 from .se_params import se_parameter_file
+from .weather_coupling import (
+    build_weather_perturbation_overrides,
+    compute_weather_coupling_summary,
+)
 
 
 def configure_kernel_path(kernel_root: str | Path) -> Path:
@@ -1450,13 +1455,14 @@ def run_ca(
     lf_para_file: str | Path | None = None,
     contingencies: list[dict[str, Any]] | None = None,
     device_limits: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    weather_state: dict[str, Any] | None = None,
     stage_logger: Any = None,
 ) -> dict[str, Any]:
-    """执行在线静态安全分析（LF → CA 基态贯通 + 真实 N-0/N-1/N-k 潮流扫描）。"""
+    """执行在线静态安全分析（LF → CA 基态贯通 + 真实 N-0/N-1/N-k/气象扰动潮流扫描）。"""
     # 兼容旧的纯文件/无参单测调用路径
     online_mode = any(
         x is not None
-        for x in (ca_params, lf_snap, se_snap, contingencies, device_limits, stage_logger)
+        for x in (ca_params, lf_snap, se_snap, contingencies, device_limits, weather_state, stage_logger)
     )
     if not online_mode:
         validate_task_inputs(config)
@@ -1495,6 +1501,7 @@ def run_ca(
     use_lf_base = bool(int(eff_ca.get("use_lf_base", 1)))
     scan_n1 = bool(int(eff_ca.get("scan_n1", 1)))
     scan_nk = bool(int(eff_ca.get("scan_nk", 1)))
+    scan_weather = bool(int(eff_ca.get("scan_weather", 1)))
     max_scan = max(1, int(eff_ca.get("max_scan_count", 40)))
     load_loss_thr = float(eff_ca.get("load_loss_threshold_kw", 0.5))
 
@@ -1619,26 +1626,42 @@ def run_ca(
             detail={"n0_risk_count": n0_risk_count, **n0_meta},
         )
 
-    # 2. N-1 / N-k 预想故障扫描
+    # 2. N-1 / N-k / 气象与负荷预想扰动扫描
     n1_total = 0
     n1_converged = 0
     n1_diverged = 0
     n1_risk_count = 0
     nk_total = 0
     nk_risk_count = 0
+    weather_total = 0
+    weather_converged = 0
+    weather_diverged = 0
+    weather_risk_count = 0
+
+    weather_snapshot = compute_weather_coupling_summary(weather_state, raw_tables)
 
     scan_queue: list[dict[str, Any]] = []
     if base_converged and contingencies:
+        weather_defs: list[dict[str, Any]] = []
+        device_defs: list[dict[str, Any]] = []
         for cdef in contingencies:
             if not int(cdef.get("enabled", 1)):
                 continue
             cat = str(cdef.get("category") or "N-1")
+            if cat == "Weather":
+                if scan_weather:
+                    weather_defs.append(cdef)
+                continue
             if cat == "N-1" and not scan_n1:
                 continue
             if cat == "N-k" and not scan_nk:
                 continue
-            scan_queue.append(cdef)
-        scan_queue = scan_queue[:max_scan]
+            device_defs.append(cdef)
+        # 优先确保启用的气象/负荷扰动全部进入扫描队列，再以剩余配额填充设备 N-1/N-k 场景
+        if len(weather_defs) >= max_scan:
+            scan_queue = weather_defs[:max_scan]
+        else:
+            scan_queue = weather_defs + device_defs[: max_scan - len(weather_defs)]
 
     if scan_queue:
         t_scan = time.perf_counter()
@@ -1651,9 +1674,26 @@ def run_ca(
                         name_to_idx[(dt, str(mrow["name"]))] = int(mrow["idx"])
 
         with lf_parameter_file(lf_para_file, params=eff_lf) as (para_path, _):
-            # 预先为每个故障场景构造隔离的开断覆盖字典
-            scan_jobs: list[tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]]]] = []
+            # 预先为每个故障/气象扰动场景构造隔离的内存覆盖字典
+            scan_jobs: list[tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]], dict[str, Any]]] = []
             for cdef in scan_queue:
+                cat = str(cdef.get("category") or "N-1")
+                if cat == "Weather":
+                    pert = cdef.get("perturbation")
+                    if not isinstance(pert, dict) or not pert:
+                        try:
+                            pert = json.loads(cdef.get("perturbation_json") or "{}")
+                        except (TypeError, ValueError):
+                            pert = {}
+                    w_ovr, w_meta = build_weather_perturbation_overrides(
+                        pert,
+                        weather_state,
+                        raw_tables,
+                        base_overrides,
+                    )
+                    scan_jobs.append((cdef, w_ovr, w_meta))
+                    continue
+
                 items = cdef.get("items") or []
                 outage_ovr: dict[str, dict[int, dict[str, Any]]] = {
                     dt: {idx: dict(fields) for idx, fields in entries.items()}
@@ -1668,10 +1708,10 @@ def run_ca(
                         continue
                     field = "status" if dt in ("ACBreak", "DCBreak") else "run_stat"
                     outage_ovr.setdefault(dt, {}).setdefault(int(didx), {})[field] = 0
-                scan_jobs.append((cdef, outage_ovr))
+                scan_jobs.append((cdef, outage_ovr, {"load_scale_applied": 1.0}))
 
-            def _run_job(job: tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]]]):
-                _, job_ovr = job
+            def _run_job(job: tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]], dict[str, Any]]):
+                _, job_ovr, _ = job
                 return _solve_single_ca_case(
                     model_path,
                     raw_tables,
@@ -1688,13 +1728,15 @@ def run_ca(
             else:
                 solved_list = [_run_job(job) for job in scan_jobs]
 
-            for (cdef, _), (solved, err, case_ms) in zip(scan_jobs, solved_list):
+            for (cdef, _, job_meta), (solved, err, case_ms) in zip(scan_jobs, solved_list):
                 cname = str(cdef.get("name") or "未命名故障")
                 cat = str(cdef.get("category") or "N-1")
                 items = cdef.get("items") or []
-                target_desc = str(cdef.get("target_desc") or "")
+                target_desc = str(cdef.get("target_desc") or job_meta.get("desc") or "")
                 if cat == "N-1":
                     n1_total += 1
+                elif cat == "Weather":
+                    weather_total += 1
                 else:
                     nk_total += 1
 
@@ -1715,14 +1757,21 @@ def run_ca(
                     case_fail = str(err or "not_converged")
                     if cat == "N-1":
                         n1_diverged += 1
+                    elif cat == "Weather":
+                        weather_diverged += 1
                     first_it = items[0] if items else {}
+                    div_detail = (
+                        f"气象/负荷扰动「{target_desc or cname}」后潮流发散或系统失稳：{case_fail}"
+                        if cat == "Weather"
+                        else f"开断 {target_desc or cname} 后潮流发散或系统解列：{case_fail}"
+                    )
                     case_risks.append(
                         {
                             "contingency_name": cname,
                             "category": cat,
-                            "device_type": str(first_it.get("device_type") or "System"),
-                            "device_idx": first_it.get("device_idx"),
-                            "device_name": str(first_it.get("device_name") or cname),
+                            "device_type": "Weather" if cat == "Weather" else str(first_it.get("device_type") or "System"),
+                            "device_idx": None if cat == "Weather" else first_it.get("device_idx"),
+                            "device_name": cname if cat == "Weather" else str(first_it.get("device_name") or cname),
                             "risk_category": "divergence",
                             "severity": "critical",
                             "metric": "converged",
@@ -1730,16 +1779,19 @@ def run_ca(
                             "limit_value": 1.0,
                             "violation_pct": 100.0,
                             "unit": "",
-                            "detail": f"开断 {target_desc or cname} 后潮流发散或系统解列：{case_fail}",
+                            "detail": div_detail,
                         }
                     )
                 else:
                     if cat == "N-1":
                         n1_converged += 1
+                    elif cat == "Weather":
+                        weather_converged += 1
                     st = solved["lf_statistics"]
                     case_iters = int(st.get("iterations") or 0)
                     post_load = float(st.get("total_load_p") or 0.0)
-                    case_load_loss = round(max(0.0, base_load_kw - post_load), 3)
+                    expected_load = base_load_kw * float(job_meta.get("load_scale_applied") or 1.0)
+                    case_load_loss = round(max(0.0, expected_load - post_load), 3)
                     c_risks, c_meta = evaluate_lf_state_risks(
                         contingency_name=cname,
                         category=cat,
@@ -1758,16 +1810,16 @@ def run_ca(
                     case_max_v_bus = str(c_meta["max_v_bus"] or "")
 
                     if case_load_loss > load_loss_thr:
-                        loss_pct = (case_load_loss / max(base_load_kw, 1e-6)) * 100.0
+                        loss_pct = (case_load_loss / max(expected_load, 1e-6)) * 100.0
                         l_sev = "critical" if loss_pct >= 20.0 else ("high" if loss_pct >= 5.0 else "medium")
                         first_it = items[0] if items else {}
                         case_risks.append(
                             {
                                 "contingency_name": cname,
                                 "category": cat,
-                                "device_type": str(first_it.get("device_type") or "System"),
-                                "device_idx": first_it.get("device_idx"),
-                                "device_name": str(first_it.get("device_name") or cname),
+                                "device_type": "Weather" if cat == "Weather" else str(first_it.get("device_type") or "System"),
+                                "device_idx": None if cat == "Weather" else first_it.get("device_idx"),
+                                "device_name": cname if cat == "Weather" else str(first_it.get("device_name") or cname),
                                 "risk_category": "load_loss",
                                 "severity": l_sev,
                                 "metric": "load_loss",
@@ -1775,7 +1827,7 @@ def run_ca(
                                 "limit_value": round(load_loss_thr, 2),
                                 "violation_pct": round(loss_pct, 2),
                                 "unit": p_unit,
-                                "detail": f"故障后损失负荷 {case_load_loss:.2f} {p_unit}（占基态 {loss_pct:.1f}%）",
+                                "detail": f"扰动后损失负荷 {case_load_loss:.2f} {p_unit}（占目标负荷 {loss_pct:.1f}%）",
                             }
                         )
 
@@ -1798,6 +1850,8 @@ def run_ca(
                         case_sev = cr["severity"]
                 if cat == "N-1":
                     n1_risk_count += len(case_risks)
+                elif cat == "Weather":
+                    weather_risk_count += len(case_risks)
                 else:
                     nk_risk_count += len(case_risks)
                 all_risks.extend(case_risks)
@@ -1830,31 +1884,76 @@ def run_ca(
 
         _log(
             "n1_scan",
-            f"预想故障扫描完成：N-1 {n1_total} 项（收敛 {n1_converged} / 发散 {n1_diverged}，风险 {n1_risk_count}），N-k {nk_total} 项（风险 {nk_risk_count}）",
-            level="WARN" if (n1_diverged > 0 or n1_risk_count > 0 or nk_risk_count > 0) else "INFO",
+            f"预想扰动扫描完成：N-1 {n1_total} 项（收敛 {n1_converged}/发散 {n1_diverged}，风险 {n1_risk_count}），气象 {weather_total} 项（收敛 {weather_converged}/发散 {weather_diverged}，风险 {weather_risk_count}），N-k {nk_total} 项（风险 {nk_risk_count}）",
+            level="WARN" if (n1_diverged > 0 or weather_diverged > 0 or n1_risk_count > 0 or weather_risk_count > 0 or nk_risk_count > 0) else "INFO",
             elapsed_ms=(time.perf_counter() - t_scan) * 1000.0,
             detail={
                 "n1_total": n1_total,
                 "n1_converged": n1_converged,
                 "n1_diverged": n1_diverged,
                 "n1_risk_count": n1_risk_count,
+                "weather_total": weather_total,
+                "weather_converged": weather_converged,
+                "weather_diverged": weather_diverged,
+                "weather_risk_count": weather_risk_count,
                 "nk_total": nk_total,
                 "nk_risk_count": nk_risk_count,
             },
         )
 
-    # 3. 汇总统计与安全评分
+    # 3. 汇总统计与电网五维健康评分定级
     crit_cnt = sum(1 for r in all_risks if r["severity"] == "critical")
     high_cnt = sum(1 for r in all_risks if r["severity"] == "high")
     med_cnt = sum(1 for r in all_risks if r["severity"] == "medium")
     low_cnt = sum(1 for r in all_risks if r["severity"] == "low")
-    score, level = compute_security_score_and_level(
+    affected_devs = len({str(r.get("device_name") or "").strip() for r in all_risks if str(r.get("device_name") or "").strip()})
+    total_devs = len(base_buses) + len(base_branches)
+    n1_safe_cnt = sum(1 for c in contingency_results if c.get("category") == "N-1" and c.get("converged") and int(c.get("risk_count") or 0) == 0)
+    n1_worsened_cnt = sum(
+        1
+        for c in contingency_results
+        if c.get("category") == "N-1" and ((not c.get("converged")) or int(c.get("risk_count") or 0) > n0_risk_count or float(c.get("load_loss_kw") or 0.0) > load_loss_thr)
+    )
+    weather_worsened_cnt = sum(
+        1
+        for c in contingency_results
+        if c.get("category") == "Weather" and ((not c.get("converged")) or int(c.get("risk_count") or 0) > n0_risk_count or float(c.get("load_loss_kw") or 0.0) > load_loss_thr)
+    )
+    health = compute_grid_health_assessment(
         base_converged=base_converged,
+        n0_risk_count=n0_risk_count,
+        n1_total_count=n1_total,
+        n1_converged_count=n1_converged,
+        n1_diverged_count=n1_diverged,
+        n1_risk_count=n1_risk_count,
+        nk_total_count=nk_total,
+        nk_risk_count=nk_risk_count,
+        weather_total_count=weather_total,
+        weather_diverged_count=weather_diverged,
+        weather_risk_count=weather_risk_count,
         critical_count=crit_cnt,
         high_count=high_cnt,
         medium_count=med_cnt,
         low_count=low_cnt,
+        max_loading_pct=global_max_loading,
+        min_v_pu=global_min_v,
+        max_v_pu=global_max_v,
+        max_load_loss_kw=max_load_loss_kw,
+        base_load_kw=base_load_kw,
+        v_min_pu=float(eff_ca.get("v_min_pu", 0.93)),
+        v_max_pu=float(eff_ca.get("v_max_pu", 1.07)),
+        overload_warn_pct=float(eff_ca.get("overload_warn_pct", 80.0)),
+        overload_limit_pct=float(eff_ca.get("overload_limit_pct", 100.0)),
+        affected_devices=affected_devs,
+        total_devices=total_devs,
+        n1_safe_count=n1_safe_cnt,
+        n1_worsened_count=n1_worsened_cnt,
+        weather_worsened_count=weather_worsened_cnt,
     )
+    score = float(health["health_score"])
+    level = str(health["risk_level"])
+    health_grade = str(health["health_grade"])
+    health_label = str(health["health_label"])
     if not worst_contingency and n0_risk_count > 0:
         worst_contingency = "N-0 基态"
 
@@ -1865,6 +1964,11 @@ def run_ca(
         "base_converged": int(base_converged),
         "risk_level": level,
         "security_score": score,
+        "health_grade": health_grade,
+        "health_label": health_label,
+        "health_dims": health["dimensions"],
+        "health_summary": health["summary_text"],
+        "affected_devices": affected_devs,
         "n0_risk_count": n0_risk_count,
         "n1_total_count": n1_total,
         "n1_converged_count": n1_converged,
@@ -1872,6 +1976,9 @@ def run_ca(
         "n1_risk_count": n1_risk_count,
         "nk_total_count": nk_total,
         "nk_risk_count": nk_risk_count,
+        "weather_total_count": weather_total,
+        "weather_risk_count": weather_risk_count,
+        "weather_snapshot": weather_snapshot,
         "critical_count": crit_cnt,
         "high_count": high_cnt,
         "medium_count": med_cnt,
@@ -1893,20 +2000,26 @@ def run_ca(
     return {
         "risk_level": level,
         "n0_risk_count": n0_risk_count,
-        "n1_scan_count": n1_total + nk_total,
-        "n1_risk_count": n1_risk_count + nk_risk_count,
+        "n1_scan_count": n1_total + nk_total + weather_total,
+        "n1_risk_count": n1_risk_count + nk_risk_count + weather_risk_count,
         "risks": legacy_risks,
         "ca_statistics": ca_stats,
+        "ca_health": health,
         "ca_contingencies": contingency_results,
         "ca_risk_details": all_risks,
         "summary": {
             "risk_level": level,
             "security_score": score,
+            "health_grade": health_grade,
+            "health_label": health_label,
+            "health_dims": health["dimensions"],
             "source_lf_run_id": source_lf_run_id,
             "source_se_run_id": source_se_run_id,
             "n0_risk_count": n0_risk_count,
-            "n1_scan_count": n1_total + nk_total,
-            "n1_risk_count": n1_risk_count + nk_risk_count,
+            "n1_scan_count": n1_total + nk_total + weather_total,
+            "n1_risk_count": n1_risk_count + nk_risk_count + weather_risk_count,
+            "weather_total_count": weather_total,
+            "weather_risk_count": weather_risk_count,
         },
         "performance": {"solve_seconds": total_sec},
     }

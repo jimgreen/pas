@@ -87,20 +87,23 @@
 
       <div class="se-workspace" id="se-workspace">
         <section class="se-panel active" data-panel="params">
-          <div class="se-card se-full-card">
-            <div class="se-toolbar">
-              <div class="se-tool-group" id="params-subtab-seg" role="tablist">
-                <button type="button" class="se-chip-btn seg active" data-psub="para" data-i18n="params.tab_para">算法参数</button>
-                <button type="button" class="se-chip-btn seg" data-psub="weights" data-i18n="params.tab_weights">量测权重</button>
+          <div class="pas-stack-layout">
+            <section class="pas-compact-param-card">
+              <form id="se-params-form" class="se-params-form cols-5"></form>
+            </section>
+            <section class="pas-table-fill-card">
+              <div class="se-toolbar">
+                <div class="se-tool-group">
+                  <h2 style="margin:0;font-size:13px;font-weight:700" data-i18n="params.tab_weights">量测权重</h2>
+                </div>
+                <div class="se-tool-group" id="weights-toolbar-right">
+                  <select id="wt-type-filter" class="se-select compact" aria-label="Device type"></select>
+                  <input id="wt-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_wt" placeholder="搜索权重规则">
+                  <button type="button" class="se-btn primary mini" id="btn-add-weight" data-i18n="wt.add">+ 新增权重</button>
+                </div>
               </div>
-              <div class="se-tool-group" id="weights-toolbar-right" hidden>
-                <select id="wt-type-filter" class="se-select compact" aria-label="Device type"></select>
-                <input id="wt-search-input" class="se-input compact" type="search" data-i18n-placeholder="ph.search_wt" placeholder="搜索权重规则">
-                <button type="button" class="se-btn primary mini" id="btn-add-weight" data-i18n="wt.add">+ 新增权重</button>
-              </div>
-            </div>
-            <form id="se-params-form" class="se-params-form"></form>
-            <div class="se-table-scroll" id="weights-table-wrap" hidden></div>
+              <div class="se-table-scroll" id="weights-table-wrap"></div>
+            </section>
           </div>
         </section>
       </div>

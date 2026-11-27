@@ -2667,9 +2667,22 @@ body.se-splitting-h {
   color: var(--sidebar-muted, #8190aa);
 }
 [data-theme] .sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--sidebar-muted, #8190aa);
   border-top: 1px solid var(--sidebar-border, rgba(148, 163, 184, 0.15));
-  padding-top: 8px;
+  padding: 8px 6px 4px;
+  margin-top: auto;
+  flex-shrink: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme] .sidebar-foot .status-dot {
+  flex-shrink: 0;
+  margin-right: 0;
 }
 [data-theme] .sidebar-toggle-btn {
   background: var(--sidebar-bg, #16233d);
@@ -3986,5 +3999,451 @@ body.pas-wall-mode .se-home-footer {
 @media (max-width: 1200px) {
   .pas-hero-strip {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ==================== 全站高密度满屏对齐布局（系统设置 / 运行历史 / 参数与日志子页 / CA 健康评分） ==================== */
+[data-theme] .content > .tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 6px;
+  margin: 0;
+  flex-shrink: 0;
+  border-bottom: var(--border);
+}
+[data-theme] .analysis-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  overflow: hidden;
+}
+[data-theme] .full-panel {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+[data-theme] .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: var(--border);
+  border-radius: var(--radius-btn);
+}
+[data-theme] .content table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+[data-theme] .content table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+[data-theme] .content .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+[data-theme] .content .section-head h2 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* 系统设置：三栏并排调度卡 + 下方双栏满屏守护与历史 */
+.pas-settings-sched-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+.pas-sched-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pas-sched-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px !important;
+}
+.pas-sched-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pas-sched-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.pas-sched-field input {
+  width: 100%;
+  height: 28px;
+}
+.pas-sched-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  min-height: 26px;
+  user-select: none;
+}
+.pas-sched-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: var(--border);
+  margin-top: auto;
+}
+.pas-sched-last {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pas-settings-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 350px minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+.pas-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.pas-cascade-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-btn);
+  background: var(--bg-subtle);
+  border: var(--border);
+  flex-shrink: 0;
+}
+.pas-sub-sep {
+  height: 1px;
+  background: var(--border-color);
+  flex-shrink: 0;
+  margin: 1px 0;
+}
+.pas-jobs-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.pas-jobs-scroll .job-row {
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: var(--border);
+}
+
+/* 数据源与目录：4 列工作目录卡 + 满屏体检网 */
+.pas-dir-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pas-dir-card {
+  background: var(--bg-surface);
+  border: var(--border);
+  border-radius: var(--radius-card);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.pas-dir-card span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.pas-dir-card strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pas-dir-card strong:hover {
+  color: var(--accent);
+}
+[data-theme] .health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+[data-theme] .health-row {
+  border-bottom: var(--border);
+  padding: 6px 0;
+}
+
+/* 运行历史单行紧凑工具栏 */
+.pas-flat-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pas-flat-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 参数表单 5 列紧凑网格对齐（se-params / ca-config / lf-params） */
+.pas-compact-param-card .se-form-grid.cols-5,
+.pas-compact-param-card .se-params-form.cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.pas-compact-param-card .se-params-form {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.se-form-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* CA 电网健康评估细节 */
+.se-kv-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+#ca-health-radar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 0;
+  flex-shrink: 0;
+}
+#ca-home-trend {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 左侧边栏底部防裁切修正 */
+@media (min-width: 701px) {
+  html.pas-sb-float .sidebar,
+  body.pas-wall-mode .sidebar,
+  html.pas-sb-docked:not(.pas-sb-wall) .sidebar {
+    padding: 12px 10px 10px !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  .pas-compact-param-card .se-form-grid.cols-5,
+  .pas-compact-param-card .se-params-form.cols-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .pas-dir-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .pas-sched-grid,
+  .pas-settings-split,
+  [data-theme] .health-grid {
+    grid-template-columns: 1fr;
+  }
+  .pas-settings-split {
+    overflow-y: auto;
+  }
+}
+
+/* ==================== 南极极端气象工况胶囊、耦合态势条与输入弹窗 ==================== */
+.pas-weather-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.pas-weather-pill:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pas-weather-pill.tone-warn { border-color: rgba(217, 119, 6, 0.45); }
+.pas-weather-pill.tone-bad { border-color: rgba(220, 38, 38, 0.55); background: var(--sem-danger-bg); }
+.pas-w-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--sem-ok);
+}
+.pas-w-dot.accent { background: var(--accent); }
+.pas-w-dot.warn { background: var(--sem-warn); }
+.pas-w-dot.bad { background: var(--sem-danger); }
+.pas-w-ico { font-size: 12px; line-height: 1; }
+.pas-w-extra {
+  display: none;
+  color: var(--accent);
+  padding-left: 5px;
+  border-left: 1px solid var(--border-color);
+}
+body.pas-wall-mode .pas-weather-pill {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+body.pas-wall-mode .pas-w-extra {
+  display: inline;
+}
+
+/* 总览大屏单行南极环境气象耦合条 */
+.pas-ov-weather-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  padding: 5px 10px;
+  background: var(--bg-surface);
+  border: var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-card);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.pas-ovw-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pas-ovw-item {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.pas-ovw-item strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* CA 全景热力墙气象扰动专属高亮块 */
+.pas-heat-tile.is-weather {
+  border-style: dashed;
+  border-width: 1.5px;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
+}
+.pas-heat-tile.is-weather .pas-heat-cat {
+  color: var(--accent);
+}
+
+/* 南极气象工况输入模态窗 */
+.pas-weather-modal {
+  width: min(680px, 94vw);
+}
+.pas-w-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 14px 6px;
+}
+.pas-w-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-btn);
+  border: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.pas-w-preset-btn:hover,
+.pas-w-preset-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pas-w-preset-btn strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+.pas-w-preset-btn span {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+.pas-w-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 10px;
+  padding: 8px 14px 14px;
+}
+.pas-w-coupling-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-btn);
+  background: var(--bg-subtle);
+  border: var(--border);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.pas-w-coupling-bar strong {
+  color: var(--accent);
+}
+@media (max-width: 720px) {
+  .pas-w-presets,
+  .pas-w-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

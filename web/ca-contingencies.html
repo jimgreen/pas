@@ -81,8 +81,9 @@
             <div class="se-tool-group">
               <select id="cdef-cat" class="se-select compact" aria-label="Category">
                 <option value="all" data-i18n="opt.all_cat">全部场景</option>
-                <option value="N-1">N-1</option>
-                <option value="N-k">N-k</option>
+                <option value="N-1">N-1 设备故障</option>
+                <option value="Weather">Weather 气象/负荷</option>
+                <option value="N-k">N-k 组合故障</option>
               </select>
               <select id="cdef-dtype" class="se-select compact" aria-label="Device type">
                 <option value="all" data-i18n="opt.all_type">全部设备类</option>
@@ -98,6 +99,7 @@
             <div class="se-tool-group">
               <button type="button" class="se-btn mini primary" id="btn-cdef-add" data-i18n="action.add_cont">+ 新增故障</button>
               <button type="button" class="se-btn mini" id="btn-cdef-sync" data-i18n="action.sync_n1">从模型生成 N-1</button>
+              <button type="button" class="se-btn mini" id="btn-cdef-seed-weather">生成气象扰动</button>
               <button type="button" class="se-btn mini" id="btn-cdef-enable-all" data-i18n="action.enable_filtered">全部启用</button>
               <button type="button" class="se-btn mini" id="btn-cdef-disable-all" data-i18n="action.disable_filtered">全部停用</button>
               <button type="button" class="se-btn mini danger" id="btn-cdef-clear" data-i18n="action.clear_conts">清空故障集</button>
@@ -127,35 +129,75 @@
     </main>
   </div>
 
-  <!-- 新增/编辑预想故障模态框（支持 N-1 与 N-k 双元件组合） -->
+  <!-- 新增/编辑预想故障与气象扰动模态框（支持 N-1 / N-k 设备退出与 Weather 气象/负荷扰动） -->
   <dialog id="cdef-dialog" class="se-modal wide" aria-labelledby="cdef-dlg-title">
-    <h3 id="cdef-dlg-title" data-i18n="dlg.cont_title">预想故障定义</h3>
+    <h3 id="cdef-dlg-title" data-i18n="dlg.cont_title">预想扰动定义</h3>
     <form id="cdef-form" class="se-form-grid" style="margin-top:8px">
       <input type="hidden" id="cf-id">
       <label class="se-field">
-        <span data-i18n="col.contingency">故障名称</span>
-        <input id="cf-name" type="text" placeholder="留空自动命名">
+        <span>扰动类别</span>
+        <select id="cf-mode">
+          <option value="device">设备预想退出（N-1 / N-k）</option>
+          <option value="weather">气象 / 负荷预想扰动（Weather）</option>
+        </select>
       </label>
       <label class="se-field">
         <span data-i18n="col.priority">优先级</span>
-        <input id="cf-prio" type="number" min="1" max="999" value="20" required>
+        <input id="cf-prio" type="number" min="1" max="999" value="15" required>
       </label>
-      <label class="se-field">
+      <label class="se-field full">
+        <span data-i18n="col.contingency">扰动名称</span>
+        <input id="cf-name" type="text" placeholder="留空自动命名">
+      </label>
+
+      <!-- 设备开断区 -->
+      <label class="se-field cf-dev-only">
         <span data-i18n="dlg.dev1_type">主故障元件类型</span>
         <select id="cf-dt1"></select>
       </label>
-      <label class="se-field">
+      <label class="se-field cf-dev-only">
         <span data-i18n="dlg.dev1_name">主故障元件</span>
         <select id="cf-dn1"></select>
       </label>
-      <label class="se-field">
+      <label class="se-field cf-dev-only">
         <span data-i18n="dlg.dev2_type">第二元件类型（N-k 可选）</span>
         <select id="cf-dt2"></select>
       </label>
-      <label class="se-field">
+      <label class="se-field cf-dev-only">
         <span data-i18n="dlg.dev2_name">第二元件（N-k 可选）</span>
         <select id="cf-dn2"></select>
       </label>
+
+      <!-- 气象/负荷扰动区 -->
+      <label class="se-field full cf-weather-only" hidden>
+        <span>气象 / 负荷扰动类型</span>
+        <select id="cf-wkind">
+          <option value="irradiance_zero">太阳辐照归 0（极夜 / 强云遮，光伏归零）</option>
+          <option value="wind_zero">风速归 0（静风骤停，风电归零）</option>
+          <option value="wind_cutout">强下降风超切出（38 m/s 风机切出保护）</option>
+          <option value="load_surge">站区负荷陡升（+35% 极寒采暖冲击）</option>
+          <option value="load_drop">站区负荷陡降（-40% 卸载过电压校核）</option>
+          <option value="blizzard_combo">暴风雪极端复合（无光 + 超切出 + 负荷 +25%）</option>
+          <option value="custom">自定义气象与负荷组合</option>
+        </select>
+      </label>
+      <label class="se-field cf-weather-only" hidden>
+        <span>目标辐照度 (W/m²，留空不变)</span>
+        <input id="cf-wirr" class="tabular" type="number" min="0" max="1400" step="10" placeholder="如 0">
+      </label>
+      <label class="se-field cf-weather-only" hidden>
+        <span>目标风速 (m/s，留空不变)</span>
+        <input id="cf-wwind" class="tabular" type="number" min="0" max="65" step="0.5" placeholder="如 0 或 38">
+      </label>
+      <label class="se-field cf-weather-only" hidden>
+        <span>负荷倍率 (×，1.35=+35% / 0.6=-40%)</span>
+        <input id="cf-wload" class="tabular" type="number" min="0.1" max="3.0" step="0.05" placeholder="如 1.35">
+      </label>
+      <label class="se-field cf-weather-only" hidden>
+        <span>目标气温 (℃，留空不变)</span>
+        <input id="cf-wtemp" class="tabular" type="number" min="-85" max="30" step="1" placeholder="如 -42">
+      </label>
+
       <label class="se-field">
         <span data-i18n="col.status">状态</span>
         <select id="cf-enabled">

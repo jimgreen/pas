@@ -10,7 +10,7 @@
   <script src="/assets/theme-registry.js"></script>
   <script src="/assets/pas-kit.js"></script>
 </head>
-<body data-page="/overview" class="se-main-body">
+<body data-page="/overview" data-wall-ready="1" class="se-main-body">
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -81,7 +81,10 @@
       <div id="ov-chain-banner" class="se-trial-banner" hidden></div>
       <div id="ov-diag-strip" class="pas-diag-strip" hidden></div>
 
-      <div class="se-workspace" style="gap:10px">
+      <div class="se-workspace" style="gap:8px">
+        <!-- 南极极地环境气象与能源耦合紧凑态势条（点击即时编辑工况） -->
+        <section class="pas-ov-weather-strip" id="ov-weather-strip" aria-label="Polar Weather Coupling"></section>
+
         <!-- 核心 SE → LF → CA 三段实时数据流看板 -->
         <section class="pas-chain-grid" aria-label="SE LF CA Pipeline">
           <article class="se-home-card">

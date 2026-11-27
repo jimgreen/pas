@@ -733,16 +733,18 @@
     host.innerHTML = `<div class="pas-heat-matrix">${cells.map((c, idx) => {
       const sev = !c.converged ? 'critical' : (c.severity || (c.risk_count > 0 ? 'medium' : 'normal'));
       const meta = sevMeta[sev] || sevMeta.normal;
-      const shortName = String(c.contingency_name || '').replace(/^N-[01k]\s*[:：\-]?\s*/i, '');
+      const isWeather = String(c.category || '') === 'Weather';
+      const shortName = String(c.contingency_name || '').replace(/^(N-[01k]|气象)\s*[:：\-]?\s*/i, '');
+      const catTag = isWeather ? '❄ 气象' : c.category;
       const tip = [
-        `<strong>${esc(c.contingency_name)}</strong> (${esc(c.category)})`,
+        `<strong>${esc(c.contingency_name)}</strong> (${esc(isWeather ? '气象/负荷扰动' : c.category)})`,
         c.target_desc ? `<span style="color:var(--text-secondary)">${esc(c.target_desc)}</span>` : '',
         `收敛: <strong>${c.converged ? 'OK' : '发散'}</strong> · 风险: <strong>${c.risk_count}</strong>`,
         `最大负载: <strong>${num(c.max_loading_pct, 1)}%</strong> · 失电: <strong>${num(c.load_loss_kw, 1)}</strong>`,
         c.min_v_pu != null ? `最低电压: <strong>${num(c.min_v_pu, 4)} pu</strong>` : '',
       ].filter(Boolean).join('<br>');
-      return `<button type="button" class="pas-heat-tile ${meta.cls}" data-heat-idx="${idx}" data-heat-tip="${esc(tip)}">
-        <span class="pas-heat-cat">${esc(c.category)}</span>
+      return `<button type="button" class="pas-heat-tile ${meta.cls}${isWeather ? ' is-weather' : ''}" data-heat-idx="${idx}" data-heat-tip="${esc(tip)}">
+        <span class="pas-heat-cat">${esc(catTag)}</span>
         <span class="pas-heat-name">${esc(shortName || c.contingency_name)}</span>
         <span class="pas-heat-num tabular">${c.converged ? (c.risk_count > 0 ? `${c.risk_count}险` : '✓') : '发散'}</span>
       </button>`;
@@ -1080,6 +1082,7 @@
       const sbModeNow = getSidebarMode();
       const sbHiddenNow = sbModeNow === 'docked' ? getSidebarHidden() : !document.documentElement.classList.contains('pas-sidebar-open');
       const actions = [
+        { title: '设置南极环境气象工况（辐照 / 风速 / 气温 / 暴风雪）', tag: '气象', run: () => openWeatherModal() },
         { title: sbModeNow === 'float' ? '切换左栏模式：改为内嵌固定' : '切换左栏模式：改为边缘悬浮', tag: '左栏', run: () => { setSidebarMode(sbModeNow === 'float' ? 'docked' : 'float'); closeOverlay(); } },
         { title: sbHiddenNow ? '显示左侧导航栏' : '隐藏左侧导航栏', tag: '左栏', run: () => { setSidebarHidden(!sbHiddenNow); closeOverlay(); } },
         { title: '打开历史断面 A/B 对比 (LF / CA / SE)', tag: '操作', run: () => openDiffModal() },
@@ -1552,6 +1555,246 @@
     }
   }
 
+  /* ==================== 7.5 南极极地气象与环境工况胶囊条 + 快捷输入弹窗 ==================== */
+  let _cachedWeather = null;
+  let _weatherFetchInFlight = null;
+
+  function weatherRegimeIcon(regime, icing) {
+    if (icing >= 3 || regime === 'blizzard') return '❄️';
+    if (regime === 'katabatic') return '💨';
+    if (regime === 'polar_night') return '🌙';
+    if (regime === 'polar_day') return '☀️';
+    if (regime === 'extreme_cold') return '🥶';
+    return '🌬️';
+  }
+
+  function weatherAlertTone(alertLevel) {
+    if (alertLevel === 'extreme') return 'bad';
+    if (alertLevel === 'warning') return 'warn';
+    if (alertLevel === 'advisory') return 'accent';
+    return 'ok';
+  }
+
+  async function fetchWeatherState(force = false) {
+    if (_cachedWeather && !force) return _cachedWeather;
+    if (_weatherFetchInFlight && !force) return _weatherFetchInFlight;
+    _weatherFetchInFlight = fetch('/api/weather/current')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j && j.ok && j.data) {
+          _cachedWeather = j.data;
+          updateWeatherBadgeDOM(_cachedWeather);
+          return _cachedWeather;
+        }
+        return _cachedWeather;
+      })
+      .catch(() => _cachedWeather)
+      .finally(() => { _weatherFetchInFlight = null; });
+    return _weatherFetchInFlight;
+  }
+
+  function updateWeatherBadgeDOM(w) {
+    const btn = document.getElementById('pas-weather-pill');
+    if (!btn || !w) return;
+    const tone = weatherAlertTone(w.alert_level);
+    btn.className = `pas-weather-pill tone-${tone}`;
+    const c = w.coupling || {};
+    const icon = weatherRegimeIcon(w.polar_regime, w.snow_icing_level);
+    const tip = `${w.polar_regime_label || '南极工况'}（${w.alert_label || '—'}）· 吹雪/覆冰：${w.snow_icing_label || '—'}\n` +
+      `理论风电：${c.wind_avail_kw ?? '—'}/${c.wind_rated_kw ?? '—'} kW (${c.wind_avail_pct ?? '—'}%) | 理论光伏：${c.pv_avail_kw ?? '—'}/${c.pv_rated_kw ?? '—'} kW (${c.pv_avail_pct ?? '—'}%)\n` +
+      `极寒电池可用率：${c.storage_avail_pct ?? '—'}% | 负荷系数：×${w.load_factor ?? 1.0}\n点击设置/切换南极环境气象工况`;
+    btn.title = tip;
+    btn.innerHTML = `<span class="pas-w-dot ${tone}"></span>` +
+      `<span class="pas-w-ico">${icon}</span>` +
+      `<span class="pas-w-vals tabular">${Math.round(Number(w.irradiance_wm2 || 0))}W/m² · ${Number(w.wind_speed_ms || 0).toFixed(1)}m/s · ${Number(w.ambient_temp_c ?? -18.5).toFixed(1)}℃</span>` +
+      `<span class="pas-w-extra tabular">风${Number(c.wind_avail_kw || 0).toFixed(0)}kW · 光${Number(c.pv_avail_kw || 0).toFixed(0)}kW</span>`;
+  }
+
+  function mountWeatherBadge() {
+    const topActions = document.querySelector('.se-top-actions');
+    if (!topActions || document.getElementById('pas-weather-pill')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'pas-weather-pill';
+    btn.className = 'pas-weather-pill tone-ok';
+    btn.innerHTML = '<span class="pas-w-dot ok"></span><span class="pas-w-vals tabular">气象加载中…</span>';
+    btn.addEventListener('click', () => openWeatherModal());
+    const cmdBtn = document.getElementById('pas-cmd-trigger');
+    const wallClk = document.getElementById('pas-wall-clock');
+    const anchor = wallClk ? wallClk.nextSibling : (cmdBtn ? cmdBtn.nextSibling : topActions.firstChild);
+    topActions.insertBefore(btn, anchor);
+    fetchWeatherState(true);
+  }
+
+  async function openWeatherModal() {
+    closeOverlay();
+    const w = (await fetchWeatherState(true)) || {};
+    const presets = w.presets || [];
+    const c = w.coupling || {};
+    const wrap = document.createElement('div');
+    wrap.className = 'pas-cmd-backdrop';
+    wrap.style.paddingTop = '5vh';
+    wrap.innerHTML = `
+      <div class="pas-diff-modal pas-weather-modal" role="dialog" aria-label="南极气象与环境工况输入">
+        <div class="pas-drawer-head">
+          <h3><span>南极极端气象与环境工况输入</span><span class="se-pill ${weatherAlertTone(w.alert_level)}" id="pw-alert-pill">${esc(w.polar_regime_label || '常规南极工况')} · ${esc(w.alert_label || '适宜')}</span></h3>
+          <button type="button" class="se-btn compact" id="pw-close">✕</button>
+        </div>
+        <div class="pas-w-presets" id="pw-presets">
+          ${presets.map((p) => `
+            <button type="button" class="pas-w-preset-btn ${p.key === w.polar_regime ? 'active' : ''}" data-preset="${esc(p.key)}" title="${esc(p.note || '')}">
+              <strong>${weatherRegimeIcon(p.polar_regime, p.snow_icing_level)} ${esc(p.label)}</strong>
+              <span class="tabular">${p.irradiance_wm2}W/m² · ${p.wind_speed_ms}m/s · ${p.ambient_temp_c}℃</span>
+            </button>`).join('')}
+        </div>
+        <form id="pw-form" class="pas-w-form">
+          <input type="hidden" id="pw-preset-key" value="">
+          <label class="se-field"><span>太阳辐照度 (W/m²)</span><input id="pw-irr" class="tabular" type="number" min="0" max="1400" step="any" value="${w.irradiance_wm2 ?? 420}" required></label>
+          <label class="se-field"><span>风速 (m/s)</span><input id="pw-wind" class="tabular" type="number" min="0" max="65" step="any" value="${w.wind_speed_ms ?? 9.5}" required></label>
+          <label class="se-field"><span>环境气温 (℃)</span><input id="pw-temp" class="tabular" type="number" min="-85" max="30" step="any" value="${w.ambient_temp_c ?? -18.5}" required></label>
+          <label class="se-field"><span>大气压强 (hPa)</span><input id="pw-pres" class="tabular" type="number" min="850" max="1060" step="any" value="${w.pressure_hpa ?? 982}"></label>
+          <label class="se-field"><span>相对湿度 (%)</span><input id="pw-hum" class="tabular" type="number" min="0" max="100" step="any" value="${w.humidity_pct ?? 58}"></label>
+          <label class="se-field"><span>吹雪 / 覆冰等级</span>
+            <select id="pw-icing">
+              <option value="0" ${Number(w.snow_icing_level) === 0 ? 'selected' : ''}>0 · 晴朗无冰</option>
+              <option value="1" ${Number(w.snow_icing_level) === 1 ? 'selected' : ''}>1 · 轻度吹雪</option>
+              <option value="2" ${Number(w.snow_icing_level) === 2 ? 'selected' : ''}>2 · 中度覆冰</option>
+              <option value="3" ${Number(w.snow_icing_level) === 3 ? 'selected' : ''}>3 · 极端暴风雪</option>
+            </select>
+          </label>
+          <label class="se-field"><span>负荷环境系数 (×)</span><input id="pw-lfac" class="tabular" type="number" min="0.2" max="2.5" step="any" value="${w.load_factor ?? 1.0}"></label>
+          <label class="se-field" style="grid-column:span 2"><span>工况备注</span><input id="pw-note" type="text" maxlength="200" value="${esc(w.note || '')}" placeholder="可选备注"></label>
+          <div class="pas-w-coupling-bar" id="pw-coupling-bar" style="grid-column:1 / -1">
+            <span>理论风电 <strong class="tabular">${c.wind_avail_kw ?? 0} / ${c.wind_rated_kw ?? 0} kW</strong> (${c.wind_avail_pct ?? 0}%)</span>
+            <span>理论光伏 <strong class="tabular">${c.pv_avail_kw ?? 0} / ${c.pv_rated_kw ?? 0} kW</strong> (${c.pv_avail_pct ?? 0}%)</span>
+            <span>极寒电池可用 <strong class="tabular">${c.storage_avail_pct ?? 100}%</strong></span>
+            <span>采暖负荷增量 <strong class="tabular">+${c.cold_heating_delta_pct ?? 0}%</strong></span>
+          </div>
+          <div class="se-modal-actions" style="grid-column:1 / -1">
+            <span id="pw-err" style="margin-right:auto;font-size:12px;color:var(--sem-danger)"></span>
+            <button type="button" class="se-btn ghost" id="pw-cancel">取消</button>
+            <button type="submit" class="se-btn" data-trigger-ca="0">保存工况</button>
+            <button type="submit" class="se-btn primary" data-trigger-ca="1">保存并扫描 CA</button>
+          </div>
+        </form>
+      </div>`;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) closeOverlay(); });
+    wrap.querySelector('#pw-close').addEventListener('click', closeOverlay);
+    wrap.querySelector('#pw-cancel').addEventListener('click', closeOverlay);
+    document.body.appendChild(wrap);
+    _activeOverlay = wrap;
+
+    const presetMap = Object.fromEntries(presets.map((p) => [p.key, p]));
+    const windRated = Number(c.wind_rated_kw || 151);
+    const pvRated = Number(c.pv_rated_kw || 170);
+    const updatePreview = () => {
+      const g = Math.max(0, Number(wrap.querySelector('#pw-irr')?.value || 0));
+      const v = Math.max(0, Number(wrap.querySelector('#pw-wind')?.value || 0));
+      const temp = Number(wrap.querySelector('#pw-temp')?.value ?? -18.5);
+      const icing = Number(wrap.querySelector('#pw-icing')?.value || 0);
+      const iceLoss = [0, 0.06, 0.18, 0.45][icing] || 0;
+      const snowLoss = [0, 0.12, 0.35, 0.85][icing] || 0;
+      // 近似风功率曲线（3m/s 切入，12m/s 额定，35m/s 切出；含 50kW 主风机 25m/s 切出估算）
+      const wRatio = (v < 3 || v >= 35) ? 0 : (v >= 12 ? 1 : Math.max(0, Math.min(1, (v ** 3 - 27) / (1728 - 27)))) * (1 - iceLoss);
+      const wEffRatio = (v >= 25 && v < 35) ? wRatio * 0.67 : wRatio;
+      const wKw = windRated * wEffRatio;
+      const tCell = temp + 0.025 * g;
+      const tFac = Math.max(0.3, Math.min(1.18, 1 - 0.004 * (tCell - 25)));
+      const pvRatio = g <= 1e-6 ? 0 : Math.max(0, Math.min(1.15, (g / 1000) * tFac * (1 - snowLoss)));
+      const pvKw = pvRated * pvRatio;
+      const stoPct = temp >= -10 ? 100 : Math.max(50, 100 - (-10 - temp) * 0.85);
+      const heatPct = Math.max(0, (-20 - temp) * 0.8);
+      const bar = wrap.querySelector('#pw-coupling-bar');
+      if (bar) {
+        bar.innerHTML = `
+          <span>理论风电 <strong class="tabular">${wKw.toFixed(1)} / ${windRated.toFixed(0)} kW</strong> (${(wEffRatio * 100).toFixed(1)}%)</span>
+          <span>理论光伏 <strong class="tabular">${pvKw.toFixed(1)} / ${pvRated.toFixed(0)} kW</strong> (${(pvRatio * 100).toFixed(1)}%)</span>
+          <span>极寒电池可用 <strong class="tabular">${stoPct.toFixed(1)}%</strong></span>
+          <span>采暖负荷增量 <strong class="tabular">+${heatPct.toFixed(1)}%</strong></span>`;
+      }
+      const alertPill = wrap.querySelector('#pw-alert-pill');
+      if (alertPill) {
+        let lvl = 'normal'; let lbl = '气象适宜';
+        if (icing >= 3 || v >= 32 || temp <= -48 || (g <= 5 && (v < 3 || v >= 30))) { lvl = 'extreme'; lbl = '极端严酷'; }
+        else if (icing >= 2 || v >= 24 || temp <= -35 || g <= 5) { lvl = 'warning'; lbl = '气象警戒'; }
+        else if (icing === 1 || v < 3 || temp <= -25) { lvl = 'advisory'; lbl = '工况关注'; }
+        alertPill.className = `se-pill ${weatherAlertTone(lvl)}`;
+        alertPill.textContent = lbl;
+      }
+    };
+    ['#pw-irr', '#pw-wind', '#pw-temp', '#pw-icing'].forEach((sel) => {
+      wrap.querySelector(sel)?.addEventListener('input', updatePreview);
+      wrap.querySelector(sel)?.addEventListener('change', updatePreview);
+    });
+    wrap.querySelectorAll('.pas-w-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const p = presetMap[btn.dataset.preset];
+        if (!p) return;
+        wrap.querySelectorAll('.pas-w-preset-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        wrap.querySelector('#pw-preset-key').value = p.key;
+        wrap.querySelector('#pw-irr').value = p.irradiance_wm2;
+        wrap.querySelector('#pw-wind').value = p.wind_speed_ms;
+        wrap.querySelector('#pw-temp').value = p.ambient_temp_c;
+        wrap.querySelector('#pw-pres').value = p.pressure_hpa;
+        wrap.querySelector('#pw-hum').value = p.humidity_pct;
+        wrap.querySelector('#pw-icing').value = String(p.snow_icing_level);
+        wrap.querySelector('#pw-lfac').value = p.load_factor;
+        wrap.querySelector('#pw-note').value = p.note || '';
+        updatePreview();
+      });
+    });
+
+    let triggerCa = false;
+    wrap.querySelectorAll('#pw-form button[type="submit"]').forEach((b) => {
+      b.addEventListener('click', () => { triggerCa = b.dataset.triggerCa === '1'; });
+    });
+
+    wrap.querySelector('#pw-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = wrap.querySelector('#pw-err');
+      errEl.textContent = '';
+      const payload = {
+        irradiance_wm2: Number(wrap.querySelector('#pw-irr').value),
+        wind_speed_ms: Number(wrap.querySelector('#pw-wind').value),
+        ambient_temp_c: Number(wrap.querySelector('#pw-temp').value),
+        pressure_hpa: Number(wrap.querySelector('#pw-pres').value),
+        humidity_pct: Number(wrap.querySelector('#pw-hum').value),
+        snow_icing_level: Number(wrap.querySelector('#pw-icing').value),
+        load_factor: Number(wrap.querySelector('#pw-lfac').value),
+        note: wrap.querySelector('#pw-note').value.trim(),
+        trigger_ca: triggerCa,
+      };
+      const pk = wrap.querySelector('#pw-preset-key').value;
+      if (pk && presetMap[pk]) {
+        const pr = presetMap[pk];
+        if (
+          pr.irradiance_wm2 === payload.irradiance_wm2 &&
+          pr.wind_speed_ms === payload.wind_speed_ms &&
+          pr.ambient_temp_c === payload.ambient_temp_c &&
+          Number(pr.snow_icing_level) === payload.snow_icing_level
+        ) {
+          payload.polar_regime = pr.polar_regime;
+          payload.source = 'preset';
+        }
+      }
+      try {
+        const resp = await fetch('/api/weather/current', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.ok) throw new Error(json.error || `HTTP ${resp.status}`);
+        _cachedWeather = json.data;
+        updateWeatherBadgeDOM(_cachedWeather);
+        window.dispatchEvent(new CustomEvent('pas-weather-updated', { detail: _cachedWeather }));
+        closeOverlay();
+      } catch (err) {
+        errEl.textContent = err.message || '保存失败';
+      }
+    });
+  }
+
   function mountTopbarEnhancements() {
     // 1. 若旧运行管理页缺少 #lang-select，自动补充三语下拉
     const topActions = document.querySelector('.top-actions, .se-top-actions');
@@ -1592,6 +1835,7 @@
     }
     initSidebarController();
     initWallMode();
+    mountWeatherBadge();
     applyLegacyI18n(getLang());
   }
 
@@ -1644,6 +1888,9 @@
     openCommandPalette,
     openDeviceDrawer,
     openDiffModal,
+    openWeatherModal,
+    getWeather: () => fetchWeatherState(false),
+    refreshWeather: () => fetchWeatherState(true),
     renderTrendChart,
     renderSankey,
     renderDonut,

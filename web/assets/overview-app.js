@@ -150,6 +150,29 @@
     $('#arrow-se-lf').className = `pas-chain-arrow ${lk.se_lf_synced ? 'synced' : 'stale'}`;
     $('#arrow-lf-ca').className = `pas-chain-arrow ${lk.lf_ca_synced ? 'synced' : 'stale'}`;
 
+    // 0. 南极极端气象与微电网四元耦合条
+    const wHost = $('#ov-weather-strip');
+    const w = d.weather;
+    if (wHost && w) {
+      const c = w.coupling || {};
+      const aCls = w.alert_level === 'extreme' ? 'bad' : (w.alert_level === 'warning' ? 'warn' : (w.alert_level === 'advisory' ? 'neutral' : 'ok'));
+      wHost.innerHTML = `
+        <div class="pas-ovw-group">
+          <span class="se-pill ${aCls}">${esc(w.polar_regime_label || '南极工况')} · ${esc(w.alert_label || '适宜')}</span>
+          <span class="pas-ovw-item">辐照 <strong class="tabular">${num(w.irradiance_wm2, 0)} W/m²</strong></span>
+          <span class="pas-ovw-item">风速 <strong class="tabular">${num(w.wind_speed_ms, 1)} m/s</strong></span>
+          <span class="pas-ovw-item">气温 <strong class="tabular">${num(w.ambient_temp_c, 1)} ℃</strong></span>
+          <span class="pas-ovw-item">吹雪/覆冰 <strong>${esc(w.snow_icing_label || '晴朗')}</strong></span>
+        </div>
+        <div class="pas-ovw-group">
+          <span class="pas-ovw-item">风电可发 <strong class="tabular">${num(c.wind_avail_kw, 1)} kW</strong> (${num(c.wind_avail_pct, 0)}%)</span>
+          <span class="pas-ovw-item">光伏可发 <strong class="tabular">${num(c.pv_avail_kw, 1)} kW</strong> (${num(c.pv_avail_pct, 0)}%)</span>
+          <span class="pas-ovw-item">电池可用 <strong class="tabular">${num(c.storage_avail_pct, 0)}%</strong></span>
+          <button type="button" class="se-btn mini primary" id="btn-ov-weather-edit">设置气象工况</button>
+        </div>`;
+      wHost.querySelector('#btn-ov-weather-edit')?.addEventListener('click', () => window.PAS_KIT?.openWeatherModal());
+    }
+
     // 1. SE Card
     const se = d.se?.latest;
     $('#ov-se-pill').textContent = se ? (se.converged ? `收敛 · #${se.run_id}` : `未收敛 · #${se.run_id}`) : '—';
@@ -354,6 +377,7 @@
   applyTheme(st.theme);
   applyLang(st.lang);
   bind();
+  window.addEventListener('pas-weather-updated', () => loadOverview().catch(() => {}));
   loadOverview().catch((err) => notify(err.message, true));
   if (window.PAS_KIT?.createPoller) {
     window.PAS_KIT.createPoller(() => loadOverview().catch(() => {}), 15000, { useSSE: true });

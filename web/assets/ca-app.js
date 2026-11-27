@@ -30,11 +30,11 @@
       'action.reset_default': '恢复默认', 'action.save_params': '保存参数', 'action.save_and_trial': '保存并试算对比',
       'action.seed_limits': '从模型播种限值', 'action.open_limits': '限值管理页 →',
       'action.save_sched': '保存调度', 'action.purge_now': '立即按策略清理', 'action.replay': '回放',
-      'home.security_overview': '安全评估与防线', 'home.defense_lines': 'N-0 / N-1 / N-k 安全防线',
+      'home.security_overview': '电网健康评估', 'home.health_radar': '五维健康画像', 'home.defense_lines': 'N-0 / N-1 / N-k 安全防线',
       'home.risk_dist': '风险分级构成', 'home.scan_extremes': '故障扫描与极值', 'home.scan_matrix': '预想故障全景矩阵',
-      'home.device_heat': '脆弱设备风险频次 Top', 'home.recent_runs': '近期 CA 运行', 'home.trend_title': '安全健康与风险趋势',
+      'home.device_heat': '脆弱设备风险频次 Top', 'home.recent_runs': '近期 CA 运行', 'home.trend_title': '电网健康与风险趋势',
       'home.top_risks': '高危风险排行', 'home.top_contingencies': '严重预想故障 Top', 'home.view_source_lf': '源 LF',
-      'metric.score': '安全评分', 'metric.total_risks': '风险总数', 'metric.max_loading': '最大负载 %', 'metric.risk_cat': '风险分类',
+      'metric.score': '健康评分', 'metric.health_hist': '健康历史', 'metric.total_risks': '风险总数', 'metric.max_loading': '最大负载 %', 'metric.risk_cat': '风险分类',
       'tab.risks': '风险明细表', 'tab.cont_results': '故障扫描总览', 'tab.risk_map': '接线图风险分布',
       'tab.ca_params': '扫描与越限参数', 'tab.ca_limits': '设备安全限值',
       'tab.log_list': '日志明细', 'tab.run_sched': '运行与调度', 'tab.log_policy': '清理策略',
@@ -91,11 +91,11 @@
       'action.reset_default': 'Reset Default', 'action.save_params': 'Save Params', 'action.save_and_trial': 'Save & Trial',
       'action.seed_limits': 'Seed Limits', 'action.open_limits': 'Limits Page →',
       'action.save_sched': 'Save Schedule', 'action.purge_now': 'Purge Now', 'action.replay': 'Replay',
-      'home.security_overview': 'Security & Defenses', 'home.defense_lines': 'N-0 / N-1 / N-k Defenses',
+      'home.security_overview': 'Grid Health', 'home.health_radar': '5D Health Radar', 'home.defense_lines': 'N-0 / N-1 / N-k Defenses',
       'home.risk_dist': 'Risk Breakdown', 'home.scan_extremes': 'Scan & Extremes', 'home.scan_matrix': 'Contingency Scan Matrix',
-      'home.device_heat': 'Vulnerable Devices Top', 'home.recent_runs': 'Recent CA Runs', 'home.trend_title': 'Security Score & Risk Trend',
+      'home.device_heat': 'Vulnerable Devices Top', 'home.recent_runs': 'Recent CA Runs', 'home.trend_title': 'Grid Health & Risk Trend',
       'home.top_risks': 'Top Risks', 'home.top_contingencies': 'Worst Contingencies', 'home.view_source_lf': 'Source LF',
-      'metric.score': 'Score', 'metric.total_risks': 'Total Risks', 'metric.max_loading': 'Max Load %', 'metric.risk_cat': 'Risk Types',
+      'metric.score': 'Health Score', 'metric.health_hist': 'History', 'metric.total_risks': 'Total Risks', 'metric.max_loading': 'Max Load %', 'metric.risk_cat': 'Risk Types',
       'tab.risks': 'Risks', 'tab.cont_results': 'Scan Results', 'tab.risk_map': 'Topology Map',
       'tab.ca_params': 'Scan Params', 'tab.ca_limits': 'Device Limits',
       'tab.log_list': 'Logs', 'tab.run_sched': 'Runs & Schedule', 'tab.log_policy': 'Retention',
@@ -152,11 +152,11 @@
       'action.reset_default': 'Сброс', 'action.save_params': 'Сохранить', 'action.save_and_trial': 'Сохр. и расчет',
       'action.seed_limits': 'Заполнить пределы', 'action.open_limits': 'Пределы →',
       'action.save_sched': 'Сохранить', 'action.purge_now': 'Очистить', 'action.replay': 'Обзор',
-      'home.security_overview': 'Надежность и рубежи', 'home.defense_lines': 'Рубежи N-0 / N-1 / N-k',
+      'home.security_overview': 'Оценка здоровья', 'home.health_radar': '5D профиль сети', 'home.defense_lines': 'Рубежи N-0 / N-1 / N-k',
       'home.risk_dist': 'Уровни риска', 'home.scan_extremes': 'Сканирование', 'home.scan_matrix': 'Матрица возмущений',
-      'home.device_heat': 'Уязвимые элементы Top', 'home.recent_runs': 'Последние запуски CA', 'home.trend_title': 'Динамика надежности',
+      'home.device_heat': 'Уязвимые элементы Top', 'home.recent_runs': 'Последние запуски CA', 'home.trend_title': 'Динамика здоровья сети',
       'home.top_risks': 'Топ рисков', 'home.top_contingencies': 'Опасные возмущения', 'home.view_source_lf': 'База LF',
-      'metric.score': 'Индекс', 'metric.total_risks': 'Риски', 'metric.max_loading': 'Загрузка %', 'metric.risk_cat': 'Типы риска',
+      'metric.score': 'Здоровье', 'metric.health_hist': 'История', 'metric.total_risks': 'Риски', 'metric.max_loading': 'Загрузка %', 'metric.risk_cat': 'Типы риска',
       'tab.risks': 'Список рисков', 'tab.cont_results': 'Итоги сканирования', 'tab.risk_map': 'Схема рисков',
       'tab.ca_params': 'Параметры CA', 'tab.ca_limits': 'Пределы',
       'tab.log_list': 'Журнал', 'tab.run_sched': 'Запуски и график', 'tab.log_policy': 'Очистка',
@@ -344,10 +344,57 @@
     }
   }
 
+  function gradeClass(g) {
+    if (g === 'A' || g === 'B') return 'ok';
+    if (g === 'C') return 'warn';
+    if (g === 'D' || g === 'E') return 'bad';
+    return 'neutral';
+  }
+
   // -------------------- 主画面 /ca-main --------------------
   function renderTrendSvg(series, metric) {
     const box = $('#ca-home-trend');
     if (!box) return;
+    if (metric === 'health_history') {
+      const hlist = [...(st.homeData?.health_history || [])].reverse().slice(0, 14);
+      if (!hlist.length) {
+        box.innerHTML = `<div class="se-empty">${t('msg.empty')}</div>`;
+        return;
+      }
+      box.innerHTML = `<div class="se-table-wrap" style="height:100%"><table class="se-table compact">
+        <thead><tr>
+          <th>#</th>
+          <th>时间</th>
+          <th>定级</th>
+          <th>健康分</th>
+          <th>基态</th>
+          <th>电压</th>
+          <th>负载</th>
+          <th>抗扰</th>
+          <th>供电</th>
+          <th>气象工况</th>
+        </tr></thead>
+        <tbody>${hlist.map((h) => {
+          const dm = h.dimensions || {};
+          const wText = (h.irradiance_wm2 != null || h.wind_speed_ms != null)
+            ? `${Math.round(Number(h.irradiance_wm2 || 0))}W · ${num(h.wind_speed_ms, 1)}m/s · ${num(h.ambient_temp_c, 0)}℃`
+            : '—';
+          return `<tr>
+            <td class="tabular"><a class="se-link" href="/ca-risks.html?run_id=${h.run_id}">#${h.run_id}</a></td>
+            <td class="tabular">${esc(fmtTime(h.calc_time).slice(5))}</td>
+            <td><span class="se-pill ${gradeClass(h.health_grade)}">${esc(h.health_grade)} · ${esc(h.health_label)}</span></td>
+            <td class="tabular"><strong>${num(h.health_score, 1)}</strong></td>
+            <td class="tabular">${num(dm.base, 0)}</td>
+            <td class="tabular">${num(dm.voltage, 0)}</td>
+            <td class="tabular">${num(dm.loading, 0)}</td>
+            <td class="tabular">${num(dm.n1, 0)}</td>
+            <td class="tabular">${num(dm.supply, 0)}</td>
+            <td class="tabular" title="${esc(wText)}">${esc(wText)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+      return;
+    }
     if (metric === 'risk_categories' && window.PAS_KIT?.renderBarChart) {
       const catCounts = st.homeData?.risk_by_category || null;
       const counts = catCounts ? { ...catCounts } : { voltage_low: 0, voltage_high: 0, overload: 0, heavy_load: 0, load_loss: 0, divergence: 0 };
@@ -381,20 +428,32 @@
       window.PAS_KIT.renderBarChart(box, { items, unit: '项', digits: 0, emptyText: t('msg.empty') });
       return;
     }
-    if (!series || !series.length) {
+    const useHealthSeries = metric === 'security_score' && (st.homeData?.health_history || []).length > 0;
+    const src = useHealthSeries ? st.homeData.health_history : (series || []);
+    if (!src.length) {
       box.innerHTML = `<div class="se-empty">${t('msg.empty')}</div>`;
       return;
     }
     if (window.PAS_KIT?.renderTrendChart) {
       box.innerHTML = `<svg viewBox="0 0 720 196" preserveAspectRatio="none" style="width:100%;height:100%;min-height:175px;display:block"></svg>`;
       const unitMap = { security_score: '分', total_risks: '项', max_loading_pct: '%' };
-      const thrMap = { security_score: 60, max_loading_pct: 80 };
-      const thrLblMap = { security_score: '安全警戒 60', max_loading_pct: '重载阈值 80%' };
-      const pts = series.map((p) => ({
-        y: metric === 'total_risks' ? ((p.n0_risk_count || 0) + (p.n1_risk_count || 0) + (p.nk_risk_count || 0)) : Number(p[metric] ?? 0),
-        xLabel: `#${p.run_id}`,
-        extra: fmtTime(p.calc_time),
-      }));
+      const thrMap = { security_score: 75, max_loading_pct: 80 };
+      const thrLblMap = { security_score: '良好线 75分 (B)', max_loading_pct: '重载阈值 80%' };
+      const pts = src.map((p) => {
+        if (useHealthSeries) {
+          const dm = p.dimensions || {};
+          return {
+            y: Number(p.health_score ?? 0),
+            xLabel: `#${p.run_id}`,
+            extra: `${fmtTime(p.calc_time)} · ${p.health_grade}级(${p.health_label}) · 基${num(dm.base, 0)} 压${num(dm.voltage, 0)} 载${num(dm.loading, 0)} N1:${num(dm.n1, 0)}`,
+          };
+        }
+        return {
+          y: metric === 'total_risks' ? ((p.n0_risk_count || 0) + (p.n1_risk_count || 0) + (p.nk_risk_count || 0)) : Number(p[metric] ?? 0),
+          xLabel: `#${p.run_id}`,
+          extra: fmtTime(p.calc_time),
+        };
+      });
       window.PAS_KIT.renderTrendChart(box.querySelector('svg'), {
         points: pts,
         unit: unitMap[metric] || '',
@@ -405,7 +464,6 @@
         thresholdLabel: thrLblMap[metric] || '',
         emptyText: t('msg.empty'),
       });
-      return;
     }
   }
 
@@ -413,21 +471,26 @@
     const host = $('#ca-hero-strip');
     if (!host) return;
     const lat = data.latest;
-    const score = lat?.security_score != null ? Number(lat.security_score) : null;
-    const scoreTone = score == null ? 'accent' : (score >= 80 ? 'ok' : (score >= 60 ? 'warn' : 'bad'));
+    const h = data.health;
+    const score = h?.health_score != null ? Number(h.health_score) : (lat?.security_score != null ? Number(lat.security_score) : null);
+    const grade = h?.health_grade || lat?.health_grade || '';
+    const glabel = h?.health_label || lat?.health_label || (lat ? lat.risk_level : '—');
+    const scoreTone = grade ? gradeClass(grade) : (score == null ? 'accent' : (score >= 75 ? 'ok' : (score >= 60 ? 'warn' : 'bad')));
 
     const n0r = Number(lat?.n0_risk_count || 0);
     const n1r = Number(lat?.n1_risk_count || 0);
+    const wr = Number(lat?.weather_risk_count || 0);
     const nkr = Number(lat?.nk_risk_count || 0);
     const totR = lat ? (lat.critical_count + lat.high_count + lat.medium_count + lat.low_count) : 0;
     const critHigh = Number(lat?.critical_count || 0) + Number(lat?.high_count || 0);
     const riskTone = critHigh > 0 ? 'bad' : (totR > 0 ? 'warn' : 'ok');
 
     const n1Tot = Number(lat?.n1_total_count || 0);
+    const wTot = Number(lat?.weather_total_count || 0);
     const n1Conv = Number(lat?.n1_converged_count || 0);
     const n1Div = Number(lat?.n1_diverged_count || 0);
     const passPct = n1Tot > 0 ? (n1Conv / n1Tot) * 100 : 100;
-    const scanTone = n1Div > 0 ? 'bad' : (n1r > 0 ? 'warn' : 'ok');
+    const scanTone = n1Div > 0 ? 'bad' : ((n1r + wr) > 0 ? 'warn' : 'ok');
 
     const maxLoad = lat?.max_loading_pct != null ? Number(lat.max_loading_pct) : null;
     const loadTone = maxLoad == null ? 'accent' : (maxLoad >= 100 ? 'bad' : (maxLoad >= 80 ? 'warn' : 'ok'));
@@ -438,12 +501,12 @@
 
     const tiles = [
       {
-        tone: scoreTone,
+        tone: scoreTone === 'neutral' ? 'accent' : scoreTone,
         label: t('metric.score'),
-        badge: lat ? lat.risk_level : '—',
+        badge: grade ? `${grade} · ${glabel}` : glabel,
         badgeCls: scoreTone,
         val: score != null ? `${num(score, 1)}<small>/100</small>` : '—',
-        valCls: scoreTone === 'accent' ? '' : scoreTone,
+        valCls: scoreTone === 'accent' || scoreTone === 'neutral' ? '' : scoreTone,
         sub: lat?.worst_contingency ? `最严峻 ${lat.worst_contingency}` : '全网安全',
         meter: score ?? 0,
       },
@@ -454,17 +517,17 @@
         badgeCls: riskTone,
         val: `${totR}<small> 项</small>`,
         valCls: riskTone,
-        sub: `N-0:${n0r} · N-1:${n1r} · N-k:${nkr}`,
+        sub: `N-0:${n0r} · N-1:${n1r} · 气象:${wr}`,
         meter: Math.min(100, totR * 6),
       },
       {
         tone: scanTone,
-        label: 'N-1 收敛通过率',
-        badge: n1Div > 0 ? `发散 ${n1Div}` : `${n1Conv}/${n1Tot}`,
+        label: 'N-1 / 气象扫描',
+        badge: n1Div > 0 ? `发散 ${n1Div}` : `N-1:${n1Conv}/${n1Tot} · 气:${wTot}`,
         badgeCls: scanTone,
         val: `${passPct.toFixed(1)}<small>%</small>`,
         valCls: scanTone,
-        sub: `启用故障 ${data.contingency_defs?.enabled ?? 0}/${data.contingency_defs?.total ?? 0}`,
+        sub: `已启用 ${data.contingency_defs?.enabled ?? 0}（含气象 ${data.contingency_defs?.weather ?? 0}）`,
         meter: passPct,
       },
       {
@@ -511,18 +574,24 @@
     const data = await api('/api/ca/home');
     st.homeData = data;
     const lat = data.latest;
+    const h = data.health;
+    const hScore = h?.health_score != null ? Number(h.health_score) : (lat?.security_score != null ? Number(lat.security_score) : null);
+    const hGrade = h?.health_grade || lat?.health_grade || '';
+    const hLabel = h?.health_label || lat?.health_label || (lat ? lat.risk_level : '—');
+    const hCls = hGrade ? gradeClass(hGrade) : (lat ? sevClass(lat.risk_level) : 'neutral');
+
     const pill = $('#ca-level-pill');
     const meta = $('#ca-run-meta');
     if (pill) {
-      pill.textContent = lat ? `${lat.risk_level} · ${num(lat.security_score, 1)} 分` : '—';
-      pill.className = `se-pill ${lat ? sevClass(lat.risk_level) : 'neutral'}`;
+      pill.textContent = hScore != null ? `${hGrade ? `${hGrade}级 · ` : ''}${hLabel} · ${num(hScore, 1)} 分` : '—';
+      pill.className = `se-pill ${hCls}`;
     }
     if (meta) {
       meta.textContent = lat ? `CA #${lat.run_id} · LF #${lat.source_lf_run_id ?? '—'} · SE #${lat.source_se_run_id ?? '—'} · ${fmtTime(lat.calc_time)}` : '—';
     }
     if ($('#ca-home-score')) {
-      $('#ca-home-score').textContent = lat ? `${num(lat.security_score, 1)} / 100` : '—';
-      $('#ca-home-score').className = `se-pill tabular ${lat ? sevClass(lat.risk_level) : 'neutral'}`;
+      $('#ca-home-score').textContent = hScore != null ? `${hGrade ? `${hGrade} · ` : ''}${num(hScore, 1)} / 100` : '—';
+      $('#ca-home-score').className = `se-pill tabular ${hCls}`;
     }
     if ($('#ca-src-lf-link') && lat?.source_lf_run_id) {
       $('#ca-src-lf-link').href = `/lf-results.html?run_id=${lat.source_lf_run_id}`;
@@ -534,36 +603,59 @@
     // 顶部 5 格大屏态势英雄带
     renderCaHeroStrip(data);
 
-    // 左栏 1：立体刻度半圆安全仪表盘
+    // 左栏 1：立体刻度半圆电网健康仪表盘
     if (window.PAS_KIT?.renderGauge) {
       window.PAS_KIT.renderGauge($('#ca-home-gauge'), {
-        value: lat ? Number(lat.security_score || 0) : 0,
+        value: hScore != null ? hScore : 0,
         max: 100,
         unit: '分',
-        statusText: lat ? `安全定级 · ${lat.risk_level}` : '暂无评估',
-        width: 174,
-        height: 98,
+        statusText: hScore != null ? `健康评级 ${hGrade || '—'} · ${hLabel}` : '暂无评估',
+        width: 162,
+        height: 92,
       });
     }
 
-    // 左栏 2：N-0 / N-1 / N-k 三道安全防线通过率条
+    // 左栏 2：五维电网健康雷达图（基态 / 电压 / 负载 / N-1 / 供电）
+    if (window.PAS_KIT?.renderRadarChart && $('#ca-health-radar')) {
+      const dm = h?.dimensions || lat?.health_dims || {};
+      const radarCol = hCls === 'ok' ? 'var(--sem-ok)' : (hCls === 'warn' ? 'var(--sem-warn)' : 'var(--sem-danger)');
+      window.PAS_KIT.renderRadarChart($('#ca-health-radar'), {
+        size: 146,
+        color: radarCol,
+        axes: [
+          { label: '基态', value: Number(dm.base ?? hScore ?? 0), max: 100, unit: '分' },
+          { label: '电压', value: Number(dm.voltage ?? hScore ?? 0), max: 100, unit: '分' },
+          { label: '负载', value: Number(dm.loading ?? hScore ?? 0), max: 100, unit: '分' },
+          { label: 'N-1', value: Number(dm.n1 ?? hScore ?? 0), max: 100, unit: '分' },
+          { label: '供电', value: Number(dm.supply ?? hScore ?? 0), max: 100, unit: '分' },
+        ],
+      });
+    }
+
+    // 左栏 2：N-0 / N-1 / 气象扰动 / N-k 四道安全防线通过率条
     const defHost = $('#ca-defense-bars');
     if (defHost) {
       const n0r = Number(lat?.n0_risk_count || 0);
       const n1Tot = Number(lat?.n1_total_count || 0);
       const n1Conv = Number(lat?.n1_converged_count || 0);
       const n1r = Number(lat?.n1_risk_count || 0);
+      const wTot = Number(lat?.weather_total_count || 0);
+      const wr = Number(lat?.weather_risk_count || 0);
       const nkTot = Number(lat?.nk_total_count || 0);
       const nkr = Number(lat?.nk_risk_count || 0);
 
       const n0Pct = lat ? (n0r === 0 ? 100 : Math.max(15, 100 - n0r * 20)) : 0;
       const n1Safe = (data.contingency_matrix || []).filter((c) => c.category === 'N-1' && c.converged && c.risk_count === 0).length;
       const n1Pct = n1Tot > 0 ? ((n1Safe || Math.max(0, n1Tot - n1r)) / n1Tot) * 100 : 100;
+      const wSafe = (data.contingency_matrix || []).filter((c) => c.category === 'Weather' && c.converged && c.risk_count === 0).length;
+      const wDiv = (data.contingency_matrix || []).filter((c) => c.category === 'Weather' && !c.converged).length;
+      const wPct = wTot > 0 ? (wDiv > 0 ? Math.max(10, ((wTot - wDiv) / wTot) * 60) : ((wSafe || Math.max(0, wTot - Math.min(wTot, wr))) / wTot) * 100) : 0;
       const nkPct = nkTot > 0 ? Math.max(0, ((nkTot - Math.min(nkTot, nkr)) / nkTot) * 100) : 100;
 
       const lines = [
         { name: 'N-0 基态防线', val: n0r === 0 ? '全通过' : `${n0r} 项风险`, pct: n0Pct, col: n0r > 0 ? 'var(--sem-danger)' : 'var(--sem-ok)' },
-        { name: `N-1 单故障 (${n1Conv}/${n1Tot})`, val: n1r === 0 ? '全通过' : `${n1r} 项风险`, pct: n1Pct, col: n1r > 0 ? 'var(--sem-warn)' : 'var(--sem-ok)' },
+        { name: `N-1 设备 (${n1Conv}/${n1Tot})`, val: n1r === 0 ? '全通过' : `${n1r} 项风险`, pct: n1Pct, col: n1r > 0 ? 'var(--sem-warn)' : 'var(--sem-ok)' },
+        { name: `❄ 气象/负荷扰动 (${wTot})`, val: wTot === 0 ? '未启用' : (wDiv > 0 ? `发散 ${wDiv}` : (wr === 0 ? '全通过' : `${wr} 项风险`)), pct: wTot === 0 ? 0 : wPct, col: wDiv > 0 ? 'var(--sem-danger)' : (wr > 0 ? 'var(--sem-warn)' : 'var(--sem-ok)') },
         { name: `N-k 多重故障 (${nkTot})`, val: nkTot === 0 ? '未配置' : (nkr === 0 ? '全通过' : `${nkr} 项风险`), pct: nkTot === 0 ? 0 : nkPct, col: nkr > 0 ? 'var(--sem-danger)' : 'var(--accent)' },
       ];
       defHost.innerHTML = `<div class="pas-defense-list">${lines.map((ln) => `
@@ -593,10 +685,15 @@
       });
     }
 
-    // 中栏 1：预想故障全景热力矩阵墙
-    const matrix = data.contingency_matrix || [];
+    // 中栏 1：预想故障与气象扰动全景热力矩阵墙（将气象扰动优先置前高亮展示）
+    const rawMatrix = data.contingency_matrix || [];
+    const matrix = [
+      ...rawMatrix.filter((c) => c.category === 'Weather'),
+      ...rawMatrix.filter((c) => c.category !== 'Weather'),
+    ];
     const safeCnt = matrix.filter((c) => c.converged && c.risk_count === 0).length;
-    if ($('#ca-matrix-meta')) $('#ca-matrix-meta').textContent = matrix.length ? `${safeCnt}/${matrix.length} 通过` : '—';
+    const wMatrixCnt = matrix.filter((c) => c.category === 'Weather').length;
+    if ($('#ca-matrix-meta')) $('#ca-matrix-meta').textContent = matrix.length ? `${safeCnt}/${matrix.length} 通过${wMatrixCnt ? ` · 含气象 ${wMatrixCnt}` : ''}` : '—';
     if (window.PAS_KIT?.renderHeatMatrix) {
       window.PAS_KIT.renderHeatMatrix($('#ca-heat-matrix'), {
         cells: matrix,
@@ -913,25 +1010,61 @@
     </tr>`).join('') : `<tr><td colspan="7" class="se-empty">${t('msg.empty')}</td></tr>`;
   }
 
+  function syncContingencyDialogMode() {
+    const isWeather = $('#cf-mode')?.value === 'weather';
+    $$('.cf-dev-only').forEach((el) => { el.hidden = isWeather; });
+    $$('.cf-weather-only').forEach((el) => { el.hidden = !isWeather; });
+  }
+
+  function applyWeatherKindDefaults(kind) {
+    const presets = {
+      irradiance_zero: { irr: '0', wind: '', load: '', temp: '' },
+      wind_zero: { irr: '', wind: '0', load: '', temp: '' },
+      wind_cutout: { irr: '', wind: '38', load: '', temp: '' },
+      load_surge: { irr: '', wind: '', load: '1.35', temp: '-42' },
+      load_drop: { irr: '', wind: '', load: '0.6', temp: '' },
+      blizzard_combo: { irr: '0', wind: '38', load: '1.25', temp: '-42' },
+      custom: { irr: '', wind: '', load: '', temp: '' },
+    };
+    const p = presets[kind] || presets.custom;
+    if ($('#cf-wirr')) $('#cf-wirr').value = p.irr;
+    if ($('#cf-wwind')) $('#cf-wwind').value = p.wind;
+    if ($('#cf-wload')) $('#cf-wload').value = p.load;
+    if ($('#cf-wtemp')) $('#cf-wtemp').value = p.temp;
+  }
+
   async function openContingencyDialog(row = null) {
     await loadCatalog();
     fillDeviceSelect($('#cf-dt1'), $('#cf-dn1'), false);
     fillDeviceSelect($('#cf-dt2'), $('#cf-dn2'), true);
+    const isWeather = row?.category === 'Weather';
+    if ($('#cf-mode')) $('#cf-mode').value = isWeather ? 'weather' : 'device';
     $('#cf-id').value = row ? row.id : '';
     $('#cf-name').value = row ? row.name : '';
-    $('#cf-prio').value = row ? row.priority : 20;
+    $('#cf-prio').value = row ? row.priority : (isWeather ? 15 : 20);
     $('#cf-enabled').value = row ? String(row.enabled ? 1 : 0) : '1';
     $('#cf-note').value = row ? (row.note || '') : '';
-    if (row && Array.isArray(row.items) && row.items.length) {
-      $('#cf-dt1').value = row.items[0].device_type;
-      $('#cf-dt1').onchange();
-      if (row.items[0].device_idx != null) $('#cf-dn1').value = String(row.items[0].device_idx);
-      if (row.items.length > 1) {
-        $('#cf-dt2').value = row.items[1].device_type;
-        $('#cf-dt2').onchange();
-        if (row.items[1].device_idx != null) $('#cf-dn2').value = String(row.items[1].device_idx);
+    if (isWeather) {
+      const pert = row.perturbation || {};
+      if ($('#cf-wkind')) $('#cf-wkind').value = pert.kind || 'custom';
+      if ($('#cf-wirr')) $('#cf-wirr').value = pert.irradiance_wm2 != null ? String(pert.irradiance_wm2) : '';
+      if ($('#cf-wwind')) $('#cf-wwind').value = pert.wind_speed_ms != null ? String(pert.wind_speed_ms) : '';
+      if ($('#cf-wload')) $('#cf-wload').value = pert.load_scale != null ? String(pert.load_scale) : '';
+      if ($('#cf-wtemp')) $('#cf-wtemp').value = pert.ambient_temp_c != null ? String(pert.ambient_temp_c) : '';
+    } else {
+      applyWeatherKindDefaults('irradiance_zero');
+      if (row && Array.isArray(row.items) && row.items.length) {
+        $('#cf-dt1').value = row.items[0].device_type;
+        $('#cf-dt1').onchange();
+        if (row.items[0].device_idx != null) $('#cf-dn1').value = String(row.items[0].device_idx);
+        if (row.items.length > 1) {
+          $('#cf-dt2').value = row.items[1].device_type;
+          $('#cf-dt2').onchange();
+          if (row.items[1].device_idx != null) $('#cf-dn2').value = String(row.items[1].device_idx);
+        }
       }
     }
+    syncContingencyDialogMode();
     $('#cdef-dialog').showModal();
   }
 
@@ -942,6 +1075,7 @@
     $('#cp-use-lf').value = String(p.use_lf_base ?? 1);
     $('#cp-scan-n1').value = String(p.scan_n1 ?? 1);
     $('#cp-scan-nk').value = String(p.scan_nk ?? 1);
+    if ($('#cp-scan-weather')) $('#cp-scan-weather').value = String(p.scan_weather ?? 1);
     $('#cp-max-scan').value = p.max_scan_count ?? 40;
     $('#cp-vmin').value = p.v_min_pu ?? 0.93;
     $('#cp-vmax').value = p.v_max_pu ?? 1.07;
@@ -957,6 +1091,7 @@
       use_lf_base: Number($('#cp-use-lf').value),
       scan_n1: Number($('#cp-scan-n1').value),
       scan_nk: Number($('#cp-scan-nk').value),
+      scan_weather: $('#cp-scan-weather') ? Number($('#cp-scan-weather').value) : 1,
       max_scan_count: Number($('#cp-max-scan').value),
       v_min_pu: Number($('#cp-vmin').value),
       v_max_pu: Number($('#cp-vmax').value),
@@ -1016,16 +1151,24 @@
     </tr>`).join('') : `<tr><td colspan="7" class="se-empty">${t('msg.empty')}</td></tr>`;
     renderPager($('#clog-pager'), page.total || 0, lg.page, lg.size, (p) => { lg.page = p; loadLogsView(); });
 
+    const hMap = new Map((home.health_history || []).map((x) => [Number(x.run_id), x]));
     const runs = home.recent_runs || [];
-    $('#crun-tbody').innerHTML = runs.length ? runs.map((r) => `<tr>
+    $('#crun-tbody').innerHTML = runs.length ? runs.map((r) => {
+      const hh = hMap.get(Number(r.run_id));
+      const hGrade = hh?.health_grade || r.health_grade || '';
+      const hLabel = hh?.health_label || r.health_label || (r.risk_level || r.status);
+      const hScore = hh?.health_score ?? r.health_score ?? r.security_score;
+      const cls = hGrade ? gradeClass(hGrade) : sevClass(r.risk_level);
+      return `<tr>
       <td class="tabular">#${r.run_id}</td>
       <td class="tabular">${fmtTime(r.started_at)}</td>
       <td class="tabular">${r.source_lf_run_id ? `#${r.source_lf_run_id}` : '—'}</td>
-      <td><span class="se-pill ${sevClass(r.risk_level)}">${esc(r.risk_level || r.status)}</span></td>
-      <td class="tabular">${r.security_score != null ? num(r.security_score, 1) : '—'}</td>
+      <td><span class="se-pill ${cls}">${esc(hGrade ? `${hGrade} · ${hLabel}` : hLabel)}</span></td>
+      <td class="tabular">${hScore != null ? num(hScore, 1) : '—'}</td>
       <td class="tabular">${r.n0_risk_count ?? '—'}/${r.n1_risk_count ?? '—'}</td>
       <td><a class="se-btn mini" href="/ca-risks.html?run_id=${r.run_id}">${esc(t('action.replay'))}</a></td>
-    </tr>`).join('') : `<tr><td colspan="7" class="se-empty">${t('msg.empty')}</td></tr>`;
+    </tr>`;
+    }).join('') : `<tr><td colspan="7" class="se-empty">${t('msg.empty')}</td></tr>`;
 
     if (home.schedule) {
       $('#csched-enabled').value = home.schedule.enabled ? '1' : '0';
@@ -1112,21 +1255,41 @@
       $('#cdef-q')?.addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { st.cdefFilter.q = e.target.value; loadContingenciesView(); }, 250); });
       $('#btn-cdef-add')?.addEventListener('click', () => openContingencyDialog(null));
       $('#cf-cancel')?.addEventListener('click', () => $('#cdef-dialog').close());
+      $('#cf-mode')?.addEventListener('change', syncContingencyDialogMode);
+      $('#cf-wkind')?.addEventListener('change', (e) => applyWeatherKindDefaults(e.target.value));
       $('#cdef-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const dn1Opt = $('#cf-dn1').selectedOptions[0];
-        const items = [{ device_type: $('#cf-dt1').value, device_idx: Number($('#cf-dn1').value), device_name: dn1Opt?.dataset?.name || dn1Opt?.textContent || '' }];
-        if ($('#cf-dt2').value && $('#cf-dn2').value) {
-          const dn2Opt = $('#cf-dn2').selectedOptions[0];
-          items.push({ device_type: $('#cf-dt2').value, device_idx: Number($('#cf-dn2').value), device_name: dn2Opt?.dataset?.name || dn2Opt?.textContent || '' });
+        const isWeather = $('#cf-mode')?.value === 'weather';
+        let payload;
+        if (isWeather) {
+          const pert = { kind: $('#cf-wkind')?.value || 'custom' };
+          if ($('#cf-wirr')?.value !== '') pert.irradiance_wm2 = Number($('#cf-wirr').value);
+          if ($('#cf-wwind')?.value !== '') pert.wind_speed_ms = Number($('#cf-wwind').value);
+          if ($('#cf-wload')?.value !== '') pert.load_scale = Number($('#cf-wload').value);
+          if ($('#cf-wtemp')?.value !== '') pert.ambient_temp_c = Number($('#cf-wtemp').value);
+          payload = {
+            category: 'Weather',
+            name: $('#cf-name').value.trim(),
+            priority: Number($('#cf-prio').value),
+            enabled: Number($('#cf-enabled').value),
+            note: $('#cf-note').value.trim(),
+            perturbation: pert,
+          };
+        } else {
+          const dn1Opt = $('#cf-dn1').selectedOptions[0];
+          const items = [{ device_type: $('#cf-dt1').value, device_idx: Number($('#cf-dn1').value), device_name: dn1Opt?.dataset?.name || dn1Opt?.textContent || '' }];
+          if ($('#cf-dt2').value && $('#cf-dn2').value) {
+            const dn2Opt = $('#cf-dn2').selectedOptions[0];
+            items.push({ device_type: $('#cf-dt2').value, device_idx: Number($('#cf-dn2').value), device_name: dn2Opt?.dataset?.name || dn2Opt?.textContent || '' });
+          }
+          payload = {
+            name: $('#cf-name').value.trim(),
+            priority: Number($('#cf-prio').value),
+            enabled: Number($('#cf-enabled').value),
+            note: $('#cf-note').value.trim(),
+            items,
+          };
         }
-        const payload = {
-          name: $('#cf-name').value.trim(),
-          priority: Number($('#cf-prio').value),
-          enabled: Number($('#cf-enabled').value),
-          note: $('#cf-note').value.trim(),
-          items,
-        };
         const cid = $('#cf-id').value;
         try {
           if (cid) await api(`/api/ca/contingencies/defs/${cid}`, payload, 'PUT');
@@ -1140,6 +1303,13 @@
         try {
           const r = await api('/api/ca/contingencies/sync', {});
           notify(t('msg.synced', { n: r.inserted }));
+          await loadContingenciesView();
+        } catch (err) { notify(err.message, true); }
+      });
+      $('#btn-cdef-seed-weather')?.addEventListener('click', async () => {
+        try {
+          const r = await api('/api/ca/contingencies/seed-weather', {});
+          notify(`南极气象/负荷扰动已生成（新增 ${r.inserted} 条，气象类共 ${r.weather_total} 条）`);
           await loadContingenciesView();
         } catch (err) { notify(err.message, true); }
       });
@@ -1275,6 +1445,9 @@
   applyTheme(st.theme);
   applyLang(st.lang);
   bindCommon();
+  window.addEventListener('pas-weather-updated', () => {
+    refreshCurrentPage().catch(() => {});
+  });
   refreshCurrentPage().catch((err) => notify(err.message, true));
   if (st.page === '/ca-main') {
     if (window.PAS_KIT?.createPoller) {
