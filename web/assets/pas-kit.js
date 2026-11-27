@@ -89,7 +89,7 @@
     document.documentElement.lang = cur;
     // 仅对未带 data-i18n 的旧页面侧栏、顶栏标题与按钮做无侵入双语/三语映射
     const dict = LEGACY_DICT[cur] || null;
-    document.querySelectorAll('.sidebar a, .sidebar .nav-group > span, .sidebar .brand small, .topbar h1, .top-actions button').forEach((el) => {
+    document.querySelectorAll('.sidebar a, .sidebar .nav-group > span, .sidebar .brand small, .pas-topbar-brand small, .topbar h1, .top-actions button').forEach((el) => {
       if (el.hasAttribute('data-i18n') || el.children.length > 0) return;
       if (!el.dataset.pasZhOrig) {
         const txt = (el.textContent || '').trim();
@@ -1311,11 +1311,46 @@
       document.body.appendChild(hotzone);
     }
 
-    // 在 .sidebar .brand 右侧挂载模式切换（悬浮⇄内嵌）与隐藏双图标按钮
+    // 将原左栏品牌控件（[P] PAS 在线分析平台）固定迁移至顶栏最左侧；左栏顶部保留紧凑目录头与双控按钮
     const brand = sidebar.querySelector('.brand');
     let btnMode = null;
     let btnHide = null;
-    if (brand && !brand.querySelector('.pas-sb-tools')) {
+    let sbHeadTitle = null;
+    if (brand && topbar && !topbar.querySelector('.pas-topbar-brand')) {
+      const sbHead = document.createElement('div');
+      sbHead.className = 'pas-sb-head';
+      sbHead.innerHTML = `
+        <span class="pas-sb-head-lbl">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="16" y2="12"/><line x1="3" y1="18" x2="12" y2="18"/></svg>
+          <span class="pas-sb-head-txt">导航</span>
+        </span>
+        <div class="pas-sb-tools">
+          <button type="button" class="pas-sb-icon-btn" id="pas-sb-mode-btn" aria-label="Sidebar Mode"></button>
+          <button type="button" class="pas-sb-icon-btn" id="pas-sb-hide-btn" aria-label="Hide Sidebar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/><path d="M19 4v16"/></svg>
+          </button>
+        </div>`;
+      brand.parentNode.insertBefore(sbHead, brand);
+      sbHeadTitle = sbHead.querySelector('.pas-sb-head-txt');
+      btnMode = sbHead.querySelector('#pas-sb-mode-btn');
+      btnHide = sbHead.querySelector('#pas-sb-hide-btn');
+
+      brand.classList.add('pas-topbar-brand');
+      brand.setAttribute('role', 'link');
+      brand.setAttribute('tabindex', '0');
+      brand.title = 'PAS 在线分析平台 · 返回总览';
+      const goOverview = () => {
+        if (!location.pathname.endsWith('/overview.html')) location.href = '/overview.html';
+      };
+      brand.addEventListener('click', goOverview);
+      brand.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          goOverview();
+        }
+      });
+      topbar.insertBefore(brand, topbar.firstChild);
+    } else if (brand && !brand.querySelector('.pas-sb-tools')) {
       const tools = document.createElement('div');
       tools.className = 'pas-sb-tools';
       tools.innerHTML = `
@@ -1386,6 +1421,10 @@
       }
       if (btnHide) {
         btnHide.title = sbText('hide');
+      }
+      if (sbHeadTitle) {
+        const l = getLang();
+        sbHeadTitle.textContent = l === 'en-US' ? 'Navigation' : (l === 'ru-RU' ? 'Навигация' : '导航');
       }
       hotzone.title = sbText(effFloat ? 'edge_float' : 'edge_docked');
     };
@@ -2551,9 +2590,16 @@
       if (crest.hidden) return;
       const barRect = bar.getBoundingClientRect();
       if (!barRect.width) return;
-      const leftEl = bar.querySelector('.se-title-group') || bar.firstElementChild;
+      const leftCandidates = [
+        bar.querySelector(':scope > .pas-topbar-brand'),
+        bar.querySelector(':scope > .se-title-group'),
+        bar.querySelector(':scope > .pas-topbar-brand + div'),
+      ].filter((el) => el && el !== crest);
+      const leftEl = leftCandidates.length ? leftCandidates[leftCandidates.length - 1] : bar.firstElementChild;
       const rightEl = bar.querySelector('.se-top-actions, .top-actions');
-      const lRight = (leftEl && leftEl !== crest) ? (leftEl.getBoundingClientRect().right - barRect.left) : 0;
+      const lRight = leftCandidates.length
+        ? Math.max(...leftCandidates.map((el) => el.getBoundingClientRect().right - barRect.left))
+        : ((leftEl && leftEl !== crest) ? (leftEl.getBoundingClientRect().right - barRect.left) : 0);
       const rLeft = (rightEl && rightEl !== crest) ? (rightEl.getBoundingClientRect().left - barRect.left) : barRect.width;
       const gapSpace = Math.floor(rLeft - lRight - 18);
       if (gapSpace < 140) {

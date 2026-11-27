@@ -3966,6 +3966,94 @@ body.pas-wall-mode .app-shell {
   position: relative;
   z-index: 1090;
 }
+.app-shell.pas-topbar-first > .se-topbar > .se-title-group,
+.app-shell.pas-topbar-first > .topbar > .pas-topbar-brand + div {
+  margin-right: auto;
+}
+
+/* 顶栏最左侧固定品牌标识（从左栏无损迁入，适配 16 套主题） */
+.se-topbar > .brand.pas-topbar-brand,
+.topbar > .brand.pas-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 0;
+  margin: 0 4px 0 0;
+  border-right: 1px solid var(--border-color);
+  color: var(--text-primary);
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.16s ease;
+}
+.se-topbar > .brand.pas-topbar-brand:hover,
+.topbar > .brand.pas-topbar-brand:hover {
+  opacity: 0.92;
+}
+.brand.pas-topbar-brand .brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2, var(--accent-hover)) 100%);
+  color: #07111F;
+  box-shadow: 0 2px 10px var(--accent-soft);
+  flex-shrink: 0;
+}
+[data-theme="celestial-mist"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="minimalist-light"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="arctic-frost"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="warm-paper"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="slate-daylight"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="bento-grid"] .brand.pas-topbar-brand .brand-mark,
+[data-theme="editorial"] .brand.pas-topbar-brand .brand-mark {
+  color: #FFFFFF;
+}
+.brand.pas-topbar-brand > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.08;
+}
+.brand.pas-topbar-brand strong {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+.brand.pas-topbar-brand small {
+  font-size: 9.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 1120px) {
+  .brand.pas-topbar-brand small {
+    display: none;
+  }
+}
+
+/* 左栏顶部紧凑目录头（仅保留短标签 + 悬浮⇄内嵌与隐藏双控按钮） */
+.pas-sb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 4px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--sidebar-border, rgba(148, 163, 184, 0.16));
+  flex-shrink: 0;
+}
+.pas-sb-head-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sidebar-muted, #8190aa);
+  letter-spacing: 0.04em;
+}
 .app-shell.pas-topbar-first > .pas-shell-body {
   flex: 1 1 0;
   min-height: 0;
