@@ -192,16 +192,52 @@
       banner.hidden = false;
     }
 
-    // Alerts
+    // Diagnostics Strip: 基态滞后（Stale）提醒 + 质量码一键排障 + 链路耗时分解
+    const diagStrip = $('#ov-diag-strip');
+    const diag = d.diagnostics;
+    if (diagStrip && diag) {
+      const stale = Boolean(diag.se_stale);
+      const ageMin = diag.se_age_seconds != null ? Math.floor(diag.se_age_seconds / 60) : null;
+      const seAtt = diag.se_latest_attempt || {};
+      let leftHtml = '';
+      if (stale) {
+        const ageTxt = ageMin != null ? (ageMin >= 60 ? `${(ageMin / 60).toFixed(1)}h` : `${ageMin}m`) : '—';
+        const links = seAtt.quality_issue
+          ? ` <a class="se-btn mini" href="/se-bad.html">坏数据排查 →</a> <a class="se-btn mini" href="/se-prefilter.html">前置过滤 →</a> <a class="se-btn mini" href="/se-pseudo.html">伪量测兜底 →</a>`
+          : ` <a class="se-btn mini" href="/se-logs.html">查看 SE 日志 →</a>`;
+        leftHtml = `<div><span class="se-pill warn">基态滞后 ${esc(ageTxt)}</span> <span style="margin-left:4px">SE 最新尝试 #${esc(seAtt.id)} 失败，当前 LF/CA 沿用历史有效断面 SE #${esc(se?.run_id ?? '—')}</span>${links}</div>`;
+      } else {
+        leftHtml = `<div><span class="se-pill ok">实时链路正常</span> <span style="color:var(--text-secondary);margin-left:4px">点击下方任意设备名可打开 360° 全景档案与接线图穿透</span></div>`;
+      }
+      const tm = diag.timing || {};
+      const tot = Math.max(0.001, Number(tm.total_seconds || 0));
+      const pSe = Math.max(4, Math.round((Number(tm.se_seconds || 0) / tot) * 100));
+      const pLf = Math.max(4, Math.round((Number(tm.lf_seconds || 0) / tot) * 100));
+      const pCa = Math.max(4, 100 - pSe - pLf);
+      const rightHtml = `<div class="pas-timing-bar tabular" title="SE + LF + CA 端到端计算耗时分解">
+        <span>链路耗时 ${num(tm.total_seconds, 2)}s</span>
+        <span class="pas-timing-track"><span class="pas-timing-se" style="width:${pSe}%"></span><span class="pas-timing-lf" style="width:${pLf}%"></span><span class="pas-timing-ca" style="width:${pCa}%"></span></span>
+        <span>SE ${num(tm.se_seconds, 2)}s · LF ${num(tm.lf_seconds, 2)}s · CA ${num(tm.ca_seconds, 2)}s</span>
+      </div>`;
+      diagStrip.className = `pas-diag-strip ${stale ? 'stale' : ''}`;
+      diagStrip.innerHTML = `${leftHtml}${rightHtml}`;
+      diagStrip.hidden = false;
+    }
+
+    // Alerts（点击设备名打开 360° 全景抽屉，附带原页面穿透链接）
     const alerts = d.alerts || [];
     $('#ov-alert-count').textContent = String(alerts.length);
     $('#ov-alert-count').className = `se-pill tabular ${alerts.length ? 'warn' : 'ok'}`;
-    $('#ov-alerts-tbody').innerHTML = alerts.length ? alerts.map((a) => `<tr>
+    $('#ov-alerts-tbody').innerHTML = alerts.length ? alerts.map((a) => {
+      const rawTarget = String(a.target || '');
+      const cleanDev = rawTarget.includes('→') ? rawTarget.split('→').pop().trim() : rawTarget.trim();
+      return `<tr>
       <td><span class="se-tag">${esc(a.module)}</span></td>
       <td><span class="se-pill ${sevCls(a.severity)}">${esc(a.severity)}</span></td>
-      <td><a class="se-link" href="${esc(a.href)}">${esc(a.target)}</a></td>
+      <td><a class="pas-clickable" data-pas-device="${esc(cleanDev)}" title="打开 ${esc(cleanDev)} 360° 全景档案">${esc(rawTarget)}</a> <a class="se-link" href="${esc(a.href)}" title="前往所属模块" style="font-size:11px;opacity:.72">↗</a></td>
       <td>${esc(a.detail)}</td>
-    </tr>`).join('') : `<tr><td colspan="4" class="se-empty">—</td></tr>`;
+    </tr>`;
+    }).join('') : `<tr><td colspan="4" class="se-empty">—</td></tr>`;
 
     // Unified Runs
     const runs = d.recent_runs || [];
@@ -218,6 +254,8 @@
     $('#theme-select')?.addEventListener('change', (e) => applyTheme(e.target.value));
     $('#lang-select')?.addEventListener('change', (e) => { applyLang(e.target.value); loadOverview().catch(() => {}); });
     $('#btn-refresh')?.addEventListener('click', () => loadOverview().catch((e) => notify(e.message, true)));
+    $('#btn-ov-diff')?.addEventListener('click', () => window.PAS_KIT?.openDiffModal('lf'));
+    $('#btn-ov-report')?.addEventListener('click', () => window.PAS_KIT?.exportReport());
 
     $('#chk-se-lf')?.addEventListener('change', async (e) => {
       try {
@@ -267,5 +305,9 @@
   applyLang(st.lang);
   bind();
   loadOverview().catch((err) => notify(err.message, true));
-  setInterval(() => { if (!document.hidden) loadOverview().catch(() => {}); }, 10000);
+  if (window.PAS_KIT?.createPoller) {
+    window.PAS_KIT.createPoller(() => loadOverview().catch(() => {}), 15000, { useSSE: true });
+  } else {
+    setInterval(() => { if (!document.hidden) loadOverview().catch(() => {}); }, 10000);
+  }
 })();

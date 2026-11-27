@@ -349,6 +349,28 @@
       box.innerHTML = `<div class="se-empty">${t('msg.empty')}</div>`;
       return;
     }
+    if (window.PAS_KIT?.renderTrendChart) {
+      box.innerHTML = `<svg viewBox="0 0 720 196" preserveAspectRatio="none" style="width:100%;height:100%;min-height:175px;display:block"></svg>`;
+      const unitMap = { security_score: '分', total_risks: '项', max_loading_pct: '%' };
+      const thrMap = { security_score: 60, max_loading_pct: 80 };
+      const thrLblMap = { security_score: '安全警戒 60', max_loading_pct: '重载阈值 80%' };
+      const pts = series.map((p) => ({
+        y: metric === 'total_risks' ? ((p.n0_risk_count || 0) + (p.n1_risk_count || 0) + (p.nk_risk_count || 0)) : Number(p[metric] ?? 0),
+        xLabel: `#${p.run_id}`,
+        extra: fmtTime(p.calc_time),
+      }));
+      window.PAS_KIT.renderTrendChart(box.querySelector('svg'), {
+        points: pts,
+        unit: unitMap[metric] || '',
+        digits: metric === 'total_risks' ? 0 : 1,
+        yMinForce: metric === 'security_score' ? 0 : null,
+        yMaxForce: metric === 'security_score' ? 100 : null,
+        threshold: thrMap[metric] ?? null,
+        thresholdLabel: thrLblMap[metric] || '',
+        emptyText: t('msg.empty'),
+      });
+      return;
+    }
     const vals = series.map((p) => {
       if (metric === 'total_risks') return (p.n0_risk_count || 0) + (p.n1_risk_count || 0) + (p.nk_risk_count || 0);
       return Number(p[metric] ?? 0);
@@ -649,7 +671,10 @@
       }
     }
     requestAnimationFrame(() => fitSvg());
-    if (riskIds.length) focusRiskDevice(riskIds[0]);
+    const qpDev = new URLSearchParams(window.location.search).get('device');
+    const matchedId = qpDev ? riskIds.find((id) => String(data.devices[id]?.device_name || '') === qpDev) : null;
+    if (matchedId) focusRiskDevice(matchedId);
+    else if (riskIds.length) focusRiskDevice(riskIds[0]);
   }
 
   // -------------------- 预想故障集 /ca-contingencies --------------------
@@ -1059,5 +1084,11 @@
   applyLang(st.lang);
   bindCommon();
   refreshCurrentPage().catch((err) => notify(err.message, true));
-  if (st.page === '/ca-main') setInterval(() => { if (!document.hidden) loadMainView().catch(() => {}); }, 10000);
+  if (st.page === '/ca-main') {
+    if (window.PAS_KIT?.createPoller) {
+      window.PAS_KIT.createPoller(() => loadMainView().catch(() => {}), 15000, { useSSE: true });
+    } else {
+      setInterval(() => { if (!document.hidden) loadMainView().catch(() => {}); }, 10000);
+    }
+  }
 })();

@@ -186,6 +186,39 @@ class Repository:
                 (utc_now(),),
             )
             conn.execute("INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)", (utc_now(),))
+            self._ensure_performance_indexes(conn)
+
+    @staticmethod
+    def _ensure_performance_indexes(conn: sqlite3.Connection) -> None:
+        """为高频历史查询、设备定位与清理表幂等补齐组合索引。"""
+        existing_tables = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        index_specs = [
+            ("calculation_run", "idx_calc_run_task_status_id", "task, status, id DESC"),
+            ("calculation_run", "idx_calc_run_started_at", "started_at DESC"),
+            ("se_measurement", "idx_se_meas_run_dev", "run_id, device_name"),
+            ("se_measurement", "idx_se_meas_run_valid", "run_id, valid"),
+            ("se_device_result", "idx_se_dev_res_run_dev", "run_id, device_name"),
+            ("se_run_log", "idx_se_run_log_run_lvl", "run_id, level"),
+            ("se_run_log", "idx_se_run_log_created", "created_at DESC"),
+            ("lf_bus_result", "idx_lf_bus_run_dev", "run_id, device_name"),
+            ("lf_branch_result", "idx_lf_branch_run_dev", "run_id, device_name"),
+            ("lf_run_log", "idx_lf_run_log_run_lvl", "run_id, level"),
+            ("ca_risk_detail", "idx_ca_risk_run_sev", "run_id, severity"),
+            ("ca_risk_detail", "idx_ca_risk_run_dev", "run_id, device_name"),
+            ("ca_contingency_result", "idx_ca_cont_run_sev", "run_id, severity"),
+            ("ca_run_log", "idx_ca_run_log_run_lvl", "run_id, level"),
+        ]
+        for table, idx_name, cols in index_specs:
+            if table not in existing_tables:
+                continue
+            try:
+                conn.execute(f'CREATE INDEX IF NOT EXISTS "{idx_name}" ON "{table}" ({cols})')
+            except sqlite3.OperationalError:
+                # 若某些历史库列结构略有差异则温和跳过，绝不阻断初始化
+                pass
 
     @synchronized
     def sync_se_parameters(

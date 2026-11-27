@@ -10,7 +10,7 @@ const initialPage = document.body.dataset.page || location.hash.split('?')[0].sl
 const initialQuery = location.search || (location.hash.includes('?') ? `?${location.hash.split('?')[1]}` : '');
 const state = {
   route: initialPage + initialQuery, token: 0, page: 0,
-  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule', workspaceTab:'directory',
+  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule', workspaceTab:'health',
   tabs: {se:'summary',lf:'summary',ca:'summary'}, selected:{},
   browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:'',sort:'',direction:'asc',view:'all'}])),
   controlTab:'config', summaryMode:'result', diagPage:0, diagCol:0, trend:{hours:24,metric:'runs',mode:'chart',page:0}, status:{}, watching:new Map(), exportData:null, logPage:0, scheduleTask:'se'
@@ -184,6 +184,15 @@ async function analysis(name) {
 }
 async function workspace() {
   const cfg=(await api('/api/config')).data,w=cfg.workspace||{};
+  if(state.workspaceTab==='health') {
+    let cards='<div class="empty">加载中…</div>';
+    try {
+      const ds=(await api('/api/datasources/health')).data;
+      const items=ds.items||[];
+      cards=`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">健康数据源：<strong>${ds.ok_count} / ${ds.total}</strong>（缺失 ${ds.missing_count}）</div><div class="pas-ds-grid">${items.map(it=>`<div class="pas-ds-item"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong>${esc(it.label)}</strong><span class="badge ${it.status==='ok'?'success':it.status==='missing'?'failed':'running'}">${it.status==='ok'?'正常':it.status==='missing'?'缺失':'只读告警'} · ${esc(it.mode)}</span></div><div style="margin-top:4px;font-size:11.5px;color:var(--text-secondary)" class="tabular">大小：${esc(it.size_text)} · 更新：${esc(it.mtime||'—')}</div><div class="ds-path">${esc(it.path||'未配置')}</div></div>`).join('')}</div>`;
+    } catch(err) { cards=`<div class="error-text">${esc(err.message)}</div>`; }
+    return tabs([['health','数据源体检'],['directory','目录参数'],['model','模型输入'],['results','结果数据库']],state.workspaceTab)+`<div class="analysis-body"><section class="card full-panel" style="overflow:auto"><h2>全平台数据源健康体检</h2>${cards}</section></div>`;
+  }
   let rows,title;
   if(state.workspaceTab==='model') {
     title='模型与计算输入';
@@ -196,7 +205,7 @@ async function workspace() {
     rows=[['根目录',w.workspace_root],['运行态',w.runtime],['场景名',w.scenario],['工作目录',w.workspace_directory]];
   }
   const html=rows.map(([label,value])=>`<div class="workspace-row"><strong>${esc(label)}</strong><button class="workspace-path ghost" data-value="${esc(value||'未配置')}" title="查看完整路径">${esc(value||'未配置')}</button></div>`).join('');
-  return tabs([['directory','目录参数'],['model','模型输入'],['results','结果数据库']],state.workspaceTab)+`<div class="analysis-body"><section class="card full-panel"><h2>${title}</h2>${html}</section></div>`;
+  return tabs([['health','数据源体检'],['directory','目录参数'],['model','模型输入'],['results','结果数据库']],state.workspaceTab)+`<div class="analysis-body"><section class="card full-panel"><h2>${title}</h2>${html}</section></div>`;
 }
 async function settings() {
   let content;

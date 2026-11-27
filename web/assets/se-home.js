@@ -734,9 +734,13 @@
       if (autoRefreshOn) refreshAll(true);
     });
   }
-  setInterval(() => {
-    if (autoRefreshOn && !document.hidden) refreshAll(true);
-  }, 10000);
+  if (window.PAS_KIT?.createPoller) {
+    window.PAS_KIT.createPoller(() => { if (autoRefreshOn) refreshAll(true); }, 15000, { useSSE: true });
+  } else {
+    setInterval(() => {
+      if (autoRefreshOn && !document.hidden) refreshAll(true);
+    }, 10000);
+  }
   initHomeSplitters();
   bindEvents();
   refreshAll(false);

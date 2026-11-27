@@ -1134,8 +1134,14 @@
     renderFlowSidePanels();
     renderLfSvgBindings();
     const qp = new URLSearchParams(window.location.search);
-    if (!st.selectedDevId && qp.get('dev_id') && st.topo.devices?.[qp.get('dev_id')]) {
-      focusFlowDevice(qp.get('dev_id'));
+    const qpDevName = qp.get('device');
+    let targetDevId = qp.get('dev_id');
+    if (!targetDevId && qpDevName && st.topo?.devices) {
+      const hit = Object.entries(st.topo.devices).find(([, d]) => String(d.device_name || d.name || '') === qpDevName);
+      if (hit) targetDevId = hit[0];
+    }
+    if (!st.selectedDevId && targetDevId && st.topo.devices?.[targetDevId]) {
+      focusFlowDevice(targetDevId);
     } else {
       // 默认选中首个告警设备（无告警时选中负载率最高设备），避免右侧「设备潮流」整块空白
       if (!st.selectedDevId || !st.topo.devices?.[st.selectedDevId]) {
@@ -1149,6 +1155,26 @@
         }
       }
       selectFlowDevice(st.selectedDevId);
+    }
+    // 注入负载热力图例与动态流向开关（幂等）
+    const zoomBar = document.querySelector('#lf-svg-viewport')?.previousElementSibling;
+    if (zoomBar && !document.getElementById('lf-flow-legend')) {
+      const legend = document.createElement('span');
+      legend.id = 'lf-flow-legend';
+      legend.className = 'pas-flow-legend';
+      legend.innerHTML = '<span><i style="background:#22c55e"></i>&lt;60%</span><span><i style="background:#f59e0b"></i>60–80%</span><span><i style="background:#ef4444"></i>&gt;80%</span>';
+      const animBtn = document.createElement('button');
+      animBtn.type = 'button';
+      animBtn.className = 'se-btn mini';
+      animBtn.textContent = '流向动效';
+      animBtn.addEventListener('click', () => {
+        const svgEl = document.querySelector('#lf-svg-canvas svg');
+        if (!svgEl) return;
+        const on = svgEl.classList.toggle('pas-flow-animated');
+        animBtn.classList.toggle('primary', on);
+      });
+      zoomBar.appendChild(legend);
+      zoomBar.appendChild(animBtn);
     }
   }
 
@@ -1818,5 +1844,9 @@
   syncAutoRefresh();
   refreshAll();
   pollStatus();
-  setInterval(pollStatus, 4000);
+  if (window.PAS_KIT?.createPoller) {
+    window.PAS_KIT.createPoller(pollStatus, 8000, { useSSE: true });
+  } else {
+    setInterval(() => { if (!document.hidden) pollStatus(); }, 4000);
+  }
 })();

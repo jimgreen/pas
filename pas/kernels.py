@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import sys
 import tempfile
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1649,17 +1651,10 @@ def run_ca(
                         name_to_idx[(dt, str(mrow["name"]))] = int(mrow["idx"])
 
         with lf_parameter_file(lf_para_file, params=eff_lf) as (para_path, _):
+            # 预先为每个故障场景构造隔离的开断覆盖字典
+            scan_jobs: list[tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]]]] = []
             for cdef in scan_queue:
-                cname = str(cdef.get("name") or "未命名故障")
-                cat = str(cdef.get("category") or "N-1")
                 items = cdef.get("items") or []
-                target_desc = str(cdef.get("target_desc") or "")
-                if cat == "N-1":
-                    n1_total += 1
-                else:
-                    nk_total += 1
-
-                # 叠加故障开断到基态覆盖字典（绝不修改原 base_overrides）
                 outage_ovr: dict[str, dict[int, dict[str, Any]]] = {
                     dt: {idx: dict(fields) for idx, fields in entries.items()}
                     for dt, entries in base_overrides.items()
@@ -1673,15 +1668,36 @@ def run_ca(
                         continue
                     field = "status" if dt in ("ACBreak", "DCBreak") else "run_stat"
                     outage_ovr.setdefault(dt, {}).setdefault(int(didx), {})[field] = 0
+                scan_jobs.append((cdef, outage_ovr))
 
-                solved, err, case_ms = _solve_single_ca_case(
+            def _run_job(job: tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]]]):
+                _, job_ovr = job
+                return _solve_single_ca_case(
                     model_path,
                     raw_tables,
-                    outage_ovr,
+                    job_ovr,
                     para_path,
                     eff_lf,
                     se_snap,
                 )
+
+            max_workers = max(1, min(6, (os.cpu_count() or 4), len(scan_jobs)))
+            if max_workers > 1:
+                with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ca-scan") as pool:
+                    solved_list = list(pool.map(_run_job, scan_jobs))
+            else:
+                solved_list = [_run_job(job) for job in scan_jobs]
+
+            for (cdef, _), (solved, err, case_ms) in zip(scan_jobs, solved_list):
+                cname = str(cdef.get("name") or "未命名故障")
+                cat = str(cdef.get("category") or "N-1")
+                items = cdef.get("items") or []
+                target_desc = str(cdef.get("target_desc") or "")
+                if cat == "N-1":
+                    n1_total += 1
+                else:
+                    nk_total += 1
+
                 case_risks: list[dict[str, Any]] = []
                 case_load_loss = 0.0
                 case_max_load = 0.0

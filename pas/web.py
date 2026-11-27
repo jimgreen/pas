@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import math
 import mimetypes
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,7 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .db import Repository
-from . import input_store
+from . import input_store, platform_insights
 from .model_input import SQLITE_SUFFIXES, read_model_tables
 
 logger = logging.getLogger(__name__)
@@ -1461,10 +1463,40 @@ class PasWebApp:
                     return {"ok": True, "data": lf_repo.lf_logs_policy_get()}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
-        # --- 全平台 SE → LF → CA 链路态势只读 API ---
+        # --- 全平台 SE → LF → CA 链路态势与深度洞察只读 API ---
         if parsed.path == "/api/pipeline/status":
             try:
-                return {"ok": True, "data": self._build_pipeline_overview()}
+                overview = self._build_pipeline_overview()
+                return {"ok": True, "data": platform_insights.enrich_pipeline_status(self, overview)}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if parsed.path == "/api/device/profile":
+            try:
+                query = parse_qs(parsed.query)
+                dev_name = query.get("name", [""])[0].strip()
+                return {"ok": True, "data": platform_insights.build_device_profile(self, dev_name)}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if parsed.path == "/api/diff":
+            try:
+                query = parse_qs(parsed.query)
+                mod = query.get("module", ["lf"])[0]
+                a_raw = query.get("a", [""])[0].strip()
+                b_raw = query.get("b", [""])[0].strip()
+                return {
+                    "ok": True,
+                    "data": platform_insights.build_snapshot_diff(
+                        self,
+                        mod,
+                        run_a=_int_path(a_raw) if a_raw else None,
+                        run_b=_int_path(b_raw) if b_raw else None,
+                    ),
+                }
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if parsed.path == "/api/datasources/health":
+            try:
+                return {"ok": True, "data": platform_insights.build_datasource_health(self)}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
         # --- 在线静态安全分析（CA）专用只读 API ---
@@ -2187,29 +2219,101 @@ class PasWebApp:
                 finally:
                     stream.close()
 
+            def _send_bytes(
+                self,
+                body: bytes,
+                content_type: str,
+                status: int = 200,
+                *,
+                etag: str | None = None,
+                cache_control: str = "no-store",
+                extra_headers: dict[str, str] | None = None,
+            ):
+                if etag and self.headers.get("If-None-Match") == etag:
+                    self.send_response(HTTPStatus.NOT_MODIFIED)
+                    self.send_header("ETag", etag)
+                    self.send_header("Cache-Control", cache_control)
+                    self.end_headers()
+                    return
+                accept_enc = self.headers.get("Accept-Encoding") or ""
+                use_gzip = ("gzip" in accept_enc.lower()) and len(body) >= 1024
+                payload = gzip.compress(body, compresslevel=6) if use_gzip else body
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                if use_gzip:
+                    self.send_header("Content-Encoding", "gzip")
+                    self.send_header("Vary", "Accept-Encoding")
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Cache-Control", cache_control)
+                if etag:
+                    self.send_header("ETag", etag)
+                if extra_headers:
+                    for hk, hv in extra_headers.items():
+                        self.send_header(hk, hv)
+                self.end_headers()
+                self.wfile.write(payload)
+
             def _send_json(self, payload: dict[str, Any], status: int = 200):
                 body = json.dumps(_sanitize_json(payload), ensure_ascii=False, allow_nan=False, default=str).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
+                self._send_bytes(body, "application/json; charset=utf-8", status=status, cache_control="no-store")
+
+            def _serve_sse(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
-                self.wfile.write(body)
+                last_ver = ""
+                last_ping = time.monotonic()
+                deadline = time.monotonic() + 300.0
+                try:
+                    while time.monotonic() < deadline:
+                        info = platform_insights.compute_event_version(app)
+                        if info["version"] != last_ver:
+                            last_ver = info["version"]
+                            chunk = f"event: update\ndata: {json.dumps(info, ensure_ascii=False)}\n\n".encode("utf-8")
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                            last_ping = time.monotonic()
+                        elif time.monotonic() - last_ping >= 15.0:
+                            self.wfile.write(b": keepalive\n\n")
+                            self.wfile.flush()
+                            last_ping = time.monotonic()
+                        time.sleep(1.5)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                    pass
 
             def do_GET(self):  # noqa: N802
                 parsed_get = urlparse(self.path)
+                if parsed_get.path == "/api/events":
+                    self._serve_sse()
+                    return
+                if parsed_get.path == "/api/report/snapshot":
+                    try:
+                        html_text = platform_insights.build_snapshot_report_html(app)
+                        fname = f"pas-snapshot-{time.strftime('%Y%m%d-%H%M%S')}.html"
+                        self._send_bytes(
+                            html_text.encode("utf-8"),
+                            "text/html; charset=utf-8",
+                            extra_headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+                        )
+                    except Exception as exc:
+                        self._send_json({"ok": False, "error": str(exc)}, 500)
+                    return
                 if parsed_get.path == "/api/se/svg":
                     svg_path = app._se_svg_path()
                     if svg_path is None:
                         self._send_json({"ok": False, "error": "svg_not_found"}, 404)
                         return
-                    body = svg_path.read_bytes()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "image/svg+xml; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                    self.wfile.write(body)
+                    st = svg_path.stat()
+                    etag = f'W/"{st.st_mtime_ns:x}-{st.st_size:x}"'
+                    self._send_bytes(
+                        svg_path.read_bytes(),
+                        "image/svg+xml; charset=utf-8",
+                        etag=etag,
+                        cache_control="no-cache",
+                    )
                     return
                 if parsed_get.path == "/api/se/measurements/export":
                     query = parse_qs(parsed_get.query)
@@ -2346,12 +2450,12 @@ class PasWebApp:
                 if path is None:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
-                body = path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", mimetypes.guess_type(str(path))[0] or "application/octet-stream")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                st = path.stat()
+                etag = f'W/"{st.st_mtime_ns:x}-{st.st_size:x}"'
+                ctype = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+                if ctype.startswith("text/") or ctype in {"application/javascript", "application/json", "image/svg+xml"}:
+                    ctype = f"{ctype}; charset=utf-8"
+                self._send_bytes(path.read_bytes(), ctype, etag=etag, cache_control="no-cache")
 
             def do_POST(self):  # noqa: N802
                 if not self.path.startswith("/api/"):

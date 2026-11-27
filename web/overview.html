@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/assets/se-dashboard.css">
   <link rel="icon" href="data:,">
   <script src="/assets/theme-registry.js"></script>
+  <script src="/assets/pas-kit.js"></script>
 </head>
 <body data-page="/overview" class="se-main-body">
   <div class="app-shell">
@@ -58,6 +59,8 @@
             <span>LF→CA</span>
           </label>
           <button type="button" class="se-btn primary" id="btn-run-chain" data-i18n="action.run_chain">串联执行 SE→LF→CA</button>
+          <button type="button" class="se-btn ghost" id="btn-ov-diff" title="历史断面 A/B 差异对比">断面对比</button>
+          <button type="button" class="se-btn ghost" id="btn-ov-report" title="导出单文件综合分析快照报告">导出报告</button>
           <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
           <select id="theme-select" class="se-select compact" aria-label="Theme">
             <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
@@ -79,6 +82,7 @@
 
       <div id="notice" class="notice" role="status" hidden></div>
       <div id="ov-chain-banner" class="se-trial-banner" hidden></div>
+      <div id="ov-diag-strip" class="pas-diag-strip" hidden></div>
 
       <div class="se-workspace" style="gap:10px">
         <!-- 核心 SE → LF → CA 三段实时数据流看板 -->

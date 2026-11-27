@@ -82,8 +82,13 @@ def read_model_tables(path: Path) -> dict[str, dict]:
             if not {"_pos", *(f"c{i}" for i in range(len(columns)))} <= physical:
                 raise ValueError(f"Physical columns do not match embedded schema for {name}")
             selected = ",".join(f'"c{i}"' for i in range(len(columns)))
-            result[name] = {"fields": fields, "rows": [dict(zip(fields, row)) for row in
-                connection.execute(f'SELECT {selected} FROM "rtdb_data_{name}" ORDER BY "_pos"')]}
+            rows = [dict(zip(fields, row)) for row in
+                connection.execute(f'SELECT {selected} FROM "rtdb_data_{name}" ORDER BY "_pos"')]
+            result[name] = {
+                "fields": fields,
+                "rows": rows,
+                "_rendered": _render_table_block(name, fields, rows),
+            }
         if not any(name in result for name in ("ACNode", "DCNode", "Node")):
             raise ValueError("SQLite model contains no AC/DC node table")
         with _MODEL_CACHE_LOCK:
@@ -133,16 +138,25 @@ def apply_topology_overrides(
     return updated, applied
 
 
+def _render_table_block(name: str, fields: list[str], rows: list[dict]) -> str:
+    """将单张模型表格式化为 E 文件表块字符串，供基态缓存与增量拼接复用。"""
+    lines = [f"<{name}>\n", "@ " + " ".join(fields) + "\n"]
+    lines.extend("# " + " ".join(_cell(row[field]) for field in fields) + "\n" for row in rows)
+    lines.append(f"</{name}>\n\n")
+    return "".join(lines)
+
+
 def render_model_text(tables: dict[str, dict]) -> tuple[str, int, int]:
-    """将模型表字典渲染为内核可读取的 E 文件文本。"""
+    """将模型表字典渲染为内核可读取的 E 文件文本（未修改表直接复用缓存块）。"""
     parts, count = [], 0
     for name, block in tables.items():
-        fields = block["fields"]
-        parts.extend([f"<{name}>\n", "@ " + " ".join(fields) + "\n"])
-        for row in block["rows"]:
-            parts.append("# " + " ".join(_cell(row[field]) for field in fields) + "\n")
-            count += 1
-        parts.append(f"</{name}>\n\n")
+        rows = block["rows"]
+        count += len(rows)
+        cached_block = block.get("_rendered")
+        if cached_block is not None:
+            parts.append(cached_block)
+        else:
+            parts.append(_render_table_block(name, block["fields"], rows))
     return "".join(parts), len(tables), count
 
 

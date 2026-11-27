@@ -3459,7 +3459,11 @@
   bindEvents();
   refreshAll();
   pollServiceStatus();
-  setInterval(() => {
-    if (!document.hidden) pollServiceStatus();
-  }, 3000);
+  if (window.PAS_KIT?.createPoller) {
+    window.PAS_KIT.createPoller(pollServiceStatus, 8000, { useSSE: true });
+  } else {
+    setInterval(() => {
+      if (!document.hidden) pollServiceStatus();
+    }, 3000);
+  }
 })();
