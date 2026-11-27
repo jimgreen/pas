@@ -2220,67 +2220,69 @@
     btn.dataset.pasIconBtnBound = '1';
     btn.classList.add('pas-icon-only');
 
-    let syncing = false;
-    const apply = () => {
-      if (syncing) return;
-      syncing = true;
+    let obs = null;
+    const observe = () => {
+      if (obs) obs.observe(btn, { childList: true, characterData: true, subtree: true });
+    };
+
+    const sync = () => {
+      if (obs) obs.disconnect();
       try {
         const srEl = btn.querySelector(':scope > .pas-sr-lbl');
+        const icoEl = btn.querySelector(':scope > .pas-btn-ico');
         const rawText = (srEl ? srEl.textContent : btn.textContent || '').trim();
         const i18nKey = btn.getAttribute('data-i18n') || (srEl && srEl.getAttribute('data-i18n')) || '';
         const tip = rawText ? (extraTip ? `${rawText} (${extraTip})` : rawText) : (btn.title || extraTip);
-        if (tip) {
+        if (tip && btn.title !== tip) {
           btn.title = tip;
           btn.setAttribute('aria-label', tip);
         }
         const svgHtml = typeof iconResolver === 'function' ? iconResolver(rawText, btn) : iconResolver;
-        if (btn.hasAttribute('data-i18n')) btn.removeAttribute('data-i18n');
-        btn.innerHTML = `<span class="pas-btn-ico">${svgHtml}</span><span class="pas-sr-lbl"${i18nKey ? ` data-i18n="${esc(i18nKey)}"` : ''}>${esc(rawText)}</span>`;
+        if (!icoEl || !srEl) {
+          if (btn.hasAttribute('data-i18n')) btn.removeAttribute('data-i18n');
+          btn.innerHTML = `<span class="pas-btn-ico">${svgHtml}</span><span class="pas-sr-lbl"${i18nKey ? ` data-i18n="${esc(i18nKey)}"` : ''}>${esc(rawText)}</span>`;
+          const newIco = btn.querySelector(':scope > .pas-btn-ico');
+          if (newIco) newIco.dataset.pasIcoHtml = svgHtml;
+        } else if (icoEl.dataset.pasIcoHtml !== svgHtml) {
+          icoEl.innerHTML = svgHtml;
+          icoEl.dataset.pasIcoHtml = svgHtml;
+        }
       } finally {
-        syncing = false;
+        if (obs) {
+          obs.takeRecords();
+          observe();
+        }
       }
     };
 
-    apply();
-    const obs = new MutationObserver(() => {
-      if (!syncing && !btn.querySelector(':scope > .pas-btn-ico')) apply();
-      else if (!syncing) {
-        const srEl = btn.querySelector(':scope > .pas-sr-lbl');
-        const txt = (srEl ? srEl.textContent : '').trim();
-        if (txt) {
-          btn.title = extraTip ? `${txt} (${extraTip})` : txt;
-          btn.setAttribute('aria-label', btn.title);
-          if (typeof iconResolver === 'function') {
-            const icoSpan = btn.querySelector(':scope > .pas-btn-ico');
-            if (icoSpan) icoSpan.innerHTML = iconResolver(txt, btn);
-          }
-        }
-      }
-    });
-    obs.observe(btn, { childList: true, characterData: true, subtree: true });
+    obs = new MutationObserver(() => sync());
+    sync();
   }
 
   function enhancePrimaryCtaIcon(btn) {
     if (!btn || btn.dataset.pasCtaIconBound) return;
     btn.dataset.pasCtaIconBound = '1';
-    let syncing = false;
+    let obs = null;
+    const observe = () => {
+      if (obs) obs.observe(btn, { childList: true });
+    };
     const ensure = () => {
-      if (syncing || btn.querySelector(':scope > .pas-btn-ico')) return;
-      syncing = true;
+      if (btn.querySelector(':scope > .pas-btn-ico')) return;
+      if (obs) obs.disconnect();
       try {
         const txt = (btn.textContent || '').trim();
         const i18nKey = btn.getAttribute('data-i18n') || '';
         if (btn.hasAttribute('data-i18n')) btn.removeAttribute('data-i18n');
         btn.innerHTML = `<span class="pas-btn-ico">${UI_ICONS.zap}</span><span${i18nKey ? ` data-i18n="${esc(i18nKey)}"` : ''}>${esc(txt)}</span>`;
       } finally {
-        syncing = false;
+        if (obs) {
+          obs.takeRecords();
+          observe();
+        }
       }
     };
+    obs = new MutationObserver(() => ensure());
     ensure();
-    const obs = new MutationObserver(() => {
-      if (!syncing && !btn.querySelector(':scope > .pas-btn-ico')) ensure();
-    });
-    obs.observe(btn, { childList: true });
   }
 
   function decorateHeroTiles(strip) {
@@ -2337,7 +2339,15 @@
       decorateHeroTiles(strip);
       if (!strip.dataset.pasHeroObs) {
         strip.dataset.pasHeroObs = '1';
-        const obs = new MutationObserver(() => decorateHeroTiles(strip));
+        const obs = new MutationObserver(() => {
+          obs.disconnect();
+          try {
+            decorateHeroTiles(strip);
+          } finally {
+            obs.takeRecords();
+            obs.observe(strip, { childList: true });
+          }
+        });
         obs.observe(strip, { childList: true });
       }
     });
