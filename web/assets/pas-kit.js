@@ -1450,60 +1450,78 @@
     sync({ mode: getSidebarMode(), hidden: getSidebarHidden(), triggerResize: false });
   }
 
-  function wallBtnText(isWall) {
+  function wallBtnText(isFull) {
     const lang = getLang();
-    if (lang === 'en-US') return isWall ? 'Exit' : 'Wall';
-    if (lang === 'ru-RU') return isWall ? 'Выход' : 'Экран';
-    return isWall ? '退出' : '大屏';
+    if (lang === 'en-US') return isFull ? 'Exit Fullscreen' : 'Fullscreen';
+    if (lang === 'ru-RU') return isFull ? 'Выйти из полного экрана' : 'Полный экран';
+    return isFull ? '退出全屏' : '全屏显示';
   }
 
   const WALL_ICO_MAX = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
   const WALL_ICO_MIN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/></svg>';
 
+  function getFullscreenEl() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  function isWallCapablePage() {
+    const page = document.body?.dataset?.page || '';
+    return ['/se-main', '/lf-main', '/ca-main'].includes(page) || document.body?.dataset?.wallReady === '1';
+  }
+
+  function syncFullscreenBtnUI(active) {
+    const btn = document.getElementById('btn-wall-mode');
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    const tip = `${wallBtnText(active)} (F)`;
+    btn.title = tip;
+    btn.setAttribute('aria-label', tip);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.innerHTML = `<span class="pas-btn-ico">${active ? WALL_ICO_MIN : WALL_ICO_MAX}</span>`;
+  }
+
   function setWallMode(enable, { syncFullscreen = true } = {}) {
     const active = Boolean(enable);
-    document.body.classList.toggle('pas-wall-mode', active);
-    document.documentElement.classList.toggle('pas-sb-wall', active);
-    try { localStorage.setItem('pas_wall_mode', active ? '1' : '0'); } catch { /* ignore */ }
-    if (_sbApi) _sbApi.sync({ mode: getSidebarMode(), hidden: getSidebarHidden(), triggerResize: false });
-    const btn = document.getElementById('btn-wall-mode');
-    if (btn) {
-      btn.classList.toggle('active', active);
-      const tip = `${wallBtnText(active)} (F)`;
-      btn.title = tip;
-      btn.setAttribute('aria-label', tip);
-      btn.innerHTML = `<span class="pas-btn-ico">${active ? WALL_ICO_MIN : WALL_ICO_MAX}</span>`;
+    const wallCapable = isWallCapablePage();
+    if (wallCapable) {
+      document.body.classList.toggle('pas-wall-mode', active);
+      try { localStorage.setItem('pas_wall_mode', active ? '1' : '0'); } catch { /* ignore */ }
     }
+    document.documentElement.classList.toggle('pas-sb-wall', active);
+    if (_sbApi) _sbApi.sync({ mode: getSidebarMode(), hidden: getSidebarHidden(), triggerResize: false });
+    syncFullscreenBtnUI(active);
     if (syncFullscreen) {
       try {
-        if (active && !document.fullscreenElement && document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen().catch(() => {});
-        } else if (!active && document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+        const fsEl = getFullscreenEl();
+        const root = document.documentElement;
+        if (active && !fsEl) {
+          const req = root.requestFullscreen || root.webkitRequestFullscreen;
+          if (req) Promise.resolve(req.call(root)).catch(() => {});
+        } else if (!active && fsEl) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) Promise.resolve(exit.call(document)).catch(() => {});
         }
       } catch { /* ignore */ }
     }
-    // 触发所有自适应 SVG 图表重新计算宽高
+    // 触发所有自适应 SVG 图表与顶栏居中徽牌重新计算宽高
     setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
     setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
   }
 
   function initWallMode() {
-    const page = document.body?.dataset?.page || '';
-    const isMainScreen = ['/se-main', '/lf-main', '/ca-main'].includes(page) || document.body?.dataset?.wallReady === '1';
-    if (!isMainScreen) return;
-    const topActions = document.querySelector('.se-top-actions');
+    const isMainScreen = isWallCapablePage();
+    const topActions = document.querySelector('.se-top-actions, .top-actions');
     const titleRow = document.querySelector('.se-title-row');
 
-    // 1. 注入实时呼吸状态灯 + 电子时钟（常规下紧凑，大屏模式醒目呈现）
-    if (titleRow && !document.getElementById('pas-live-dot')) {
+    // 1. 仅在核心态势主画面注入实时呼吸状态灯 + 大屏电子时钟
+    if (isMainScreen && titleRow && !document.getElementById('pas-live-dot')) {
       const dot = document.createElement('span');
       dot.id = 'pas-live-dot';
       dot.className = 'pas-live-dot';
       dot.title = '实时在线监控';
       titleRow.insertBefore(dot, titleRow.firstChild);
     }
-    if (topActions && !document.getElementById('pas-wall-clock')) {
+    if (isMainScreen && topActions && !document.getElementById('pas-wall-clock')) {
       const clk = document.createElement('span');
       clk.id = 'pas-wall-clock';
       clk.className = 'pas-wall-clock tabular';
@@ -1518,45 +1536,50 @@
       _wallClockTimer = setInterval(tick, 1000);
     }
 
-    // 2. 注入「大屏投放」纯图标按钮（支持 URL 参数 ?wall=1 直接进大屏态）
+    // 2. 全站所有页面顶栏最右侧统一注入「全屏显示 / 退出全屏」纯图标按钮
     if (topActions && !document.getElementById('btn-wall-mode')) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.id = 'btn-wall-mode';
-      btn.className = 'se-chip-btn pas-wall-btn pas-icon-only';
-      const tip = `${wallBtnText(false)} (F)`;
-      btn.title = tip;
-      btn.setAttribute('aria-label', tip);
-      btn.innerHTML = `<span class="pas-btn-ico">${WALL_ICO_MAX}</span>`;
-      btn.addEventListener('click', () => setWallMode(!document.body.classList.contains('pas-wall-mode')));
-      const prefsBtn = document.getElementById('pas-prefs-trigger');
-      if (prefsBtn && prefsBtn.parentElement === topActions) {
-        topActions.insertBefore(btn, prefsBtn);
-      } else {
-        topActions.appendChild(btn);
-      }
+      btn.className = topActions.classList.contains('se-top-actions')
+        ? 'se-chip-btn pas-wall-btn pas-icon-only'
+        : 'pas-kbd-btn pas-wall-btn pas-icon-only';
+      btn.addEventListener('click', () => {
+        const currentlyActive = Boolean(getFullscreenEl()) || document.documentElement.classList.contains('pas-sb-wall') || document.body.classList.contains('pas-wall-mode');
+        setWallMode(!currentlyActive, { syncFullscreen: true });
+      });
+      topActions.appendChild(btn);
+      syncFullscreenBtnUI(Boolean(getFullscreenEl()));
     }
 
-    // 监听语言切换更新按钮文案
+    // 监听语言切换更新全屏按钮三语提示
     const langSel = document.getElementById('lang-select');
     if (langSel && !langSel.dataset.pasWallLangBound) {
       langSel.dataset.pasWallLangBound = '1';
       langSel.addEventListener('change', () => {
-        const btn = document.getElementById('btn-wall-mode');
-        const lbl = btn?.querySelector('.pas-wall-lbl');
-        if (lbl) lbl.textContent = wallBtnText(document.body.classList.contains('pas-wall-mode'));
+        const active = Boolean(getFullscreenEl()) || document.documentElement.classList.contains('pas-sb-wall') || document.body.classList.contains('pas-wall-mode');
+        setTimeout(() => syncFullscreenBtnUI(active), 0);
       });
     }
 
-    // 浏览器按 Esc 退出原生全屏时同步退出大屏样式
-    document.addEventListener('fullscreenchange', () => {
-      if (!document.fullscreenElement && document.body.classList.contains('pas-wall-mode')) {
-        setWallMode(false, { syncFullscreen: false });
-      }
-    });
+    // 浏览器原生进入/退出全屏（如按 Esc / F11）时实时同步图标与页面状态
+    if (!document.documentElement.dataset.pasFsChangeBound) {
+      document.documentElement.dataset.pasFsChangeBound = '1';
+      const onFsChange = () => {
+        const inFs = Boolean(getFullscreenEl());
+        if (!inFs && (document.body.classList.contains('pas-wall-mode') || document.documentElement.classList.contains('pas-sb-wall'))) {
+          setWallMode(false, { syncFullscreen: false });
+        } else if (inFs) {
+          syncFullscreenBtnUI(true);
+          setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+        }
+      };
+      document.addEventListener('fullscreenchange', onFsChange);
+      document.addEventListener('webkitfullscreenchange', onFsChange);
+    }
 
     // 若 URL 显式带 ?wall=1 则默认以大屏布局打开（不强制弹窗请求 fullscreen）
-    if (new URLSearchParams(window.location.search).get('wall') === '1') {
+    if (isMainScreen && new URLSearchParams(window.location.search).get('wall') === '1') {
       setWallMode(true, { syncFullscreen: false });
     }
   }
