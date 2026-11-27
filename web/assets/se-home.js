@@ -511,6 +511,36 @@
     const covPct = obs.meas_count > 0 ? ((obs.valid_meas_count / obs.meas_count) * 100).toFixed(1) + '%' : '—';
     setVal('h-st-coverage', covPct);
 
+    // 多维图表：量测健康环形饼图 + 三率对比柱状图
+    if (window.PAS_KIT) {
+      const goodCnt = Number(obs.good_meas_count ?? obs.valid_meas_count ?? 0);
+      const badCnt = Number(latest?.bad_data_count ?? ctrl.bad_total ?? 0);
+      const pfCnt = Number(pf.total ?? 0);
+      const missCnt = Number(pf.nomeas_count ?? 0);
+      window.PAS_KIT.renderDonut(document.getElementById('se-home-meas-donut'), {
+        slices: [
+          { label: '正常有效', value: goodCnt, color: '#22c55e' },
+          { label: '预过滤', value: pfCnt, color: '#f59e0b' },
+          { label: '坏数据', value: badCnt, color: '#ef4444' },
+          { label: '缺测/坏质量', value: missCnt, color: '#64748b' },
+        ],
+        centerTitle: '量测构成',
+        centerValue: String(obs.meas_count ?? (goodCnt + badCnt + pfCnt + missCnt)),
+        size: 98,
+      });
+      const covVal = obs.meas_count > 0 ? (obs.valid_meas_count / obs.meas_count) * 100 : 0;
+      window.PAS_KIT.renderBarChart(document.getElementById('se-home-rate-bars'), {
+        items: [
+          { label: '当前合格率', value: Number(ts.current_pass_rate || 0), color: '#22c55e' },
+          { label: '当日收敛率', value: Number(ts.today_conv_rate || 0), color: '#38bdf8' },
+          { label: '量测覆盖率', value: covVal, color: '#6366f1' },
+        ],
+        maxVal: 100,
+        unit: '%',
+        digits: 1,
+      });
+    }
+
     // 底部运行信息条
     const log = d.latest_log;
     if (log) {

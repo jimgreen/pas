@@ -345,6 +345,37 @@
   function renderTrendSvg(series, metric) {
     const box = $('#ca-home-trend');
     if (!box) return;
+    if (metric === 'risk_categories' && window.PAS_KIT?.renderBarChart) {
+      const risks = st.homeData?.top_risks || [];
+      const counts = { voltage_low: 0, voltage_high: 0, overload: 0, heavy_load: 0, load_loss: 0, divergence: 0 };
+      risks.forEach((r) => {
+        const k = r.risk_category || 'other';
+        counts[k] = (counts[k] || 0) + 1;
+      });
+      const labels = {
+        voltage_low: ['电压越下限', '#ef4444'],
+        voltage_high: ['电压越上限', '#f97316'],
+        overload: ['设备过载', '#dc2626'],
+        heavy_load: ['重载预警', '#f59e0b'],
+        load_loss: ['失电负荷', '#a855f7'],
+        divergence: ['潮流发散', '#be123c'],
+      };
+      const items = Object.entries(labels).map(([k, [lbl, color]]) => ({
+        label: lbl,
+        value: counts[k] || 0,
+        color,
+      })).filter((x) => x.value > 0);
+      if (!items.length && st.homeData?.latest) {
+        const lat = st.homeData.latest;
+        items.push(
+          { label: 'N-0 基态风险', value: lat.n0_risk_count || 0, color: '#ef4444' },
+          { label: 'N-1 扫描风险', value: lat.n1_risk_count || 0, color: '#f97316' },
+          { label: 'N-k 扫描风险', value: lat.nk_risk_count || 0, color: '#f59e0b' },
+        );
+      }
+      window.PAS_KIT.renderBarChart(box, { items, unit: '项', digits: 0, emptyText: t('msg.empty') });
+      return;
+    }
     if (!series || !series.length) {
       box.innerHTML = `<div class="se-empty">${t('msg.empty')}</div>`;
       return;
@@ -413,10 +444,17 @@
     if ($('#ca-src-lf-link') && lat?.source_lf_run_id) {
       $('#ca-src-lf-link').href = `/lf-results.html?run_id=${lat.source_lf_run_id}`;
     }
+    if (window.PAS_KIT?.renderGauge) {
+      window.PAS_KIT.renderGauge($('#ca-home-gauge'), {
+        value: lat ? Number(lat.security_score || 0) : 0,
+        max: 100,
+        unit: '分',
+        statusText: lat ? `安全定级：${lat.risk_level}` : '暂无评估',
+      });
+    }
     const defs = data.contingency_defs || { total: 0, enabled: 0, n1: 0, nk: 0 };
     if ($('#ca-kv-overview')) {
       $('#ca-kv-overview').innerHTML = [
-        ['总体定级', lat ? lat.risk_level : '—'],
         ['源 LF 断面', lat?.source_lf_run_id ? `LF #${lat.source_lf_run_id}` : '—'],
         ['溯源 SE 断面', lat?.source_se_run_id ? `SE #${lat.source_se_run_id}` : '—'],
         ['N-0 基态风险', lat ? String(lat.n0_risk_count) : '—'],
@@ -428,12 +466,26 @@
     const totRisks = lat ? (lat.critical_count + lat.high_count + lat.medium_count + lat.low_count) : 0;
     if ($('#ca-home-total-risks')) $('#ca-home-total-risks').textContent = String(totRisks);
     if ($('#ca-kv-severity')) {
-      $('#ca-kv-severity').innerHTML = [
-        [t('sev.critical'), lat ? lat.critical_count : 0, 'bad'],
-        [t('sev.high'), lat ? lat.high_count : 0, 'bad'],
-        [t('sev.medium'), lat ? lat.medium_count : 0, 'warn'],
-        [t('sev.low'), lat ? lat.low_count : 0, 'neutral'],
-      ].map(([k, v, cls]) => `<div class="se-kv-row"><span>${esc(k)}</span><span class="se-pill ${v > 0 ? cls : 'ok'} tabular">${v}</span></div>`).join('');
+      if (window.PAS_KIT?.renderDonut) {
+        window.PAS_KIT.renderDonut($('#ca-kv-severity'), {
+          slices: [
+            { label: t('sev.critical'), value: lat ? lat.critical_count : 0, color: '#ef4444' },
+            { label: t('sev.high'), value: lat ? lat.high_count : 0, color: '#f97316' },
+            { label: t('sev.medium'), value: lat ? lat.medium_count : 0, color: '#f59e0b' },
+            { label: t('sev.low'), value: lat ? lat.low_count : 0, color: '#22c55e' },
+          ],
+          centerTitle: '风险总计',
+          centerValue: String(totRisks),
+          size: 102,
+        });
+      } else {
+        $('#ca-kv-severity').innerHTML = [
+          [t('sev.critical'), lat ? lat.critical_count : 0, 'bad'],
+          [t('sev.high'), lat ? lat.high_count : 0, 'bad'],
+          [t('sev.medium'), lat ? lat.medium_count : 0, 'warn'],
+          [t('sev.low'), lat ? lat.low_count : 0, 'neutral'],
+        ].map(([k, v, cls]) => `<div class="se-kv-row"><span>${esc(k)}</span><span class="se-pill ${v > 0 ? cls : 'ok'} tabular">${v}</span></div>`).join('');
+      }
     }
     if ($('#ca-home-elapsed')) $('#ca-home-elapsed').textContent = lat ? `${num(lat.elapsed_seconds, 2)} s` : '—';
     if ($('#ca-kv-extremes')) {
@@ -461,7 +513,7 @@
       $('#ca-home-top-risks').innerHTML = tr.length ? tr.map((r) => `<tr>
         <td><span class="se-pill ${sevClass(r.severity)}">${esc(sevLabel(r.severity))}</span></td>
         <td title="${esc(r.contingency_name)}">${esc(r.contingency_name)}</td>
-        <td title="${esc(r.detail)}">${esc(r.device_name)}</td>
+        <td title="${esc(r.detail)}"><a class="pas-clickable" data-pas-device="${esc(r.device_name)}">${esc(r.device_name)}</a></td>
         <td class="tabular">${num(r.violation_pct, 1)}%</td>
       </tr>`).join('') : `<tr><td colspan="4" class="se-empty">${t('msg.empty')}</td></tr>`;
     }

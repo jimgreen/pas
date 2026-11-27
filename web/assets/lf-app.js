@@ -817,6 +817,25 @@
       [t('kv.dc_loss'), `${fmtNum(latest?.dc_loss_p, 3)} ${esc(pu)}`],
     ]);
 
+    if (window.PAS_KIT?.renderSankey) {
+      window.PAS_KIT.renderSankey(document.getElementById('lf-home-sankey'), {
+        leftNodes: [
+          { label: '交流发电', value: Number(latest?.ac_gen_p || 0), color: '#38bdf8' },
+          { label: '直流发电', value: Number(latest?.dc_gen_p || 0), color: '#22c55e' },
+        ],
+        midNode: { label: '母线汇流', color: 'var(--accent)' },
+        rightNodes: [
+          { label: '交流负荷', value: Number(latest?.ac_load_p || 0), color: '#6366f1' },
+          { label: '直流负荷', value: Number(latest?.dc_load_p || 0), color: '#14b8a6' },
+          { label: '交流网损', value: Number(latest?.ac_loss_p || 0), color: '#f59e0b' },
+          { label: '直流网损', value: Number(latest?.dc_loss_p || 0), color: '#ef4444' },
+        ],
+        unit: pu,
+        height: 158,
+        compact: true,
+      });
+    }
+
     document.getElementById('lf-home-ctrl-kv').innerHTML = kv([
       [t('kv.iters'), latest ? `${latest.iterations} (${latest.ac_iterations ?? '—'} / ${latest.dc_iterations ?? '—'})` : '—'],
       [t('kv.norm_f'), latest?.norm_f != null ? Number(latest.norm_f).toExponential(2) : '—'],
@@ -842,19 +861,54 @@
 
     const loadHost = document.getElementById('lf-home-top-load');
     const topLoad = data.top_loading || [];
-    loadHost.innerHTML = topLoad.length ? topLoad.map((b) => `
-      <div class="se-kv-row">
-        <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
-        <strong class="tabular ${b.overload ? 'bad' : ''}">${fmtNum(b.loading_pct, 1)}% · ${fmtNum(b.p_from, 2)} ${esc(pu)}</strong>
-      </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+    if (window.PAS_KIT?.renderBarChart) {
+      window.PAS_KIT.renderBarChart(loadHost, {
+        items: topLoad.slice(0, 8).map((b) => ({
+          label: b.device_name,
+          device: b.device_name,
+          value: Number(b.loading_pct || 0),
+          sub: `有功 ${fmtNum(b.p_from, 2)} ${pu}`,
+          subShort: `${fmtNum(b.p_from, 1)}${pu}`,
+          color: b.overload ? '#ef4444' : ((b.loading_pct || 0) >= 80 ? '#f59e0b' : 'var(--accent)'),
+        })),
+        maxVal: 100,
+        threshold: 80,
+        unit: '%',
+        digits: 1,
+        emptyText: t('common.empty'),
+      });
+    } else {
+      loadHost.innerHTML = topLoad.length ? topLoad.map((b) => `
+        <div class="se-kv-row">
+          <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
+          <strong class="tabular ${b.overload ? 'bad' : ''}">${fmtNum(b.loading_pct, 1)}% · ${fmtNum(b.p_from, 2)} ${esc(pu)}</strong>
+        </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+    }
 
     const vHost = document.getElementById('lf-home-v-extremes');
     const vList = data.voltage_extremes || [];
-    vHost.innerHTML = vList.length ? vList.map((b) => `
-      <div class="se-kv-row">
-        <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
-        <strong class="tabular ${b.v_status !== 'normal' ? 'bad' : ''}">${Number(b.v_pu || 0).toFixed(4)} pu · ${fmtNum(b.v_eng, 2)} ${esc(uu)}</strong>
-      </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+    if (window.PAS_KIT?.renderDivergingBar) {
+      window.PAS_KIT.renderDivergingBar(vHost, {
+        items: vList.slice(0, 8).map((b) => ({
+          label: b.device_name,
+          device: b.device_name,
+          value: Number(b.v_pu || 1.0),
+          sub: `实际电压 ${fmtNum(b.v_eng, 2)} ${uu}`,
+        })),
+        center: 1.0,
+        span: 0.22,
+        lowWarn: Number(data.params?.v_min_pu || 0.93),
+        highWarn: Number(data.params?.v_max_pu || 1.07),
+        unit: 'pu',
+        emptyText: t('common.empty'),
+      });
+    } else {
+      vHost.innerHTML = vList.length ? vList.map((b) => `
+        <div class="se-kv-row">
+          <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
+          <strong class="tabular ${b.v_status !== 'normal' ? 'bad' : ''}">${Number(b.v_pu || 0).toFixed(4)} pu · ${fmtNum(b.v_eng, 2)} ${esc(uu)}</strong>
+        </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
+    }
 
     const log = data.latest_log;
     if (log) {

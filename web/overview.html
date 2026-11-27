@@ -128,6 +128,27 @@
           </article>
         </section>
 
+        <!-- 中段：全网交直流功率桑基图 + 安全风险环形饼图 / 模块耗时柱状图 -->
+        <section class="pas-viz-strip" aria-label="Grid Visual Analytics">
+          <article class="pas-viz-card">
+            <div class="pas-viz-head">
+              <h3>全网交直流功率流向（桑基图）</h3>
+              <span class="se-muted tabular" id="ov-sankey-meta">—</span>
+            </div>
+            <div id="ov-sankey"></div>
+          </article>
+          <article class="pas-viz-card">
+            <div class="pas-viz-head">
+              <h3>安全风险分级构成 &amp; 模块计算耗时</h3>
+              <span class="se-muted tabular" id="ov-viz-right-meta">—</span>
+            </div>
+            <div class="pas-viz-split">
+              <div id="ov-risk-donut"></div>
+              <div id="ov-time-bars"></div>
+            </div>
+          </article>
+        </section>
+
         <!-- 下方双栏：跨模块告警聚合 + 三模块联合运行记录 -->
         <section class="pas-overview-bottom">
           <article class="se-home-card">

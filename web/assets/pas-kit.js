@@ -310,6 +310,325 @@
     }
   }
 
+  /* ==================== 3B. 多维工程可视化引擎（桑基图 / 环形饼图 / 半圆仪表盘 / 分级柱状图 / 双向偏差柱状图） ==================== */
+  function bindSvgTip(el, htmlFn) {
+    const tip = getTipEl();
+    el.addEventListener('mousemove', (ev) => {
+      tip.innerHTML = typeof htmlFn === 'function' ? htmlFn() : String(htmlFn || '');
+      tip.hidden = false;
+      const tx = Math.min(window.innerWidth - tip.offsetWidth - 12, ev.clientX + 14);
+      const ty = Math.max(8, ev.clientY - tip.offsetHeight - 10);
+      tip.style.left = `${tx}px`;
+      tip.style.top = `${ty}px`;
+    });
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+  }
+
+  /**
+   * 交直流能量流桑基图（3 列：电源列 -> 汇流中枢 -> 负荷与网损列）
+   * 支持 compact 窄栏模式与自动标签防碰撞，确保小份额网损节点零重叠、零裁切。
+   */
+  function renderSankey(host, {
+    leftNodes = [],
+    midNode = { label: '混合电网', color: '#38bdf8' },
+    rightNodes = [],
+    unit = 'kW',
+    height = 148,
+    compact = false,
+    emptyText = '暂无功率流向数据',
+  } = {}) {
+    if (!host) return;
+    const leftClean = leftNodes.filter((n) => Number(n.value) > 0);
+    const rightClean = rightNodes.filter((n) => Number(n.value) > 0);
+    const sumL = leftClean.reduce((s, n) => s + Number(n.value), 0);
+    const sumR = rightClean.reduce((s, n) => s + Number(n.value), 0);
+    const total = Math.max(sumL, sumR);
+    if (total <= 1e-6) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const W = compact ? 276 : 520;
+    const H = height;
+    const padTop = 18;
+    const padBot = 10;
+    const usableH = H - padTop - padBot;
+    const gap = compact ? 9 : 10;
+    const barW = compact ? 9 : 12;
+    const xL = compact ? 76 : 108;
+    const xM = Math.round(W / 2 - barW / 2);
+    const xR = compact ? W - 102 : W - 142;
+
+    const layoutCol = (list, colSum) => {
+      const totalGap = gap * Math.max(0, list.length - 1);
+      const avail = Math.max(24, usableH - totalGap);
+      let y = padTop;
+      return list.map((n) => {
+        const val = Number(n.value);
+        const h = Math.max(7, (val / Math.max(colSum, 1e-6)) * avail);
+        const out = { ...n, val, y, h };
+        y += h + gap;
+        return out;
+      });
+    };
+
+    // 标签中心 Y 防碰撞分配（保证相邻标签至少间隔 minStep，且不出底边）
+    const assignLabelY = (items, minStep) => {
+      const ys = items.map((n) => n.y + n.h / 2);
+      for (let i = 1; i < ys.length; i++) {
+        if (ys[i] - ys[i - 1] < minStep) ys[i] = ys[i - 1] + minStep;
+      }
+      const maxY = H - 7;
+      if (ys.length && ys[ys.length - 1] > maxY) {
+        const shift = ys[ys.length - 1] - maxY;
+        for (let i = ys.length - 1; i >= 0; i--) {
+          ys[i] -= shift;
+          if (i > 0 && ys[i] - ys[i - 1] < minStep) ys[i - 1] = ys[i] - minStep;
+        }
+      }
+      return ys.map((y) => Math.max(padTop + 4, Math.min(maxY, y)));
+    };
+
+    const lPos = layoutCol(leftClean, sumL);
+    const rPos = layoutCol(rightClean, sumR);
+    const lLabelYs = assignLabelY(lPos, compact ? 20 : 24);
+    const rLabelYs = assignLabelY(rPos, compact ? 16 : 17);
+
+    const midH = Math.max(26, usableH * 0.84);
+    const midY = padTop + (usableH - midH) / 2;
+
+    const ribbonPath = (x0, y0, h0, x1, y1, h1) => {
+      const mx = (x0 + x1) / 2;
+      return `M${x0},${y0} C${mx},${y0} ${mx},${y1} ${x1},${y1} L${x1},${y1 + h1} C${mx},${y1 + h1} ${mx},${y0 + h0} ${x0},${y0 + h0} Z`;
+    };
+
+    let midOffL = midY;
+    const leftRibbons = lPos.map((n) => {
+      const mh = (n.val / Math.max(sumL, 1e-6)) * midH;
+      const d = ribbonPath(xL + barW, n.y, n.h, xM, midOffL, mh);
+      midOffL += mh;
+      return `<path class="pas-sk-link" data-sk-tip="${esc(`${n.label} → ${midNode.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumL) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.38" stroke="${n.color}" stroke-opacity="0.65" stroke-width="0.6"/>`;
+    }).join('');
+
+    let midOffR = midY;
+    const rightRibbons = rPos.map((n) => {
+      const mh = (n.val / Math.max(sumR, 1e-6)) * midH;
+      const d = ribbonPath(xM + barW, midOffR, mh, xR, n.y, n.h);
+      midOffR += mh;
+      return `<path class="pas-sk-link" data-sk-tip="${esc(`${midNode.label} → ${n.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumR) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.38" stroke="${n.color}" stroke-opacity="0.65" stroke-width="0.6"/>`;
+    }).join('');
+
+    const fMain = compact ? 9.5 : 11;
+    const fSub = compact ? 8.8 : 10;
+    const leftRects = lPos.map((n, idx) => {
+      const ly = lLabelYs[idx];
+      return `
+        <rect x="${xL}" y="${n.y.toFixed(1)}" width="${barW}" height="${n.h.toFixed(1)}" rx="3" fill="${n.color}"/>
+        <text x="${xL - 5}" y="${(ly - 2).toFixed(1)}" text-anchor="end" fill="var(--text-primary)" font-size="${fMain}" font-weight="600">${esc(n.label)}</text>
+        <text x="${xL - 5}" y="${(ly + 9).toFixed(1)}" text-anchor="end" fill="var(--text-secondary)" font-size="${fSub}" class="tabular">${num(n.val, 1)} ${esc(unit)}</text>`;
+    }).join('');
+
+    // 右侧采用防重叠布局：高度充裕时双行，高度紧凑时单行“名称 数值”避免纵向叠加
+    const rightRects = rPos.map((n, idx) => {
+      const ly = rLabelYs[idx];
+      const singleLine = compact || n.h < 22;
+      if (singleLine) {
+        return `
+          <rect x="${xR}" y="${n.y.toFixed(1)}" width="${barW}" height="${n.h.toFixed(1)}" rx="3" fill="${n.color}"/>
+          <text x="${xR + barW + 5}" y="${(ly + 3.5).toFixed(1)}" text-anchor="start" fill="var(--text-primary)" font-size="${fMain}" font-weight="600">${esc(n.label)} <tspan fill="var(--text-secondary)" font-weight="500" font-size="${fSub}">${num(n.val, 1)}${compact ? '' : ' ' + esc(unit)}</tspan></text>`;
+      }
+      return `
+        <rect x="${xR}" y="${n.y.toFixed(1)}" width="${barW}" height="${n.h.toFixed(1)}" rx="3" fill="${n.color}"/>
+        <text x="${xR + barW + 6}" y="${(ly - 2).toFixed(1)}" text-anchor="start" fill="var(--text-primary)" font-size="${fMain}" font-weight="600">${esc(n.label)}</text>
+        <text x="${xR + barW + 6}" y="${(ly + 10).toFixed(1)}" text-anchor="start" fill="var(--text-secondary)" font-size="${fSub}" class="tabular">${num(n.val, 1)} ${esc(unit)}</text>`;
+    }).join('');
+
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">
+      ${leftRibbons}
+      ${rightRibbons}
+      ${leftRects}
+      <rect x="${xM}" y="${midY.toFixed(1)}" width="${barW}" height="${midH.toFixed(1)}" rx="4" fill="${midNode.color || 'var(--accent)'}"/>
+      <text x="${W / 2}" y="${(padTop - 5).toFixed(1)}" text-anchor="middle" fill="var(--text-primary)" font-size="${fSub}" font-weight="600">${esc(midNode.label)} (${num(total, 1)} ${esc(unit)})</text>
+      ${rightRects}
+    </svg>`;
+
+    host.querySelectorAll('.pas-sk-link').forEach((path) => {
+      bindSvgTip(path, () => path.dataset.skTip);
+    });
+  }
+
+  /**
+   * 环形饼图（左侧圆环 + 中心主指标 + 右侧紧凑图例）
+   */
+  function renderDonut(host, {
+    slices = [],
+    centerTitle = '总计',
+    centerValue = null,
+    size = 112,
+    emptyText = '暂无数据',
+  } = {}) {
+    if (!host) return;
+    const clean = slices.map((s) => ({ ...s, val: Math.max(0, Number(s.value) || 0) }));
+    const total = clean.reduce((sum, s) => sum + s.val, 0);
+    const r = 40;
+    const cx = 56;
+    const cy = 56;
+    const circ = 2 * Math.PI * r;
+    let offset = 0;
+
+    const segs = total > 0
+      ? clean.filter((s) => s.val > 0).map((s) => {
+        const frac = s.val / total;
+        const len = Math.max(2, frac * circ);
+        const dash = `${len.toFixed(2)} ${(circ - len).toFixed(2)}`;
+        const curOff = offset;
+        offset += len;
+        return `<circle class="pas-donut-seg" data-tip="${esc(`<strong>${s.label}</strong><br>${s.val} (${(frac * 100).toFixed(1)}%)`)}" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="13" stroke-dasharray="${dash}" stroke-dashoffset="${(-curOff).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      }).join('')
+      : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border-color)" stroke-width="12"/>`;
+
+    const centerVal = centerValue != null ? centerValue : String(total);
+    const legendHtml = clean.map((s) => {
+      const pct = total > 0 ? `${((s.val / total) * 100).toFixed(0)}%` : '0%';
+      return `<div class="pas-donut-leg-row"><span><i style="background:${s.color}"></i>${esc(s.label)}</span><strong class="tabular">${s.val} <small>${pct}</small></strong></div>`;
+    }).join('');
+
+    host.innerHTML = `<div class="pas-donut-box">
+      <svg viewBox="0 0 112 112" style="width:${size}px;height:${size}px;flex:0 0 ${size}px">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg-subtle)" stroke-width="13"/>
+        ${segs}
+        <text x="${cx}" y="${cy - 1}" text-anchor="middle" fill="var(--text-primary)" font-size="16" font-weight="700" class="tabular">${esc(centerVal)}</text>
+        <text x="${cx}" y="${cy + 13}" text-anchor="middle" fill="var(--text-secondary)" font-size="9.5">${esc(centerTitle)}</text>
+      </svg>
+      <div class="pas-donut-legend">${legendHtml || `<span style="color:var(--text-muted)">${esc(emptyText)}</span>`}</div>
+    </div>`;
+
+    host.querySelectorAll('.pas-donut-seg').forEach((seg) => {
+      bindSvgTip(seg, () => seg.dataset.tip);
+    });
+  }
+
+  /**
+   * 半圆工程仪表盘（安全评分 / 合格率 / 负载指标）
+   */
+  function renderGauge(host, {
+    value = 0,
+    max = 100,
+    label = '',
+    unit = '',
+    statusText = '',
+  } = {}) {
+    if (!host) return;
+    const v = Math.max(0, Math.min(max, Number(value) || 0));
+    const ratio = max > 0 ? v / max : 0;
+    const color = ratio >= 0.8 ? '#22c55e' : (ratio >= 0.5 ? '#f59e0b' : '#ef4444');
+    const r = 48;
+    const cx = 68;
+    const cy = 62;
+    const arcLen = Math.PI * r;
+    const filled = Math.max(0, ratio * arcLen);
+
+    host.innerHTML = `<div class="pas-gauge-box">
+      <svg viewBox="0 0 136 78" style="width:136px;height:78px;display:block;margin:0 auto">
+        <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="var(--bg-subtle)" stroke-width="11" stroke-linecap="round"/>
+        <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${arcLen.toFixed(1)}"/>
+        <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="var(--text-primary)" font-size="20" font-weight="700" class="tabular">${num(v, 1)}<tspan font-size="10.5" fill="var(--text-muted)">${esc(unit)}</tspan></text>
+        <text x="${cx}" y="${cy + 6}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="600">${esc(statusText || label)}</text>
+      </svg>
+    </div>`;
+  }
+
+  /**
+   * 水平分级柱状图（支持阈值参考线、点击联动设备 360° 抽屉）
+   */
+  function renderBarChart(host, {
+    items = [],
+    maxVal = null,
+    unit = '%',
+    threshold = null,
+    digits = 1,
+    emptyText = '暂无数据',
+  } = {}) {
+    if (!host) return;
+    if (!items.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const peak = Math.max(
+      maxVal || 0,
+      threshold ? threshold * 1.15 : 0,
+      ...items.map((x) => Number(x.value) || 0),
+      1e-6,
+    );
+    const thrPct = threshold != null ? Math.min(100, (threshold / peak) * 100) : null;
+
+    host.innerHTML = `<div class="pas-bar-list">${items.map((it) => {
+      const val = Math.max(0, Number(it.value) || 0);
+      const pct = Math.min(100, (val / peak) * 100);
+      const color = it.color || (threshold != null
+        ? (val >= threshold * 1.25 ? '#ef4444' : (val >= threshold ? '#f59e0b' : 'var(--accent)'))
+        : 'var(--accent)');
+      const labelHtml = it.device
+        ? `<a class="pas-clickable" data-pas-device="${esc(it.device)}" title="打开 ${esc(it.device)} 360° 全景档案">${esc(it.label)}</a>`
+        : `<span>${esc(it.label)}</span>`;
+      return `<div class="pas-bar-row" data-bar-tip="${esc(`<strong>${it.label}</strong><br>${num(val, digits)} ${unit}${it.sub ? `<br>${it.sub}` : ''}`)}">
+        <div class="pas-bar-label">${labelHtml}</div>
+        <div class="pas-bar-track">
+          ${thrPct != null ? `<span class="pas-bar-thr" style="left:${thrPct.toFixed(1)}%"></span>` : ''}
+          <span class="pas-bar-fill" style="width:${Math.max(2, pct).toFixed(1)}%;background:${color}"></span>
+        </div>
+        <div class="pas-bar-val tabular">${num(val, digits)}${esc(unit)}${it.subShort ? ` <small>${esc(it.subShort)}</small>` : ''}</div>
+      </div>`;
+    }).join('')}</div>`;
+
+    host.querySelectorAll('.pas-bar-row').forEach((row) => {
+      bindSvgTip(row, () => row.dataset.barTip);
+    });
+  }
+
+  /**
+   * 双向偏差柱状图（例如以 1.00 pu 为中轴展现电压偏低/偏高幅度）
+   */
+  function renderDivergingBar(host, {
+    items = [],
+    center = 1.0,
+    span = 0.22,
+    lowWarn = 0.93,
+    highWarn = 1.07,
+    unit = 'pu',
+    emptyText = '暂无电压越限设备',
+  } = {}) {
+    if (!host) return;
+    if (!items.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const maxDev = Math.max(span, ...items.map((x) => Math.abs((Number(x.value) || center) - center)));
+    host.innerHTML = `<div class="pas-bar-list">${items.map((it) => {
+      const val = Number(it.value) || center;
+      const dev = val - center;
+      const pct = Math.min(50, (Math.abs(dev) / maxDev) * 50);
+      const isBad = val < lowWarn || val > highWarn;
+      const color = isBad ? '#ef4444' : (dev < 0 ? '#f59e0b' : '#38bdf8');
+      const leftPos = dev < 0 ? (50 - pct) : 50;
+      const labelHtml = it.device
+        ? `<a class="pas-clickable" data-pas-device="${esc(it.device)}" title="打开 ${esc(it.device)} 360° 全景档案">${esc(it.label)}</a>`
+        : `<span>${esc(it.label)}</span>`;
+      const sign = dev >= 0 ? '+' : '';
+      return `<div class="pas-bar-row" data-bar-tip="${esc(`<strong>${it.label}</strong><br>${val.toFixed(4)} ${unit}（偏差 ${sign}${(dev * 100).toFixed(2)}%）${it.sub ? `<br>${it.sub}` : ''}`)}">
+        <div class="pas-bar-label">${labelHtml}</div>
+        <div class="pas-bar-track pas-div-track">
+          <span class="pas-div-zero"></span>
+          <span class="pas-bar-fill" style="position:absolute;left:${leftPos.toFixed(1)}%;width:${Math.max(2, pct).toFixed(1)}%;background:${color}"></span>
+        </div>
+        <div class="pas-bar-val tabular ${isBad ? 'bad' : ''}">${val.toFixed(4)} ${esc(unit)}</div>
+      </div>`;
+    }).join('')}</div>`;
+
+    host.querySelectorAll('.pas-bar-row').forEach((row) => {
+      bindSvgTip(row, () => row.dataset.barTip);
+    });
+  }
+
   /* ==================== 4. 单设备 360° 全景右侧抽屉 ==================== */
   let _activeOverlay = null;
   function closeOverlay() {
@@ -704,6 +1023,11 @@
     openDeviceDrawer,
     openDiffModal,
     renderTrendChart,
+    renderSankey,
+    renderDonut,
+    renderGauge,
+    renderBarChart,
+    renderDivergingBar,
     createPoller,
     applyLegacyI18n,
     exportReport: () => window.open('/api/report/snapshot', '_blank'),

@@ -88,13 +88,14 @@
               <span class="se-pill ok tabular" id="ca-home-score">—</span>
             </div>
             <div class="se-home-panel-body">
+              <div id="ca-home-gauge"></div>
               <div class="se-kv-list" id="ca-kv-overview"></div>
               <div class="se-kv-divider"></div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0">
                 <strong style="font-size:12px" data-i18n="home.risk_dist">风险分级分布</strong>
                 <span class="se-tag tabular" id="ca-home-total-risks">0</span>
               </div>
-              <div class="se-kv-list" id="ca-kv-severity"></div>
+              <div id="ca-kv-severity"></div>
               <div class="se-home-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
                 <a class="se-btn mini primary" href="/ca-risks.html" data-i18n="nav.ca_risks">风险与图谱</a>
                 <a class="se-btn mini" href="/lf-main.html" id="ca-src-lf-link" data-i18n="home.view_source_lf">查看源 LF</a>
@@ -149,6 +150,7 @@
                   <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">安全评分</button>
                   <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险总数</button>
                   <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">最大负载 %</button>
+                  <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories">风险分类柱图</button>
                 </div>
               </div>
               <div class="se-home-panel-body" id="ca-home-trend"></div>

@@ -183,6 +183,56 @@
       ['最严重预想故障', ca?.worst_contingency || '—'],
     ]);
 
+    // 4. 多维可视化态势带：功率流向桑基图 + 风险分级环形饼图 + 模块耗时柱状图
+    if (window.PAS_KIT) {
+      const pu = lf?.p_unit || 'kW';
+      if ($('#ov-sankey-meta')) {
+        $('#ov-sankey-meta').textContent = lf ? `总发电 ${num(lf.total_gen_p, 1)} ${pu} · 网损率 ${num(lf.loss_rate, 2)}%` : '—';
+      }
+      window.PAS_KIT.renderSankey($('#ov-sankey'), {
+        leftNodes: [
+          { label: '交流发电', value: Number(lf?.ac_gen_p || 0), color: '#38bdf8' },
+          { label: '直流发电', value: Number(lf?.dc_gen_p || 0), color: '#22c55e' },
+        ],
+        midNode: { label: '交直流混合电网', color: 'var(--accent)' },
+        rightNodes: [
+          { label: '交流负荷', value: Number(lf?.ac_load_p || 0), color: '#6366f1' },
+          { label: '直流负荷', value: Number(lf?.dc_load_p || 0), color: '#14b8a6' },
+          { label: '交流网损', value: Number(lf?.ac_loss_p || 0), color: '#f59e0b' },
+          { label: '直流网损', value: Number(lf?.dc_loss_p || 0), color: '#ef4444' },
+        ],
+        unit: pu,
+        height: 136,
+      });
+
+      const riskTotal = (ca?.critical_count || 0) + (ca?.high_count || 0) + (ca?.medium_count || 0) + (ca?.low_count || 0);
+      if ($('#ov-viz-right-meta')) {
+        $('#ov-viz-right-meta').textContent = `风险总计 ${riskTotal} · 评分 ${ca ? num(ca.security_score, 1) : '—'}`;
+      }
+      window.PAS_KIT.renderDonut($('#ov-risk-donut'), {
+        slices: [
+          { label: '严重', value: ca?.critical_count || 0, color: '#ef4444' },
+          { label: '高危', value: ca?.high_count || 0, color: '#f97316' },
+          { label: '中等', value: ca?.medium_count || 0, color: '#f59e0b' },
+          { label: '低风险', value: ca?.low_count || 0, color: '#22c55e' },
+        ],
+        centerTitle: 'CA 风险',
+        centerValue: String(riskTotal),
+        size: 108,
+      });
+
+      const tm = d.diagnostics?.timing || {};
+      window.PAS_KIT.renderBarChart($('#ov-time-bars'), {
+        items: [
+          { label: '状态估计 SE', value: Number(tm.se_seconds || se?.elapsed_seconds || 0), color: '#38bdf8', sub: `SE #${se?.run_id ?? '—'}` },
+          { label: '潮流分析 LF', value: Number(tm.lf_seconds || lf?.elapsed_seconds || 0), color: '#22c55e', sub: `LF #${lf?.run_id ?? '—'}` },
+          { label: '静态安全 CA', value: Number(tm.ca_seconds || ca?.elapsed_seconds || 0), color: '#f59e0b', sub: `CA #${ca?.run_id ?? '—'}` },
+        ],
+        unit: 's',
+        digits: 2,
+      });
+    }
+
     // Chain banner
     const ch = d.chain;
     const banner = $('#ov-chain-banner');
