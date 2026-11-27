@@ -1254,12 +1254,52 @@
   }
 
   /**
+   * 将顶栏无损提升至 .app-shell 顶部全宽通栏，并将 .sidebar 与 <main> 归入下方 .pas-shell-body，
+   * 确保左侧栏无论悬浮或内嵌均严格位于顶栏之下、绝不遮挡或挤压顶栏。
+   */
+  function promoteTopbarAboveSidebar() {
+    const shell = document.querySelector('.app-shell');
+    if (!shell || shell.dataset.pasTopbarPromoted === '1') return shell?.querySelector(':scope > .se-topbar, :scope > .topbar') || null;
+    const sidebar = shell.querySelector(':scope > .sidebar');
+    const main = shell.querySelector(':scope > .main, :scope > main');
+    const topbar = main?.querySelector(':scope > .se-topbar, :scope > .topbar');
+    if (!sidebar || !main || !topbar) return topbar || null;
+
+    shell.dataset.pasTopbarPromoted = '1';
+    shell.classList.add('pas-topbar-first');
+
+    const bodyWrap = document.createElement('div');
+    bodyWrap.className = 'pas-shell-body';
+
+    // 将顶栏移至 .app-shell 最顶部，其余原有子节点（sidebar / resizer / main）整体归入下方 .pas-shell-body
+    const rest = Array.from(shell.children);
+    shell.insertBefore(topbar, shell.firstChild);
+    shell.appendChild(bodyWrap);
+    rest.forEach((child) => {
+      if (child !== topbar && child !== bodyWrap) bodyWrap.appendChild(child);
+    });
+
+    const syncTopbarHeight = () => {
+      const h = Math.round(topbar.getBoundingClientRect().height);
+      if (h > 0) document.documentElement.style.setProperty('--pas-topbar-h', `${h}px`);
+    };
+    syncTopbarHeight();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => requestAnimationFrame(syncTopbarHeight));
+      ro.observe(topbar);
+    }
+    window.addEventListener('resize', syncTopbarHeight);
+    return topbar;
+  }
+
+  /**
    * 左侧导航栏双模式控制器：
-   * - 悬浮模式（默认）：默认隐藏使主内容满屏，鼠标移至左边框附近悬浮滑出，离开自动隐藏，亦支持手动一键隐藏；
-   * - 内嵌模式：常规固定于左侧，支持一键隐藏使主内容满屏、点击左缘手柄重新展开，亦可一键切回悬浮。
+   * - 悬浮模式（默认）：默认隐藏使主内容满屏，鼠标移至顶栏下方左边框附近悬浮滑出，离开自动隐藏，亦支持手动一键隐藏；
+   * - 内嵌模式：固定于顶栏下方左侧，支持一键隐藏使主内容满屏、点击左缘手柄重新展开，亦可一键切回悬浮。
    */
   function initSidebarController() {
-    const sidebar = document.querySelector('.app-shell > .sidebar');
+    const topbar = promoteTopbarAboveSidebar();
+    const sidebar = document.querySelector('.app-shell .sidebar');
     if (!sidebar || sidebar.dataset.pasSbBound === '1') return;
     sidebar.dataset.pasSbBound = '1';
 
@@ -1421,15 +1461,18 @@
       if (isEffectiveFloat() && !sidebar.contains(e.relatedTarget)) scheduleHideFloat(160);
     });
 
+    const getTopbarBottom = () => (topbar ? Math.round(topbar.getBoundingClientRect().bottom) : 0);
+
     document.addEventListener('mousemove', (e) => {
       if (!isEffectiveFloat()) return;
-      if (e.clientX <= TRIGGER_X) {
+      const tbBottom = getTopbarBottom();
+      if (e.clientX <= TRIGGER_X && e.clientY >= tbBottom) {
         if (Date.now() >= suppressEdgeUntil) showFloat();
         return;
       }
       if (isPeeking) {
         const rect = sidebar.getBoundingClientRect();
-        if (e.clientX <= rect.right + 10) {
+        if (e.clientY >= tbBottom && e.clientX <= rect.right + 10) {
           cancelHide();
         } else if (!hideTimer) {
           scheduleHideFloat();

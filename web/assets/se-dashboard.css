@@ -3949,9 +3949,46 @@ body.pas-wall-mode .app-shell {
   grid-template-columns: 1fr !important;
 }
 
-/* ==================== 左侧导航栏双模式（悬浮 pas-sb-float / 内嵌 pas-sb-docked）与全模式隐藏 ==================== */
+/* ==================== 全宽通栏顶栏 + 顶栏下方双模式左栏（悬浮 pas-sb-float / 内嵌 pas-sb-docked） ==================== */
+.app-shell.pas-topbar-first {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-canvas);
+}
+.app-shell.pas-topbar-first > .se-topbar,
+.app-shell.pas-topbar-first > .topbar {
+  width: 100%;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 1090;
+}
+.app-shell.pas-topbar-first > .pas-shell-body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  overflow: hidden;
+}
+.app-shell.pas-topbar-first > .pas-shell-body > .main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+.app-shell.pas-topbar-first > .pas-shell-body > .sidebar {
+  height: 100%;
+  min-height: 0;
+}
+
 @media (min-width: 701px) {
-  html.pas-sb-managed .app-shell {
+  html.pas-sb-managed .app-shell:not(.pas-topbar-first) {
     display: flex;
     width: 100vw;
   }
@@ -3964,17 +4001,18 @@ body.pas-wall-mode .app-shell {
     min-width: 0;
   }
 
-  /* 1. 悬浮模式（及大屏投放态下的临时悬浮） */
+  /* 1. 悬浮模式（及大屏投放态下的临时悬浮）：严格位于顶栏之下 */
   html.pas-sb-float .sidebar,
   body.pas-wall-mode .sidebar {
     position: fixed !important;
-    top: 0;
+    top: var(--pas-topbar-h, 38px) !important;
     left: 0;
     bottom: 0;
+    height: calc(100vh - var(--pas-topbar-h, 38px)) !important;
     width: 224px !important;
     flex: none !important;
-    padding: 14px 10px !important;
-    z-index: 1080;
+    padding: 12px 10px 10px !important;
+    z-index: 1070;
     overflow: hidden !important;
     transform: translateX(-104%);
     opacity: 0;
@@ -3992,7 +4030,7 @@ body.pas-wall-mode .app-shell {
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
-    box-shadow: 10px 0 36px rgba(2, 6, 23, 0.34);
+    box-shadow: 10px 8px 34px rgba(2, 6, 23, 0.34);
   }
   html.pas-sb-float .main,
   body.pas-wall-mode .main {
@@ -4000,12 +4038,13 @@ body.pas-wall-mode .app-shell {
     flex: 1 1 100%;
   }
 
-  /* 2. 内嵌模式（可自由隐藏/展开，隐藏后主内容自动 100% 满屏） */
+  /* 2. 内嵌模式（位于顶栏下方 .pas-shell-body 内，隐藏/展开不影响顶栏） */
   html.pas-sb-docked:not(.pas-sb-wall) .sidebar {
     position: relative !important;
     width: 214px !important;
     flex: 0 0 214px !important;
-    padding: 14px 10px !important;
+    height: 100%;
+    padding: 12px 10px 10px !important;
     transform: none;
     opacity: 1;
     pointer-events: auto;
@@ -4065,10 +4104,10 @@ body.pas-wall-mode .app-shell {
   color: var(--sidebar-active-ink, var(--accent));
 }
 
-/* 左边缘触发热区（悬浮态划入展开 / 内嵌隐藏态点击展开） */
+/* 左边缘触发热区（仅位于顶栏之下：悬浮态划入展开 / 内嵌隐藏态点击展开） */
 .pas-edge-hotzone {
   position: fixed;
-  top: 0;
+  top: var(--pas-topbar-h, 38px);
   left: 0;
   bottom: 0;
   width: 14px;
