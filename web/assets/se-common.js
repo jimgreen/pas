@@ -237,6 +237,7 @@
   };
 
   const VALID_THEMES = (window.PAS_THEMES && window.PAS_THEMES.length) ? window.PAS_THEMES : [
+    'ethereal-aurora', 'celestial-mist',
     'minimalist-light', 'arctic-frost', 'warm-paper', 'slate-daylight', 'bento-grid', 'editorial',
     'precision-dark', 'ocean-slate', 'nord-dark', 'industrial-amber', 'glassmorphism',
     'sci-fi-cyan', 'sci-fi-purple', 'sci-fi-matrix',
@@ -245,8 +246,8 @@
   function createSECommon(pageDict, onLangChange) {
     let lang = localStorage.getItem('pas_se_lang') || localStorage.getItem('se_lang') || 'zh-CN';
     if (!BASE_I18N[lang]) lang = 'zh-CN';
-    let theme = localStorage.getItem('pas_se_theme') || localStorage.getItem('se_theme') || 'minimalist-light';
-    if (!VALID_THEMES.includes(theme)) theme = 'minimalist-light';
+    let theme = localStorage.getItem('pas_se_theme') || localStorage.getItem('se_theme') || 'ethereal-aurora';
+    if (!VALID_THEMES.includes(theme)) theme = 'ethereal-aurora';
     let noticeTimer = null;
 
     function t(key) {

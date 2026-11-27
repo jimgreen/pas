@@ -7,6 +7,14 @@
 
   const GROUPS = [
     {
+      id: 'ethereal',
+      label: { 'zh-CN': '仙气科幻', 'en-US': 'Ethereal Sci-Fi', 'ru-RU': 'Эфирный Sci-Fi' },
+      items: [
+        { id: 'ethereal-aurora', dark: true, label: { 'zh-CN': '极光仙境 · 琉璃夜', 'en-US': 'Ethereal Aurora', 'ru-RU': 'Эфирное сияние' } },
+        { id: 'celestial-mist', dark: false, label: { 'zh-CN': '云巅琉璃 · 晨雾白', 'en-US': 'Celestial Mist', 'ru-RU': 'Небесный туман' } },
+      ],
+    },
+    {
       id: 'light',
       label: { 'zh-CN': '浅色与护眼', 'en-US': 'Light & Eye-Care', 'ru-RU': 'Светлые темы' },
       items: [
@@ -20,7 +28,7 @@
     },
     {
       id: 'dark',
-      label: { 'zh-CN': '暗色工程', 'en-US': 'Dark Engineering', 'ru-RU': 'Темные инженерные' },
+      label: { 'zh-CN': '暗色柔和', 'en-US': 'Soft Dark', 'ru-RU': 'Мягкие темные' },
       items: [
         { id: 'precision-dark', dark: true, label: { 'zh-CN': '精密暗黑', 'en-US': 'Precision Dark', 'ru-RU': 'Точный темный' } },
         { id: 'ocean-slate', dark: true, label: { 'zh-CN': '深海工业蓝', 'en-US': 'Ocean Slate', 'ru-RU': 'Глубокий океан' } },
@@ -31,11 +39,11 @@
     },
     {
       id: 'scifi',
-      label: { 'zh-CN': '科幻战情室', 'en-US': 'Sci-Fi Console', 'ru-RU': 'Sci-Fi пульт' },
+      label: { 'zh-CN': '星穹幻彩', 'en-US': 'Astral Sci-Fi', 'ru-RU': 'Астральный Sci-Fi' },
       items: [
-        { id: 'sci-fi-cyan', dark: true, label: { 'zh-CN': '科幻 · 电光青', 'en-US': 'Sci-Fi Cyan', 'ru-RU': 'Неон циан' } },
-        { id: 'sci-fi-purple', dark: true, label: { 'zh-CN': '科幻 · 赛博紫', 'en-US': 'Sci-Fi Purple', 'ru-RU': 'Кибер фиолетовый' } },
-        { id: 'sci-fi-matrix', dark: true, label: { 'zh-CN': '科幻 · 矩阵绿', 'en-US': 'Sci-Fi Matrix', 'ru-RU': 'Матрица зеленый' } },
+        { id: 'sci-fi-cyan', dark: true, label: { 'zh-CN': '星穹 · 冰湖青', 'en-US': 'Astral Cyan', 'ru-RU': 'Астральный циан' } },
+        { id: 'sci-fi-purple', dark: true, label: { 'zh-CN': '星穹 · 紫雾澜', 'en-US': 'Astral Violet', 'ru-RU': 'Астральный фиолет' } },
+        { id: 'sci-fi-matrix', dark: true, label: { 'zh-CN': '星穹 · 翡翠光', 'en-US': 'Astral Jade', 'ru-RU': 'Астральный нефрит' } },
       ],
     },
   ];
@@ -49,8 +57,8 @@
   }
 
   function resolveTheme(candidate) {
-    const raw = candidate || localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'minimalist-light';
-    return VALID_IDS.includes(raw) ? raw : 'minimalist-light';
+    const raw = candidate || localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'ethereal-aurora';
+    return VALID_IDS.includes(raw) ? raw : 'ethereal-aurora';
   }
 
   function populateSelect(sel, lang) {

@@ -1457,6 +1457,9 @@
     return isWall ? '退出' : '大屏';
   }
 
+  const WALL_ICO_MAX = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+  const WALL_ICO_MIN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/></svg>';
+
   function setWallMode(enable, { syncFullscreen = true } = {}) {
     const active = Boolean(enable);
     document.body.classList.toggle('pas-wall-mode', active);
@@ -1466,9 +1469,10 @@
     const btn = document.getElementById('btn-wall-mode');
     if (btn) {
       btn.classList.toggle('active', active);
-      const lbl = btn.querySelector('.pas-wall-lbl');
-      if (lbl) lbl.textContent = wallBtnText(active);
-      else btn.textContent = wallBtnText(active);
+      const tip = `${wallBtnText(active)} (F)`;
+      btn.title = tip;
+      btn.setAttribute('aria-label', tip);
+      btn.innerHTML = `<span class="pas-btn-ico">${active ? WALL_ICO_MIN : WALL_ICO_MAX}</span>`;
     }
     if (syncFullscreen) {
       try {
@@ -1514,18 +1518,20 @@
       _wallClockTimer = setInterval(tick, 1000);
     }
 
-    // 2. 注入「大屏投放」按钮（支持 URL 参数 ?wall=1 直接进大屏态）
+    // 2. 注入「大屏投放」纯图标按钮（支持 URL 参数 ?wall=1 直接进大屏态）
     if (topActions && !document.getElementById('btn-wall-mode')) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.id = 'btn-wall-mode';
-      btn.className = 'se-chip-btn pas-wall-btn';
-      btn.title = '切换大屏投放模式 (快捷键 F)';
-      btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg><span class="pas-wall-lbl">${esc(wallBtnText(false))}</span>`;
+      btn.className = 'se-chip-btn pas-wall-btn pas-icon-only';
+      const tip = `${wallBtnText(false)} (F)`;
+      btn.title = tip;
+      btn.setAttribute('aria-label', tip);
+      btn.innerHTML = `<span class="pas-btn-ico">${WALL_ICO_MAX}</span>`;
       btn.addEventListener('click', () => setWallMode(!document.body.classList.contains('pas-wall-mode')));
-      const themeSel = document.getElementById('theme-select');
-      if (themeSel && themeSel.parentElement === topActions) {
-        topActions.insertBefore(btn, themeSel);
+      const prefsBtn = document.getElementById('pas-prefs-trigger');
+      if (prefsBtn && prefsBtn.parentElement === topActions) {
+        topActions.insertBefore(btn, prefsBtn);
       } else {
         topActions.appendChild(btn);
       }
@@ -1778,21 +1784,24 @@
     return _weatherFetchInFlight;
   }
 
+  const WX_SVG_SUN = '<svg class="pas-wx-ico-sun" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  const WX_SVG_WIND = '<svg class="pas-wx-ico-wind" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.7 7.7A2.5 2.5 0 1 1 19 12H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>';
+  const WX_SVG_TEMP = '<svg class="pas-wx-ico-temp" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0Z"/></svg>';
+
   function updateWeatherBadgeDOM(w) {
     const btn = document.getElementById('pas-weather-pill');
     if (!btn || !w) return;
     const tone = weatherAlertTone(w.alert_level);
     btn.className = `pas-weather-pill tone-${tone}`;
     const c = w.coupling || {};
-    const icon = weatherRegimeIcon(w.polar_regime, w.snow_icing_level);
     const tip = `${w.polar_regime_label || '南极工况'}（${w.alert_label || '—'}）· 吹雪/覆冰：${w.snow_icing_label || '—'}\n` +
+      `辐照 ${Math.round(Number(w.irradiance_wm2 || 0))} W/m² · 风速 ${Number(w.wind_speed_ms || 0).toFixed(1)} m/s · 气温 ${Number(w.ambient_temp_c ?? -18.5).toFixed(1)} ℃\n` +
       `理论风电：${c.wind_avail_kw ?? '—'}/${c.wind_rated_kw ?? '—'} kW (${c.wind_avail_pct ?? '—'}%) | 理论光伏：${c.pv_avail_kw ?? '—'}/${c.pv_rated_kw ?? '—'} kW (${c.pv_avail_pct ?? '—'}%)\n` +
       `极寒电池可用率：${c.storage_avail_pct ?? '—'}% | 负荷系数：×${w.load_factor ?? 1.0}\n点击设置/切换南极环境气象工况`;
     btn.title = tip;
     btn.innerHTML = `<span class="pas-w-dot ${tone}"></span>` +
-      `<span class="pas-w-ico">${icon}</span>` +
-      `<span class="pas-w-vals tabular">${Math.round(Number(w.irradiance_wm2 || 0))}W·${Number(w.wind_speed_ms || 0).toFixed(1)}m/s·${Number(w.ambient_temp_c ?? -18.5).toFixed(0)}℃</span>` +
-      `<span class="pas-w-extra tabular">风${Number(c.wind_avail_kw || 0).toFixed(0)}kW · 光${Number(c.pv_avail_kw || 0).toFixed(0)}kW</span>`;
+      `<span class="pas-w-vals tabular"><span class="pas-wx-seg">${WX_SVG_SUN}${Math.round(Number(w.irradiance_wm2 || 0))}</span><span class="pas-wx-seg">${WX_SVG_WIND}${Number(w.wind_speed_ms || 0).toFixed(1)}</span><span class="pas-wx-seg">${WX_SVG_TEMP}${Number(w.ambient_temp_c ?? -18.5).toFixed(0)}°</span></span>` +
+      `<span class="pas-w-extra tabular">${WX_SVG_WIND}${Number(c.wind_avail_kw || 0).toFixed(0)}kW · ${WX_SVG_SUN}${Number(c.pv_avail_kw || 0).toFixed(0)}kW</span>`;
   }
 
   function mountWeatherBadge() {
@@ -1984,12 +1993,12 @@
 
   /* ==================== 7.6 顶栏「外观与语言」紧凑整合弹出面板（全站 26 页统一生效） ==================== */
   const PREFS_SWATCHES = [
-    { id: 'minimalist-light', bg: '#f8fafc', fg: '#2563eb', zh: '极简明亮', en: 'Minimalist Light', ru: 'Светлый минимализм' },
-    { id: 'warm-paper', bg: '#f5efe6', fg: '#b45309', zh: '护眼暖纸', en: 'Warm Paper', ru: 'Теплая бумага' },
-    { id: 'precision-dark', bg: '#0f172a', fg: '#38bdf8', zh: '精密暗黑', en: 'Precision Dark', ru: 'Точный темный' },
-    { id: 'ocean-slate', bg: '#0b192c', fg: '#60a5fa', zh: '深海工业蓝', en: 'Ocean Slate', ru: 'Глубокий океан' },
-    { id: 'sci-fi-cyan', bg: '#04121d', fg: '#06b6d4', zh: '科幻 · 电光青', en: 'Sci-Fi Cyan', ru: 'Неон циан' },
-    { id: 'sci-fi-matrix', bg: '#04140a', fg: '#22c55e', zh: '科幻 · 矩阵绿', en: 'Sci-Fi Matrix', ru: 'Матрица зеленый' },
+    { id: 'ethereal-aurora', bg: '#070b1a', fg: '#67e8f9', zh: '极光仙境 · 琉璃夜', en: 'Ethereal Aurora', ru: 'Эфирное сияние' },
+    { id: 'celestial-mist', bg: '#f1f6fd', fg: '#8b5cf6', zh: '云巅琉璃 · 晨雾白', en: 'Celestial Mist', ru: 'Небесный туман' },
+    { id: 'sci-fi-cyan', bg: '#070e1e', fg: '#5eead4', zh: '星穹 · 冰湖青', en: 'Astral Cyan', ru: 'Астральный циан' },
+    { id: 'sci-fi-purple', bg: '#0d091d', fg: '#c4b5fd', zh: '星穹 · 紫雾澜', en: 'Astral Violet', ru: 'Астральный фиолет' },
+    { id: 'warm-paper', bg: '#f6f2e9', fg: '#15803d', zh: '护眼暖纸', en: 'Warm Paper', ru: 'Теплая бумага' },
+    { id: 'minimalist-light', bg: '#f6f9fd', fg: '#3b82f6', zh: '极简明亮', en: 'Minimalist Light', ru: 'Светлый минимализм' },
   ];
 
   const PREFS_I18N = {
@@ -2167,6 +2176,184 @@
     setTimeout(syncUI, 0);
   }
 
+  /* ==================== 7.7 全站高可读性线性矢量图标化增强（兼容三语与动态文案） ==================== */
+  const UI_ICONS = {
+    refresh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+    auto: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/><circle cx="12" cy="12" r="3"/></svg>',
+    pause: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+    play: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
+    zap: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    diff: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/><path d="M10 12h4"/></svg>',
+    download: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    funnel: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+    radar: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 20.5 8.5 17.5 19 6.5 19 3.5 8.5 12 2"/><circle cx="12" cy="12" r="2.2"/></svg>',
+    trend: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>',
+    shield: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    grid: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+    activity: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    gauge: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>',
+    alert: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    layers: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    clock: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>',
+    sparkle: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z"/></svg>',
+    terminal: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+  };
+
+  function pickSemanticIcon(text, key = '') {
+    const s = `${key} ${text}`.toLowerCase();
+    if (/清洗|meas_flow|漏斗|量测|clean/.test(s)) return UI_ICONS.funnel;
+    if (/雷达|radar|画像|质量|health/.test(s)) return UI_ICONS.radar;
+    if (/健康|安全|shield|defense|security|合格|score/.test(s)) return UI_ICONS.shield;
+    if (/矩阵|matrix|故障|contingenc|扫描|scan/.test(s)) return UI_ICONS.grid;
+    if (/趋势|curve|trend|历史|hist/.test(s)) return UI_ICONS.trend;
+    if (/能量|sankey|发电|power|流向|energy|hub|潮流|lf/.test(s)) return UI_ICONS.zap;
+    if (/电压|负载|load|volt|仪表|分布|v_dist/.test(s)) return UI_ICONS.gauge;
+    if (/坏|告警|风险|残差|alert|risk|bad|alarm|越限/.test(s)) return UI_ICONS.alert;
+    if (/冗余|收敛|redund|conv|拓扑|layers/.test(s)) return UI_ICONS.layers;
+    if (/耗时|迭代|time|elapsed|运行|clock|日志|log/.test(s)) return UI_ICONS.clock;
+    if (/排行|top|求解|指标|stat/.test(s)) return UI_ICONS.activity;
+    return UI_ICONS.sparkle;
+  }
+
+  function convertToIconButton(btn, iconResolver, extraTip = '') {
+    if (!btn || btn.dataset.pasIconBtnBound) return;
+    btn.dataset.pasIconBtnBound = '1';
+    btn.classList.add('pas-icon-only');
+
+    let syncing = false;
+    const apply = () => {
+      if (syncing) return;
+      syncing = true;
+      try {
+        const srEl = btn.querySelector(':scope > .pas-sr-lbl');
+        const rawText = (srEl ? srEl.textContent : btn.textContent || '').trim();
+        const i18nKey = btn.getAttribute('data-i18n') || (srEl && srEl.getAttribute('data-i18n')) || '';
+        const tip = rawText ? (extraTip ? `${rawText} (${extraTip})` : rawText) : (btn.title || extraTip);
+        if (tip) {
+          btn.title = tip;
+          btn.setAttribute('aria-label', tip);
+        }
+        const svgHtml = typeof iconResolver === 'function' ? iconResolver(rawText, btn) : iconResolver;
+        if (btn.hasAttribute('data-i18n')) btn.removeAttribute('data-i18n');
+        btn.innerHTML = `<span class="pas-btn-ico">${svgHtml}</span><span class="pas-sr-lbl"${i18nKey ? ` data-i18n="${esc(i18nKey)}"` : ''}>${esc(rawText)}</span>`;
+      } finally {
+        syncing = false;
+      }
+    };
+
+    apply();
+    const obs = new MutationObserver(() => {
+      if (!syncing && !btn.querySelector(':scope > .pas-btn-ico')) apply();
+      else if (!syncing) {
+        const srEl = btn.querySelector(':scope > .pas-sr-lbl');
+        const txt = (srEl ? srEl.textContent : '').trim();
+        if (txt) {
+          btn.title = extraTip ? `${txt} (${extraTip})` : txt;
+          btn.setAttribute('aria-label', btn.title);
+          if (typeof iconResolver === 'function') {
+            const icoSpan = btn.querySelector(':scope > .pas-btn-ico');
+            if (icoSpan) icoSpan.innerHTML = iconResolver(txt, btn);
+          }
+        }
+      }
+    });
+    obs.observe(btn, { childList: true, characterData: true, subtree: true });
+  }
+
+  function enhancePrimaryCtaIcon(btn) {
+    if (!btn || btn.dataset.pasCtaIconBound) return;
+    btn.dataset.pasCtaIconBound = '1';
+    let syncing = false;
+    const ensure = () => {
+      if (syncing || btn.querySelector(':scope > .pas-btn-ico')) return;
+      syncing = true;
+      try {
+        const txt = (btn.textContent || '').trim();
+        const i18nKey = btn.getAttribute('data-i18n') || '';
+        if (btn.hasAttribute('data-i18n')) btn.removeAttribute('data-i18n');
+        btn.innerHTML = `<span class="pas-btn-ico">${UI_ICONS.zap}</span><span${i18nKey ? ` data-i18n="${esc(i18nKey)}"` : ''}>${esc(txt)}</span>`;
+      } finally {
+        syncing = false;
+      }
+    };
+    ensure();
+    const obs = new MutationObserver(() => {
+      if (!syncing && !btn.querySelector(':scope > .pas-btn-ico')) ensure();
+    });
+    obs.observe(btn, { childList: true });
+  }
+
+  function decorateHeroTiles(strip) {
+    if (!strip) return;
+    strip.querySelectorAll('.pas-hero-tile').forEach((tile) => {
+      const lbl = tile.querySelector('.pas-hero-lbl');
+      if (!lbl || tile.querySelector('.pas-hero-ico')) return;
+      const svg = pickSemanticIcon(lbl.textContent || '');
+      const wrap = document.createElement('span');
+      wrap.className = 'pas-hero-lbl-wrap';
+      const ico = document.createElement('span');
+      ico.className = 'pas-hero-ico';
+      ico.innerHTML = svg;
+      lbl.parentNode.insertBefore(wrap, lbl);
+      wrap.appendChild(ico);
+      wrap.appendChild(lbl);
+    });
+  }
+
+  function enhanceVisualIcons() {
+    // 1. 顶栏低频/状态按钮转为纯线性图标按钮，释放横向空间并提升视觉识别
+    document.querySelectorAll('#btn-refresh, [data-action="refresh"]').forEach((b) => convertToIconButton(b, UI_ICONS.refresh, 'R'));
+    const autoBtn = document.getElementById('btn-auto-refresh');
+    if (autoBtn) convertToIconButton(autoBtn, UI_ICONS.auto);
+    const daemonBtn = document.getElementById('btn-home-toggle-daemon');
+    if (daemonBtn) {
+      convertToIconButton(daemonBtn, (txt) => (/恢复|继续|启动|resume|start|продолж/i.test(txt) ? UI_ICONS.play : UI_ICONS.pause));
+    }
+    const diffBtn = document.getElementById('btn-diff');
+    if (diffBtn) convertToIconButton(diffBtn, UI_ICONS.diff);
+    const exportBtn = document.getElementById('btn-export');
+    if (exportBtn) convertToIconButton(exportBtn, UI_ICONS.download);
+
+    // 2. 主执行按钮前置柔光闪电图标
+    document.querySelectorAll('#btn-home-start, #btn-run-lf, #btn-run-ca, #btn-run-chain, [data-action="run-all"]').forEach(enhancePrimaryCtaIcon);
+
+    // 3. 分栏面板标题前置柔光语义图标（同级包裹，不破坏 data-i18n）
+    document.querySelectorAll('.se-home-panel-head h2').forEach((h2) => {
+      if (h2.dataset.pasIcoBound) return;
+      h2.dataset.pasIcoBound = '1';
+      const svg = pickSemanticIcon(h2.textContent || '', h2.getAttribute('data-i18n') || '');
+      const wrap = document.createElement('span');
+      wrap.className = 'pas-head-title-wrap';
+      const ico = document.createElement('span');
+      ico.className = 'pas-panel-ico';
+      ico.innerHTML = svg;
+      h2.parentNode.insertBefore(wrap, h2);
+      wrap.appendChild(ico);
+      wrap.appendChild(h2);
+    });
+
+    // 4. 顶部 5 格英雄态势卡自动前置语义微图标（支持异步渲染重建）
+    document.querySelectorAll('.pas-hero-strip').forEach((strip) => {
+      decorateHeroTiles(strip);
+      if (!strip.dataset.pasHeroObs) {
+        strip.dataset.pasHeroObs = '1';
+        const obs = new MutationObserver(() => decorateHeroTiles(strip));
+        obs.observe(strip, { childList: true });
+      }
+    });
+
+    // 5. 底部运行状态条左侧「运行信息」文字替换为精致终端图标
+    document.querySelectorAll('.se-home-logbar .se-log-title, .se-home-logbar > strong').forEach((el) => {
+      if (el.dataset.pasLogIcoBound) return;
+      el.dataset.pasLogIcoBound = '1';
+      const txt = (el.textContent || '').trim();
+      el.title = txt || '运行信息';
+      el.setAttribute('aria-label', el.title);
+      if (el.hasAttribute('data-i18n')) el.removeAttribute('data-i18n');
+      el.innerHTML = `<span class="pas-ico" style="color:var(--accent)">${UI_ICONS.terminal}</span>`;
+    });
+  }
+
   function mountTopbarEnhancements() {
     // 1. 若旧运行管理页缺少 #lang-select，自动补充三语下拉
     const topActions = document.querySelector('.top-actions, .se-top-actions');
@@ -2211,6 +2398,7 @@
     renderSidebarTree();
     initWallMode();
     mountWeatherBadge();
+    enhanceVisualIcons();
     applyLegacyI18n(getLang());
   }
 

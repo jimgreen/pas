@@ -5,23 +5,105 @@
   display: none !important;
 }
 
+/* ==================== 旗舰仙气科幻双主题（极光仙境 / 云巅琉璃） ==================== */
+[data-theme="ethereal-aurora"] {
+  --bg-canvas: #070B1A;
+  --bg-surface: rgba(15, 24, 48, 0.68);
+  --bg-subtle: rgba(26, 40, 74, 0.56);
+  --table-stripe: rgba(19, 31, 60, 0.42);
+  --table-hover: rgba(103, 232, 249, 0.10);
+  --text-primary: #EEF6FF;
+  --text-secondary: #9BB4D6;
+  --accent: #67E8F9;
+  --accent-2: #B794F6;
+  --accent-hover: #A5F3FC;
+  --accent-soft: rgba(103, 232, 249, 0.14);
+  --border-color: rgba(165, 224, 255, 0.15);
+  --border: 1px solid rgba(165, 224, 255, 0.15);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 28px rgba(4, 9, 28, 0.42), inset 0 1px 0 rgba(224, 244, 255, 0.09);
+  --backdrop-blur: blur(14px) saturate(135%);
+  --font-heading: inherit;
+
+  --sem-ok: #5EEAD4;
+  --sem-ok-bg: rgba(94, 234, 212, 0.14);
+  --sem-warn: #FCD34D;
+  --sem-warn-bg: rgba(252, 211, 77, 0.14);
+  --sem-danger: #FDA4AF;
+  --sem-danger-bg: rgba(253, 164, 175, 0.16);
+  --danger: #FDA4AF;
+  --warning: #FCD34D;
+  --grid-line: rgba(165, 224, 255, 0.09);
+
+  --chart-se: #67E8F9;
+  --chart-meas: #C4B5FD;
+  --chart-ok: #5EEAD4;
+  --chart-bad: #FDA4AF;
+  --chart-grid: rgba(165, 224, 255, 0.09);
+  --svg-stage-bg: #080E22;
+  --svg-mg-bg: rgba(15, 24, 48, 0.88);
+  --svg-mg-stroke: rgba(165, 224, 255, 0.28);
+}
+
+[data-theme="celestial-mist"] {
+  --bg-canvas: #F1F6FD;
+  --bg-surface: rgba(255, 255, 255, 0.80);
+  --bg-subtle: rgba(235, 243, 254, 0.78);
+  --table-stripe: rgba(243, 248, 255, 0.65);
+  --table-hover: rgba(99, 102, 241, 0.08);
+  --text-primary: #14223A;
+  --text-secondary: #5B7194;
+  --accent: #3B82F6;
+  --accent-2: #8B5CF6;
+  --accent-hover: #2563EB;
+  --accent-soft: rgba(59, 130, 246, 0.11);
+  --border-color: rgba(147, 197, 253, 0.34);
+  --border: 1px solid rgba(147, 197, 253, 0.34);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 24px rgba(59, 110, 190, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --backdrop-blur: blur(14px) saturate(135%);
+  --font-heading: inherit;
+
+  --sem-ok: #14B8A6;
+  --sem-ok-bg: rgba(20, 184, 166, 0.12);
+  --sem-warn: #F59E0B;
+  --sem-warn-bg: rgba(245, 158, 11, 0.13);
+  --sem-danger: #F43F5E;
+  --sem-danger-bg: rgba(244, 63, 94, 0.11);
+  --danger: #F43F5E;
+  --warning: #F59E0B;
+  --grid-line: rgba(147, 197, 253, 0.24);
+
+  --chart-se: #3B82F6;
+  --chart-meas: #8B5CF6;
+  --chart-ok: #14B8A6;
+  --chart-bad: #F43F5E;
+  --chart-grid: rgba(147, 197, 253, 0.24);
+  --svg-stage-bg: #F5F9FF;
+  --svg-mg-bg: rgba(255, 255, 255, 0.92);
+  --svg-mg-stroke: rgba(147, 197, 253, 0.55);
+}
+
 [data-theme="minimalist-light"] {
-  --bg-canvas: #F8FAFC;
-  --bg-surface: #FFFFFF;
-  --bg-subtle: #F1F5F9;
-  --table-stripe: #F8FAFC;
+  --bg-canvas: #F6F9FD;
+  --bg-surface: rgba(255, 255, 255, 0.88);
+  --bg-subtle: rgba(241, 245, 252, 0.85);
+  --table-stripe: #F8FAFD;
   --table-hover: #EFF6FF;
   --text-primary: #0F172A;
   --text-secondary: #64748B;
-  --accent: #2563EB;
-  --accent-hover: #1D4ED8;
-  --accent-soft: rgba(37, 99, 235, 0.10);
-  --border-color: #E2E8F0;
-  --border: 1px solid #E2E8F0;
-  --radius-card: 6px;
-  --radius-btn: 5px;
-  --shadow-card: none;
-  --backdrop-blur: none;
+  --accent: #3B82F6;
+  --accent-2: #6366F1;
+  --accent-hover: #2563EB;
+  --accent-soft: rgba(59, 130, 246, 0.10);
+  --border-color: rgba(203, 213, 225, 0.65);
+  --border: 1px solid rgba(203, 213, 225, 0.65);
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --shadow-card: 0 4px 16px rgba(15, 23, 42, 0.04);
+  --backdrop-blur: blur(10px);
   --font-heading: inherit;
 
   --sem-ok: #0D9488;
@@ -201,120 +283,123 @@
 }
 
 [data-theme="sci-fi-cyan"] {
-  --bg-canvas: #040812;
-  --bg-surface: #081121;
-  --bg-subtle: #0D1B33;
-  --table-stripe: #0A162B;
-  --table-hover: #102444;
-  --text-primary: #E6F7FF;
-  --text-secondary: #7DA2C4;
-  --accent: #00E5FF;
-  --accent-hover: #38F2FF;
-  --accent-soft: rgba(0, 229, 255, 0.14);
-  --border-color: rgba(0, 229, 255, 0.22);
-  --border: 1px solid rgba(0, 229, 255, 0.22);
-  --radius-card: 4px;
-  --radius-btn: 3px;
-  --shadow-card: 0 0 0 1px rgba(0, 229, 255, 0.08);
-  --backdrop-blur: none;
+  --bg-canvas: #070E1E;
+  --bg-surface: rgba(13, 25, 48, 0.68);
+  --bg-subtle: rgba(21, 39, 71, 0.56);
+  --table-stripe: rgba(16, 31, 58, 0.42);
+  --table-hover: rgba(94, 234, 212, 0.10);
+  --text-primary: #EAF7FF;
+  --text-secondary: #8EB2D4;
+  --accent: #5EEAD4;
+  --accent-2: #60A5FA;
+  --accent-hover: #99F6E4;
+  --accent-soft: rgba(94, 234, 212, 0.14);
+  --border-color: rgba(125, 211, 252, 0.16);
+  --border: 1px solid rgba(125, 211, 252, 0.16);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 26px rgba(3, 10, 26, 0.40), inset 0 1px 0 rgba(186, 230, 253, 0.08);
+  --backdrop-blur: blur(14px) saturate(130%);
   --font-heading: inherit;
 
-  --sem-ok: #00E6A8;
-  --sem-ok-bg: rgba(0, 230, 168, 0.14);
-  --sem-warn: #FFB020;
-  --sem-warn-bg: rgba(255, 176, 32, 0.15);
-  --sem-danger: #FF4D6D;
-  --sem-danger-bg: rgba(255, 77, 109, 0.16);
-  --danger: #FF4D6D;
-  --warning: #FFB020;
-  --grid-line: rgba(0, 229, 255, 0.10);
+  --sem-ok: #5EEAD4;
+  --sem-ok-bg: rgba(94, 234, 212, 0.14);
+  --sem-warn: #FCD34D;
+  --sem-warn-bg: rgba(252, 211, 77, 0.14);
+  --sem-danger: #FDA4AF;
+  --sem-danger-bg: rgba(253, 164, 175, 0.15);
+  --danger: #FDA4AF;
+  --warning: #FCD34D;
+  --grid-line: rgba(125, 211, 252, 0.09);
 
-  --chart-se: #00E5FF;
-  --chart-meas: #FFB020;
-  --chart-ok: #00E6A8;
-  --chart-bad: #FF4D6D;
-  --chart-grid: rgba(0, 229, 255, 0.10);
-  --svg-stage-bg: #050C1A;
-  --svg-mg-bg: rgba(8, 17, 33, 0.92);
-  --svg-mg-stroke: rgba(0, 229, 255, 0.34);
+  --chart-se: #67E8F9;
+  --chart-meas: #FCD34D;
+  --chart-ok: #5EEAD4;
+  --chart-bad: #FDA4AF;
+  --chart-grid: rgba(125, 211, 252, 0.09);
+  --svg-stage-bg: #081224;
+  --svg-mg-bg: rgba(13, 25, 48, 0.88);
+  --svg-mg-stroke: rgba(125, 211, 252, 0.28);
 }
 
 [data-theme="sci-fi-purple"] {
-  --bg-canvas: #090614;
-  --bg-surface: #120C24;
-  --bg-subtle: #1C1336;
-  --table-stripe: #160F2B;
-  --table-hover: #231845;
-  --text-primary: #F3EEFF;
-  --text-secondary: #A695C9;
-  --accent: #C084FC;
-  --accent-hover: #D8B4FE;
-  --accent-soft: rgba(192, 132, 252, 0.16);
-  --border-color: rgba(192, 132, 252, 0.24);
-  --border: 1px solid rgba(192, 132, 252, 0.24);
-  --radius-card: 4px;
-  --radius-btn: 3px;
-  --shadow-card: 0 0 0 1px rgba(192, 132, 252, 0.09);
-  --backdrop-blur: none;
+  --bg-canvas: #0D091D;
+  --bg-surface: rgba(24, 17, 48, 0.68);
+  --bg-subtle: rgba(38, 27, 72, 0.56);
+  --table-stripe: rgba(30, 21, 58, 0.42);
+  --table-hover: rgba(196, 181, 253, 0.12);
+  --text-primary: #F5F1FF;
+  --text-secondary: #B4A3D8;
+  --accent: #C4B5FD;
+  --accent-2: #67E8F9;
+  --accent-hover: #DDD6FE;
+  --accent-soft: rgba(196, 181, 253, 0.16);
+  --border-color: rgba(196, 181, 253, 0.18);
+  --border: 1px solid rgba(196, 181, 253, 0.18);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 26px rgba(10, 5, 28, 0.42), inset 0 1px 0 rgba(233, 213, 255, 0.09);
+  --backdrop-blur: blur(14px) saturate(130%);
   --font-heading: inherit;
 
-  --sem-ok: #2DD4BF;
-  --sem-ok-bg: rgba(45, 212, 191, 0.15);
-  --sem-warn: #FBBF24;
-  --sem-warn-bg: rgba(251, 191, 36, 0.15);
-  --sem-danger: #FB7185;
-  --sem-danger-bg: rgba(251, 113, 133, 0.16);
-  --danger: #FB7185;
-  --warning: #FBBF24;
-  --grid-line: rgba(192, 132, 252, 0.10);
+  --sem-ok: #5EEAD4;
+  --sem-ok-bg: rgba(94, 234, 212, 0.15);
+  --sem-warn: #FCD34D;
+  --sem-warn-bg: rgba(252, 211, 77, 0.15);
+  --sem-danger: #FDA4AF;
+  --sem-danger-bg: rgba(253, 164, 175, 0.16);
+  --danger: #FDA4AF;
+  --warning: #FCD34D;
+  --grid-line: rgba(196, 181, 253, 0.10);
 
-  --chart-se: #C084FC;
-  --chart-meas: #FBBF24;
-  --chart-ok: #2DD4BF;
-  --chart-bad: #FB7185;
-  --chart-grid: rgba(192, 132, 252, 0.10);
-  --svg-stage-bg: #0B0719;
-  --svg-mg-bg: rgba(18, 12, 36, 0.92);
-  --svg-mg-stroke: rgba(192, 132, 252, 0.36);
+  --chart-se: #C4B5FD;
+  --chart-meas: #FCD34D;
+  --chart-ok: #5EEAD4;
+  --chart-bad: #FDA4AF;
+  --chart-grid: rgba(196, 181, 253, 0.10);
+  --svg-stage-bg: #0F0B22;
+  --svg-mg-bg: rgba(24, 17, 48, 0.88);
+  --svg-mg-stroke: rgba(196, 181, 253, 0.30);
 }
 
 [data-theme="sci-fi-matrix"] {
-  --bg-canvas: #040D08;
-  --bg-surface: #081810;
-  --bg-subtle: #0F261A;
-  --table-stripe: #0B1F15;
-  --table-hover: #133322;
-  --text-primary: #E2FBE9;
-  --text-secondary: #7EB396;
-  --accent: #00E676;
-  --accent-hover: #33F094;
-  --accent-soft: rgba(0, 230, 118, 0.15);
-  --border-color: rgba(0, 230, 118, 0.22);
-  --border: 1px solid rgba(0, 230, 118, 0.22);
-  --radius-card: 4px;
-  --radius-btn: 3px;
-  --shadow-card: 0 0 0 1px rgba(0, 230, 118, 0.08);
-  --backdrop-blur: none;
+  --bg-canvas: #071412;
+  --bg-surface: rgba(13, 32, 28, 0.68);
+  --bg-subtle: rgba(21, 48, 42, 0.56);
+  --table-stripe: rgba(17, 39, 34, 0.42);
+  --table-hover: rgba(110, 231, 183, 0.11);
+  --text-primary: #E8FBF4;
+  --text-secondary: #8BC0B0;
+  --accent: #6EE7B7;
+  --accent-2: #67E8F9;
+  --accent-hover: #A7F3D0;
+  --accent-soft: rgba(110, 231, 183, 0.15);
+  --border-color: rgba(110, 231, 183, 0.17);
+  --border: 1px solid rgba(110, 231, 183, 0.17);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 26px rgba(3, 16, 12, 0.40), inset 0 1px 0 rgba(167, 243, 208, 0.08);
+  --backdrop-blur: blur(14px) saturate(130%);
   --font-heading: inherit;
 
-  --sem-ok: #00E676;
-  --sem-ok-bg: rgba(0, 230, 118, 0.15);
-  --sem-warn: #FBBF24;
-  --sem-warn-bg: rgba(251, 191, 36, 0.15);
-  --sem-danger: #FF5C77;
-  --sem-danger-bg: rgba(255, 92, 119, 0.16);
-  --danger: #FF5C77;
-  --warning: #FBBF24;
-  --grid-line: rgba(0, 230, 118, 0.10);
+  --sem-ok: #6EE7B7;
+  --sem-ok-bg: rgba(110, 231, 183, 0.15);
+  --sem-warn: #FCD34D;
+  --sem-warn-bg: rgba(252, 211, 77, 0.15);
+  --sem-danger: #FDA4AF;
+  --sem-danger-bg: rgba(253, 164, 175, 0.16);
+  --danger: #FDA4AF;
+  --warning: #FCD34D;
+  --grid-line: rgba(110, 231, 183, 0.09);
 
-  --chart-se: #00E676;
-  --chart-meas: #FBBF24;
-  --chart-ok: #00E676;
-  --chart-bad: #FF5C77;
-  --chart-grid: rgba(0, 230, 118, 0.10);
-  --svg-stage-bg: #05110B;
-  --svg-mg-bg: rgba(8, 24, 16, 0.92);
-  --svg-mg-stroke: rgba(0, 230, 118, 0.34);
+  --chart-se: #6EE7B7;
+  --chart-meas: #FCD34D;
+  --chart-ok: #6EE7B7;
+  --chart-bad: #FDA4AF;
+  --chart-grid: rgba(110, 231, 183, 0.09);
+  --svg-stage-bg: #091916;
+  --svg-mg-bg: rgba(13, 32, 28, 0.88);
+  --svg-mg-stroke: rgba(110, 231, 183, 0.28);
 }
 
 [data-theme="arctic-frost"] {
@@ -569,30 +654,59 @@
   --danger-soft: var(--sem-danger-bg, rgba(220, 38, 38, 0.12));
 }
 
-/* 科幻/暗色工程微弱栅格底纹 */
+/* 全站极光星雾 / 晨雾弥散氛围背景（彻底取代硬朗机械网格线） */
+[data-theme="ethereal-aurora"] .se-main,
+[data-theme="ethereal-aurora"] .main {
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(ellipse 68% 48% at 14% 4%, rgba(103, 232, 249, 0.13) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 52% at 86% 12%, rgba(183, 148, 246, 0.14) 0%, transparent 64%),
+    radial-gradient(ellipse 54% 44% at 52% 96%, rgba(94, 234, 212, 0.09) 0%, transparent 62%);
+}
+[data-theme="celestial-mist"] .se-main,
+[data-theme="celestial-mist"] .main {
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(ellipse 64% 46% at 10% 4%, rgba(125, 211, 252, 0.24) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 48% at 90% 10%, rgba(196, 181, 253, 0.20) 0%, transparent 64%),
+    radial-gradient(ellipse 52% 42% at 50% 98%, rgba(153, 246, 228, 0.18) 0%, transparent 60%);
+}
 [data-theme="sci-fi-cyan"] .se-main,
 [data-theme="sci-fi-cyan"] .main {
-  background-image: linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(ellipse 64% 46% at 16% 6%, rgba(94, 234, 212, 0.12) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 50% at 84% 14%, rgba(96, 165, 250, 0.12) 0%, transparent 64%),
+    radial-gradient(ellipse 52% 40% at 48% 96%, rgba(167, 139, 250, 0.08) 0%, transparent 60%);
 }
 [data-theme="sci-fi-purple"] .se-main,
 [data-theme="sci-fi-purple"] .main {
-  background-image: linear-gradient(rgba(192, 132, 252, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(192, 132, 252, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(ellipse 64% 48% at 18% 8%, rgba(196, 181, 253, 0.14) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 48% at 86% 16%, rgba(103, 232, 249, 0.10) 0%, transparent 64%),
+    radial-gradient(ellipse 52% 40% at 50% 96%, rgba(244, 114, 182, 0.07) 0%, transparent 60%);
 }
 [data-theme="sci-fi-matrix"] .se-main,
 [data-theme="sci-fi-matrix"] .main {
-  background-image: linear-gradient(rgba(0, 230, 118, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 230, 118, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(ellipse 64% 48% at 16% 8%, rgba(110, 231, 183, 0.12) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 48% at 86% 14%, rgba(103, 232, 249, 0.09) 0%, transparent 64%);
 }
-[data-theme="glassmorphism"] .se-card,
-[data-theme="glassmorphism"] .se-topo-stage-card,
-[data-theme="glassmorphism"] .se-side-card,
-[data-theme="glassmorphism"] .se-topbar,
-[data-theme="glassmorphism"] .card,
-[data-theme="glassmorphism"] .topbar {
-  backdrop-filter: var(--backdrop-blur);
+:is([data-theme="minimalist-light"], [data-theme="arctic-frost"], [data-theme="bento-grid"], [data-theme="slate-daylight"]) .se-main,
+:is([data-theme="minimalist-light"], [data-theme="arctic-frost"], [data-theme="bento-grid"], [data-theme="slate-daylight"]) .main {
+  background-image:
+    radial-gradient(ellipse 60% 42% at 12% 0%, rgba(147, 197, 253, 0.14) 0%, transparent 60%),
+    radial-gradient(ellipse 54% 42% at 88% 8%, rgba(196, 181, 253, 0.11) 0%, transparent 60%);
 }
+:is([data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"]) .se-main,
+:is([data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"]) .main {
+  background-image:
+    radial-gradient(ellipse 62% 44% at 14% 4%, rgba(56, 189, 248, 0.09) 0%, transparent 60%),
+    radial-gradient(ellipse 56% 44% at 88% 12%, rgba(167, 139, 250, 0.08) 0%, transparent 60%);
+}
+[data-theme="ethereal-aurora"],
 [data-theme="precision-dark"],
 [data-theme="ocean-slate"],
 [data-theme="nord-dark"],
@@ -605,6 +719,7 @@
   accent-color: var(--accent);
 }
 
+[data-theme="celestial-mist"],
 [data-theme="minimalist-light"],
 [data-theme="arctic-frost"],
 [data-theme="warm-paper"],
@@ -622,6 +737,7 @@
   color: var(--text-primary);
 }
 
+[data-theme="ethereal-aurora"] .se-btn.primary,
 [data-theme="precision-dark"] .se-btn.primary,
 [data-theme="ocean-slate"] .se-btn.primary,
 [data-theme="nord-dark"] .se-btn.primary,
@@ -630,6 +746,7 @@
 [data-theme="sci-fi-cyan"] .se-btn.primary,
 [data-theme="sci-fi-purple"] .se-btn.primary,
 [data-theme="sci-fi-matrix"] .se-btn.primary,
+[data-theme="ethereal-aurora"] .primary,
 [data-theme="precision-dark"] .primary,
 [data-theme="ocean-slate"] .primary,
 [data-theme="nord-dark"] .primary,
@@ -1118,24 +1235,24 @@ body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
   animation: se-bad-box-flash 1.15s ease-in-out infinite;
 }
 
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-mg-bg.is-bad {
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-mg-bg.is-bad {
   fill: rgba(127, 29, 29, 0.88);
   stroke: var(--sem-danger);
 }
 
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas > svg {
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas > svg {
   background: var(--svg-stage-bg);
 }
 
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[width="100%"],
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#fff" i],
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#ffffff" i],
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#f8fafc" i],
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="white" i] {
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[width="100%"],
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#fff" i],
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#ffffff" i],
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="#f8fafc" i],
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas rect[fill="white" i] {
   fill: var(--svg-stage-bg) !important;
 }
 
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas text {
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas text {
   fill: var(--text-primary) !important;
   stroke: rgba(8, 15, 30, 0.90) !important;
 }
@@ -1159,8 +1276,8 @@ body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
   animation: se-bad-text-flash 1.15s ease-in-out infinite;
 }
 
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-bad-meas-text,
-:is([data-theme="precision-dark"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-bad-meas-text tspan {
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-bad-meas-text,
+:is([data-theme="ethereal-aurora"], [data-theme="precision-dark"], [data-theme="ocean-slate"], [data-theme="nord-dark"], [data-theme="industrial-amber"], [data-theme="glassmorphism"], [data-theme="sci-fi-cyan"], [data-theme="sci-fi-purple"], [data-theme="sci-fi-matrix"]) .se-svg-canvas .se-bad-meas-text tspan {
   fill: #FDA4AF !important;
 }
 
@@ -2664,17 +2781,25 @@ body.se-splitting-h {
   --sidebar-bg: rgba(15, 23, 42, 0.86); --sidebar-border: rgba(148, 163, 184, 0.22); --sidebar-brand: #F8FAFC;
   --sidebar-ink: #CBD5E1; --sidebar-muted: #94A3B8; --sidebar-active-bg: rgba(99, 102, 241, 0.26); --sidebar-active-ink: #A5B4FC;
 }
+[data-theme="ethereal-aurora"] {
+  --sidebar-bg: rgba(9, 15, 34, 0.84); --sidebar-border: rgba(165, 224, 255, 0.16); --sidebar-brand: #EEF6FF;
+  --sidebar-ink: #C9DEF5; --sidebar-muted: #7C99BF; --sidebar-active-bg: rgba(103, 232, 249, 0.15); --sidebar-active-ink: #67E8F9;
+}
+[data-theme="celestial-mist"] {
+  --sidebar-bg: rgba(246, 250, 255, 0.88); --sidebar-border: rgba(147, 197, 253, 0.34); --sidebar-brand: #14223A;
+  --sidebar-ink: #334E73; --sidebar-muted: #6B82A4; --sidebar-active-bg: rgba(59, 130, 246, 0.12); --sidebar-active-ink: #3B82F6;
+}
 [data-theme="sci-fi-cyan"] {
-  --sidebar-bg: #030A14; --sidebar-border: rgba(0, 240, 255, 0.24); --sidebar-brand: #E0FCFF;
-  --sidebar-ink: #99E6F2; --sidebar-muted: #4D8B99; --sidebar-active-bg: rgba(0, 240, 255, 0.16); --sidebar-active-ink: #00F0FF;
+  --sidebar-bg: rgba(8, 17, 34, 0.86); --sidebar-border: rgba(125, 211, 252, 0.18); --sidebar-brand: #EAF7FF;
+  --sidebar-ink: #BEE3F8; --sidebar-muted: #6C93B6; --sidebar-active-bg: rgba(94, 234, 212, 0.15); --sidebar-active-ink: #5EEAD4;
 }
 [data-theme="sci-fi-purple"] {
-  --sidebar-bg: #0A0614; --sidebar-border: rgba(192, 132, 252, 0.26); --sidebar-brand: #F5F3FF;
-  --sidebar-ink: #DDD6FE; --sidebar-muted: #8B7AA8; --sidebar-active-bg: rgba(192, 132, 252, 0.18); --sidebar-active-ink: #C084FC;
+  --sidebar-bg: rgba(16, 11, 34, 0.86); --sidebar-border: rgba(196, 181, 253, 0.18); --sidebar-brand: #F5F1FF;
+  --sidebar-ink: #DDD6FE; --sidebar-muted: #9A88BE; --sidebar-active-bg: rgba(196, 181, 253, 0.16); --sidebar-active-ink: #C4B5FD;
 }
 [data-theme="sci-fi-matrix"] {
-  --sidebar-bg: #030D06; --sidebar-border: rgba(34, 197, 94, 0.28); --sidebar-brand: #DCFCE7;
-  --sidebar-ink: #86EFAC; --sidebar-muted: #4A855F; --sidebar-active-bg: rgba(34, 197, 94, 0.18); --sidebar-active-ink: #22C55E;
+  --sidebar-bg: rgba(8, 22, 19, 0.86); --sidebar-border: rgba(110, 231, 183, 0.18); --sidebar-brand: #E8FBF4;
+  --sidebar-ink: #A7F3D0; --sidebar-muted: #69A28F; --sidebar-active-bg: rgba(110, 231, 183, 0.15); --sidebar-active-ink: #6EE7B7;
 }
 
 [data-theme] .sidebar {
@@ -4714,6 +4839,7 @@ body.pas-wall-mode .pas-w-extra {
   background: var(--accent);
   color: #ffffff;
 }
+[data-theme="ethereal-aurora"] .pas-prefs-seg-btn.active,
 [data-theme="precision-dark"] .pas-prefs-seg-btn.active,
 [data-theme="ocean-slate"] .pas-prefs-seg-btn.active,
 [data-theme="nord-dark"] .pas-prefs-seg-btn.active,
@@ -4758,6 +4884,253 @@ body.pas-wall-mode .pas-w-extra {
 .pas-prefs-hidden-slot {
   display: none !important;
 }
+
+/* ==================== 全站「仙气 · 柔和科幻」轻琉璃质感与精细线性图标层 ==================== */
+[data-theme] .se-topbar,
+[data-theme] .topbar {
+  backdrop-filter: blur(14px) saturate(130%);
+  box-shadow: 0 4px 20px rgba(4, 12, 32, 0.08);
+}
+[data-theme] .sidebar {
+  backdrop-filter: blur(18px) saturate(135%);
+}
+[data-theme] .se-home-panel,
+[data-theme] .se-card,
+[data-theme] .card,
+[data-theme] .ov-stage-card,
+[data-theme] .se-topo-stage-card,
+[data-theme] .se-side-card,
+[data-theme] .pas-hero-tile,
+[data-theme] .se-home-logbar,
+[data-theme] .pas-prefs-popover,
+[data-theme] .pas-diff-modal {
+  backdrop-filter: var(--backdrop-blur, blur(12px));
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease, background 0.22s ease;
+}
+
+/* 去除生硬工业彩条（border-top: 2px / border-left: 3px），替换为柔和渐隐星光丝线 */
+[data-theme] .se-home-panel {
+  position: relative;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+[data-theme] .se-home-panel.accent-meas,
+[data-theme] .se-home-panel.accent-ctrl,
+[data-theme] .se-home-panel.accent-stat {
+  border-top: var(--border);
+}
+[data-theme] .se-home-panel::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 36%, var(--accent-2, var(--accent)) 68%, transparent 100%);
+  opacity: 0.46;
+  pointer-events: none;
+  z-index: 2;
+}
+[data-theme] .se-home-panel.accent-meas::before {
+  background: linear-gradient(90deg, transparent 0%, var(--sem-danger) 42%, var(--accent-2, var(--accent)) 72%, transparent 100%);
+}
+[data-theme] .se-home-panel.accent-ctrl::before {
+  background: linear-gradient(90deg, transparent 0%, var(--sem-ok) 40%, var(--accent) 72%, transparent 100%);
+}
+[data-theme] .se-home-panel-head {
+  background: linear-gradient(180deg, var(--bg-subtle) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px 11px;
+}
+
+/* 顶部 5 格英雄态势卡：去硬左条，改轻琉璃悬浮 + 柔和微光丝线 */
+[data-theme] .pas-hero-tile {
+  border: var(--border);
+  border-left: var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 6px 11px;
+}
+[data-theme] .pas-hero-tile::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.52;
+  pointer-events: none;
+}
+[data-theme] .pas-hero-tile.tone-ok::after { background: linear-gradient(90deg, transparent, var(--sem-ok), transparent); }
+[data-theme] .pas-hero-tile.tone-warn::after { background: linear-gradient(90deg, transparent, var(--sem-warn), transparent); }
+[data-theme] .pas-hero-tile.tone-bad::after { background: linear-gradient(90deg, transparent, var(--sem-danger), transparent); }
+[data-theme] .pas-hero-tile:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+[data-theme] .pas-hero-meter {
+  height: 3.5px;
+  background: rgba(148, 163, 184, 0.16);
+}
+[data-theme] .pas-hero-meter > i {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+[data-theme] .pas-hero-tile.tone-ok .pas-hero-meter > i {
+  background: linear-gradient(90deg, var(--sem-ok), var(--accent));
+}
+[data-theme] .pas-hero-tile.tone-warn .pas-hero-meter > i {
+  background: linear-gradient(90deg, var(--sem-warn), #FB923C);
+}
+[data-theme] .pas-hero-tile.tone-bad .pas-hero-meter > i {
+  background: linear-gradient(90deg, var(--sem-danger), #F472B6);
+}
+
+/* 按钮与芯片柔化：柔和极光星云渐变主按钮 + 轻琉璃次按钮 */
+[data-theme] .se-btn,
+[data-theme] .se-chip-btn,
+[data-theme] .pas-kbd-btn,
+[data-theme] .pas-weather-pill {
+  border-radius: var(--radius-btn);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.16s ease;
+}
+[data-theme] .se-btn.primary,
+[data-theme] .top-actions button.primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2, var(--accent-hover)) 100%);
+  border-color: transparent;
+  box-shadow: 0 3px 12px var(--accent-soft);
+}
+[data-theme] .se-btn.primary:hover:not(:disabled),
+[data-theme] .top-actions button.primary:hover:not(:disabled) {
+  filter: brightness(1.07);
+  box-shadow: 0 5px 16px var(--accent-soft);
+}
+[data-theme] .se-chip-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-soft);
+}
+[data-theme] .se-home-logbar {
+  border-radius: var(--radius-card);
+  border: var(--border);
+  box-shadow: var(--shadow-card);
+}
+[data-theme] .se-brand-mark,
+[data-theme] .sidebar .brand-mark {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2, var(--accent-hover)) 100%);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px var(--accent-soft);
+}
+
+/* 精细线性矢量图标体系（以图标替代冗余文字） */
+.pas-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.pas-title-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.pas-panel-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.se-home-panel.accent-meas .pas-panel-ico { background: var(--sem-danger-bg); color: var(--sem-danger); }
+.se-home-panel.accent-ctrl .pas-panel-ico { background: var(--sem-ok-bg); color: var(--sem-ok); }
+.se-home-panel-head .pas-head-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.pas-hero-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+  opacity: 0.9;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.pas-hero-tile.tone-ok .pas-hero-ico { color: var(--sem-ok); }
+.pas-hero-tile.tone-warn .pas-hero-ico { color: var(--sem-warn); }
+.pas-hero-tile.tone-bad .pas-hero-ico { color: var(--sem-danger); }
+.pas-hero-lbl-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 顶栏纯图标按钮（隐藏冗余文字，保留完整 data-i18n 与三语悬停提示） */
+.pas-icon-only {
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 25px !important;
+  min-height: 25px !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  gap: 0 !important;
+}
+.top-actions .pas-icon-only {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+}
+.pas-icon-only .pas-sr-lbl {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.pas-btn-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* 气象胶囊内精细三色线性天气图标 */
+.pas-wx-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.pas-wx-seg + .pas-wx-seg {
+  margin-left: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--border-color);
+}
+.pas-wx-ico-sun { color: var(--sem-warn); }
+.pas-wx-ico-wind { color: var(--accent); }
+.pas-wx-ico-temp { color: var(--accent-2, #A78BFA); }
 
 @media (max-width: 720px) {
   .pas-w-presets,
