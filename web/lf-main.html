@@ -10,7 +10,7 @@
   <script src="/assets/theme-registry.js"></script>
   <script src="/assets/pas-kit.js"></script>
 </head>
-<body data-page="/lf-main" data-lf-view="home" class="se-main-body">
+<body data-page="/lf-main" data-lf-view="home" data-wall-ready="1" class="se-main-body">
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -81,84 +81,117 @@
       <div id="notice" class="notice" role="status" hidden></div>
 
       <div class="se-workspace" style="padding:8px 12px 10px">
-        <div class="se-home-grid" id="lf-home-grid">
-          <!-- 左栏：SE 源断面 + 交直流功率平衡与网损 -->
-          <section class="se-home-panel">
-            <div class="se-home-panel-head">
-              <h2 data-i18n="home.power_title">功率平衡与基态</h2>
-              <a class="se-more-link" style="margin:0" href="/lf-flow.html" data-i18n="nav.lf_flow">潮流图 →</a>
-            </div>
-            <div class="se-home-panel-body">
-              <div class="se-kv-list" id="lf-home-power-kv"></div>
-              <div class="se-kv-divider"></div>
-              <div class="se-kv-list" id="lf-home-acdc-kv"></div>
-              <div class="se-kv-divider"></div>
-              <div style="font-size:11.5px;font-weight:600;color:var(--text-secondary);margin:2px 0 4px">交直流能量流（桑基图）</div>
-              <div id="lf-home-sankey"></div>
-            </div>
-          </section>
+        <div class="pas-screen-shell">
+          <!-- 顶部大屏态势英雄带 -->
+          <section class="pas-hero-strip" id="lf-hero-strip" aria-label="LF Key Metrics"></section>
 
-          <div class="se-splitter is-v" data-split="v1" role="separator"></div>
-
-          <!-- 中栏：运行控制与收敛参数 -->
-          <section class="se-home-panel">
-            <div class="se-home-panel-head">
-              <h2 data-i18n="home.ctrl_title">运行控制与极值</h2>
-              <a class="se-more-link" style="margin:0" href="/lf-params.html" data-i18n="link.more">更多…</a>
-            </div>
-            <div class="se-home-panel-body">
-              <div class="se-kv-list" id="lf-home-ctrl-kv"></div>
-              <div class="se-kv-divider"></div>
-              <div class="se-kv-list" id="lf-home-extreme-kv"></div>
-            </div>
-          </section>
-
-          <div class="se-splitter is-v" data-split="v2" role="separator"></div>
-
-          <!-- 右栏：趋势曲线 + 下方重载与电压极值双卡 + 底部最新日志 -->
-          <div class="se-home-right">
-            <section class="se-home-panel">
-              <div class="se-home-rate-bar">
-                <div class="se-home-rate-items" id="lf-home-rate-items"></div>
-                <div class="se-tool-group" id="lf-home-chart-seg">
-                  <button type="button" class="se-chip-btn seg active" data-hmetric="loss_rate" data-i18n="metric.loss_rate">网损率 %</button>
-                  <button type="button" class="se-chip-btn seg" data-hmetric="max_loading_pct" data-i18n="metric.max_load">最大负载 %</button>
-                  <button type="button" class="se-chip-btn seg" data-hmetric="total_load_p" data-i18n="metric.total_load">总负荷</button>
-                </div>
+          <!-- 核心三栏画布 -->
+          <div class="se-home-grid" id="lf-home-grid">
+            <!-- 左栏：动态光流交直流桑基图 + 源荷结构 + 换流器工况 -->
+            <section class="se-home-panel accent-stat">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="home.energy_hub">交直流能量流中枢</h2>
+                <a class="se-more-link" style="margin:0" href="/lf-flow.html" data-i18n="nav.lf_flow">潮流图 →</a>
               </div>
-              <div class="se-home-chart-wrap">
-                <div class="se-home-chart-host" id="lf-home-chart"></div>
+              <div class="se-home-panel-body">
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.sankey_sub">交直流能量流（动态桑基）</span>
+                  <span class="se-muted tabular" id="lf-sankey-meta">—</span>
+                </div>
+                <div id="lf-home-sankey"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.acdc_mix">交直流源荷结构</span>
+                  <span class="se-muted tabular" id="lf-mix-meta">—</span>
+                </div>
+                <div id="lf-home-mix-donut"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.converters">互联换流器 / 分域工况</span>
+                  <a class="se-more-link" style="margin:0;padding:0" href="/lf-results.html?kind=branches" data-i18n="link.more">更多…</a>
+                </div>
+                <div id="lf-home-converters"></div>
               </div>
             </section>
 
-            <div class="se-splitter is-h" data-split="h1" role="separator"></div>
+            <div class="se-splitter is-v" data-split="v1" role="separator"></div>
 
-            <div class="se-home-bottom-cards">
-              <section class="se-home-panel">
-                <div class="se-home-panel-head">
-                  <h2 data-i18n="home.top_load">重过载排行</h2>
-                  <a class="se-more-link" style="margin:0" href="/lf-results.html?kind=branches" data-i18n="link.more">更多…</a>
+            <!-- 中栏：电压/负载双直方图体检 + 求解基态与方式 -->
+            <section class="se-home-panel accent-ctrl">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="home.grid_health">全网电压与负载分布</h2>
+                <a class="se-more-link" style="margin:0" href="/lf-params.html" data-i18n="nav.lf_params">方式…</a>
+              </div>
+              <div class="se-home-panel-body">
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.v_dist">母线电压区间分布 (pu)</span>
+                  <span class="se-muted tabular" id="lf-vdist-meta">—</span>
                 </div>
-                <div class="se-home-panel-body" id="lf-home-top-load"></div>
+                <div id="lf-home-vbins"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.l_dist">支路负载率区间分布 (%)</span>
+                  <span class="se-muted tabular" id="lf-ldist-meta">—</span>
+                </div>
+                <div id="lf-home-lbins"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.base_state">求解基态与方式</span>
+                  <span id="lf-se-src-link"></span>
+                </div>
+                <div class="pas-chip-grid" id="lf-home-base-chips"></div>
+              </div>
+            </section>
+
+            <div class="se-splitter is-v" data-split="v2" role="separator"></div>
+
+            <!-- 右栏：多指标趋势曲线 + 下方重过载与电压偏差双卡 -->
+            <div class="se-home-right">
+              <section class="se-home-panel accent-stat">
+                <div class="se-home-rate-bar">
+                  <div class="se-home-rate-items" id="lf-home-rate-items"></div>
+                  <div class="se-tool-group" id="lf-home-chart-seg">
+                    <button type="button" class="se-chip-btn seg active" data-hmetric="loss_rate" data-i18n="metric.loss_rate">网损率 %</button>
+                    <button type="button" class="se-chip-btn seg" data-hmetric="max_loading_pct" data-i18n="metric.max_load">最大负载 %</button>
+                    <button type="button" class="se-chip-btn seg" data-hmetric="total_load_p" data-i18n="metric.total_load">总负荷</button>
+                    <button type="button" class="se-chip-btn seg" data-hmetric="min_v_pu" data-i18n="metric.min_v">最低电压 pu</button>
+                  </div>
+                </div>
+                <div class="se-home-chart-wrap">
+                  <div class="se-home-chart-host" id="lf-home-chart"></div>
+                </div>
               </section>
 
-              <div class="se-splitter is-v" data-split="v3" role="separator"></div>
+              <div class="se-splitter is-h" data-split="h1" role="separator"></div>
 
-              <section class="se-home-panel">
-                <div class="se-home-panel-head">
-                  <h2 data-i18n="home.v_extremes">电压偏差与越限</h2>
-                  <a class="se-more-link" style="margin:0" href="/lf-results.html?kind=buses" data-i18n="link.more">更多…</a>
-                </div>
-                <div class="se-home-panel-body" id="lf-home-v-extremes"></div>
-              </section>
+              <div class="se-home-bottom-cards">
+                <section class="se-home-panel accent-meas">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="home.top_load">重过载排行</h2>
+                    <a class="se-more-link" style="margin:0" href="/lf-results.html?kind=branches" data-i18n="link.more">更多…</a>
+                  </div>
+                  <div class="se-home-panel-body" id="lf-home-top-load"></div>
+                </section>
+
+                <div class="se-splitter is-v" data-split="v3" role="separator"></div>
+
+                <section class="se-home-panel accent-stat">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="home.v_extremes">电压偏差与越限</h2>
+                    <a class="se-more-link" style="margin:0" href="/lf-results.html?kind=buses" data-i18n="link.more">更多…</a>
+                  </div>
+                  <div class="se-home-panel-body" id="lf-home-v-extremes"></div>
+                </section>
+              </div>
             </div>
-
-            <a class="se-home-footer" id="lf-home-footer-log" href="/lf-logs.html">
-              <span class="tag" id="lf-log-tag">INFO</span>
-              <span class="msg" id="lf-log-msg">—</span>
-              <span class="se-muted tabular" id="lf-log-time">—</span>
-            </a>
           </div>
+
+          <!-- 底部通栏：最新 LF 运行日志 -->
+          <a class="se-home-footer" id="lf-home-footer-log" href="/lf-logs.html">
+            <span class="tag" id="lf-log-tag">INFO</span>
+            <span class="se-muted tabular" id="lf-log-time">—</span>
+            <span class="msg" id="lf-log-msg">—</span>
+          </a>
         </div>
       </div>
     </main>

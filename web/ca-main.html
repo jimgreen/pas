@@ -10,7 +10,7 @@
   <script src="/assets/theme-registry.js"></script>
   <script src="/assets/pas-kit.js"></script>
 </head>
-<body data-page="/ca-main" class="se-main-body">
+<body data-page="/ca-main" data-wall-ready="1" class="se-main-body">
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -77,132 +77,154 @@
       <div id="notice" class="notice" role="status" hidden></div>
 
       <div class="se-workspace" style="padding:8px 12px 10px">
-        <div class="se-home-grid" aria-label="CA Dashboard">
-          <!-- 左栏：安全评分、LF/SE 溯源与风险分级 -->
-          <section class="se-home-panel">
-            <div class="se-home-panel-head">
-              <h2 data-i18n="home.security_overview">安全评估与基态</h2>
-              <span class="se-pill ok tabular" id="ca-home-score">—</span>
-            </div>
-            <div class="se-home-panel-body">
-              <div id="ca-home-gauge"></div>
-              <div class="se-kv-list" id="ca-kv-overview"></div>
-              <div class="se-kv-divider"></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0">
-                <strong style="font-size:12px" data-i18n="home.risk_dist">风险分级分布</strong>
-                <span class="se-tag tabular" id="ca-home-total-risks">0</span>
-              </div>
-              <div id="ca-kv-severity"></div>
-              <div class="se-home-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-                <a class="se-btn mini primary" href="/ca-risks.html" data-i18n="nav.ca_risks">风险与图谱</a>
-                <a class="se-btn mini" href="/lf-main.html" id="ca-src-lf-link" data-i18n="home.view_source_lf">查看源 LF</a>
-              </div>
-            </div>
-          </section>
+        <div class="pas-screen-shell">
+          <!-- 顶部大屏态势英雄带 -->
+          <section class="pas-hero-strip" id="ca-hero-strip" aria-label="CA Key Metrics"></section>
 
-          <div class="se-splitter is-v" data-split="v1" role="separator"></div>
-
-          <!-- 中栏：运行极值、预想故障库与近期运行 -->
-          <section class="se-home-panel">
-            <div class="se-home-panel-head">
-              <h2 data-i18n="home.scan_extremes">故障扫描与极值</h2>
-              <span class="se-tag tabular" id="ca-home-elapsed">—</span>
-            </div>
-            <div class="se-home-panel-body">
-              <div class="se-kv-list" id="ca-kv-extremes"></div>
-              <div class="se-home-actions" style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">
-                <a class="se-btn mini" href="/ca-contingencies.html" data-i18n="nav.ca_contingencies">预想故障集</a>
-                <a class="se-btn mini" href="/ca-config.html" data-i18n="nav.ca_config">参数与限值</a>
-                <a class="se-btn mini" href="/ca-logs.html" data-i18n="nav.ca_logs">运行日志</a>
-              </div>
-              <div class="se-kv-divider"></div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0">
-                <strong style="font-size:12px" data-i18n="home.recent_runs">近期 CA 运行</strong>
-                <a class="se-link" href="/ca-logs.html" data-i18n="action.more">全部 →</a>
-              </div>
-              <div class="se-table-wrap">
-                <table class="se-table compact">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th data-i18n="col.source_lf">LF</th>
-                      <th data-i18n="col.risk_level">等级</th>
-                      <th data-i18n="col.score">评分</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ca-home-runs"></tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          <div class="se-splitter is-v" data-split="v2" role="separator"></div>
-
-          <!-- 右栏：安全评分/风险趋势 + Top 严重风险与故障排行 -->
-          <div class="se-home-right">
-            <section class="se-home-panel">
+          <!-- 核心三栏画布 -->
+          <div class="se-home-grid" aria-label="CA Dashboard">
+            <!-- 左栏：安全评分立体仪表盘 + 三道防线状态条 + 风险分级环图 -->
+            <section class="se-home-panel accent-stat">
               <div class="se-home-panel-head">
-                <h2 data-i18n="home.trend_title">安全健康与风险趋势</h2>
-                <div class="se-tool-group">
-                  <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">安全评分</button>
-                  <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险总数</button>
-                  <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">最大负载 %</button>
-                  <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories">风险分类柱图</button>
+                <h2 data-i18n="home.security_overview">安全评估与防线</h2>
+                <span class="se-pill ok tabular" id="ca-home-score">—</span>
+              </div>
+              <div class="se-home-panel-body">
+                <div id="ca-home-gauge"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.defense_lines">N-0 / N-1 / N-k 安全防线</span>
+                  <span class="se-muted tabular" id="ca-home-elapsed">—</span>
+                </div>
+                <div id="ca-defense-bars"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.risk_dist">风险分级构成</span>
+                  <span class="se-tag tabular" id="ca-home-total-risks">0</span>
+                </div>
+                <div id="ca-kv-severity"></div>
+                <div class="se-home-actions" style="margin-top:auto;padding-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+                  <a class="se-btn mini primary" href="/ca-risks.html" data-i18n="nav.ca_risks">风险与图谱</a>
+                  <a class="se-btn mini" href="/ca-contingencies.html" data-i18n="nav.ca_contingencies">故障集</a>
+                  <a class="se-btn mini" href="/lf-main.html" id="ca-src-lf-link" data-i18n="home.view_source_lf">源 LF</a>
                 </div>
               </div>
-              <div class="se-home-panel-body" id="ca-home-trend"></div>
             </section>
 
-            <div class="se-splitter is-h" data-split="h1" role="separator"></div>
+            <div class="se-splitter is-v" data-split="v1" role="separator"></div>
 
-            <div class="se-home-bottom-cards">
-              <section class="se-home-panel">
-                <div class="se-home-panel-head">
-                  <h2 data-i18n="home.top_risks">高危风险排行</h2>
-                  <a class="se-more-link" style="margin:0" href="/ca-risks.html" data-i18n="action.more">全部 →</a>
+            <!-- 中栏：预想故障全景热力矩阵墙 + 脆弱设备热力排行 -->
+            <section class="se-home-panel accent-meas">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="home.scan_matrix">预想故障全景矩阵</h2>
+                <a class="se-more-link" style="margin:0" href="/ca-risks.html?tab=contingencies" data-i18n="action.more">全部 →</a>
+              </div>
+              <div class="se-home-panel-body">
+                <div class="pas-sub-hd">
+                  <div class="pas-heat-legend">
+                    <span><i style="background:var(--sem-ok)"></i>安全</span>
+                    <span><i style="background:var(--sem-warn)"></i>中</span>
+                    <span><i style="background:#f97316"></i>高</span>
+                    <span><i style="background:var(--sem-danger)"></i>严重/发散</span>
+                  </div>
+                  <span class="se-muted tabular" id="ca-matrix-meta">—</span>
                 </div>
-                <div class="se-home-panel-body">
-                  <div class="se-table-wrap">
-                    <table class="se-table compact">
-                      <thead>
-                        <tr>
-                          <th data-i18n="col.severity">等级</th>
-                          <th data-i18n="col.contingency">故障场景</th>
-                          <th data-i18n="col.device">设备</th>
-                          <th data-i18n="col.violation">越限</th>
-                        </tr>
-                      </thead>
-                      <tbody id="ca-home-top-risks"></tbody>
-                    </table>
+                <div id="ca-heat-matrix"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="home.device_heat">脆弱设备风险频次 Top</span>
+                  <a class="se-more-link" style="margin:0;padding:0" href="/ca-config.html" data-i18n="nav.ca_config">限值…</a>
+                </div>
+                <div id="ca-device-heat"></div>
+              </div>
+            </section>
+
+            <div class="se-splitter is-v" data-split="v2" role="separator"></div>
+
+            <!-- 右栏：安全趋势 & 风险类型构成 + 高危风险与严重故障双表 -->
+            <div class="se-home-right">
+              <section class="se-home-panel accent-stat">
+                <div class="se-home-panel-head">
+                  <h2 data-i18n="home.trend_title">安全健康与风险趋势</h2>
+                  <div class="se-tool-group">
+                    <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">安全评分</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险总数</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">最大负载 %</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories" data-i18n="metric.risk_cat">风险分类</button>
                   </div>
                 </div>
+                <div class="se-home-panel-body" id="ca-home-trend"></div>
               </section>
 
-              <div class="se-splitter is-v" data-split="v3" role="separator"></div>
+              <div class="se-splitter is-h" data-split="h1" role="separator"></div>
 
-              <section class="se-home-panel">
-                <div class="se-home-panel-head">
-                  <h2 data-i18n="home.top_contingencies">严重预想故障 Top</h2>
-                  <a class="se-more-link" style="margin:0" href="/ca-risks.html?tab=contingencies" data-i18n="action.more">全部 →</a>
-                </div>
-                <div class="se-home-panel-body">
-                  <div class="se-table-wrap">
-                    <table class="se-table compact">
-                      <thead>
-                        <tr>
-                          <th data-i18n="col.contingency">故障名</th>
-                          <th data-i18n="col.conv">收敛</th>
-                          <th data-i18n="col.load_loss">失电</th>
-                          <th data-i18n="col.risk_cnt">风险</th>
-                        </tr>
-                      </thead>
-                      <tbody id="ca-home-top-conts"></tbody>
-                    </table>
+              <div class="se-home-bottom-cards">
+                <section class="se-home-panel accent-meas">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="home.top_risks">高危风险排行</h2>
+                    <a class="se-more-link" style="margin:0" href="/ca-risks.html" data-i18n="action.more">全部 →</a>
                   </div>
-                </div>
-              </section>
+                  <div class="se-home-panel-body">
+                    <div class="se-table-wrap">
+                      <table class="se-table compact">
+                        <colgroup>
+                          <col style="width:44px">
+                          <col style="width:36%">
+                          <col style="width:30%">
+                          <col style="width:74px">
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th data-i18n="col.severity">等级</th>
+                            <th data-i18n="col.contingency">故障场景</th>
+                            <th data-i18n="col.device">设备</th>
+                            <th data-i18n="col.violation">越限</th>
+                          </tr>
+                        </thead>
+                        <tbody id="ca-home-top-risks"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="se-splitter is-v" data-split="v3" role="separator"></div>
+
+                <section class="se-home-panel accent-ctrl">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="home.top_contingencies">严重预想故障 Top</h2>
+                    <a class="se-more-link" style="margin:0" href="/ca-risks.html?tab=contingencies" data-i18n="action.more">全部 →</a>
+                  </div>
+                  <div class="se-home-panel-body">
+                    <div class="se-table-wrap">
+                      <table class="se-table compact">
+                        <colgroup>
+                          <col>
+                          <col style="width:46px">
+                          <col style="width:52px">
+                          <col style="width:44px">
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th data-i18n="col.contingency">故障名</th>
+                            <th data-i18n="col.conv">收敛</th>
+                            <th data-i18n="col.load_loss">失电</th>
+                            <th data-i18n="col.risk_cnt">风险</th>
+                          </tr>
+                        </thead>
+                        <tbody id="ca-home-top-conts"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+              </div>
             </div>
           </div>
+
+          <!-- 底部通栏：最新 CA 运行日志 -->
+          <a class="se-home-footer" id="ca-home-footer-log" href="/ca-logs.html">
+            <span class="tag" id="ca-log-tag">INFO</span>
+            <span class="se-muted tabular" id="ca-log-time">—</span>
+            <span class="msg" id="ca-log-msg">—</span>
+          </a>
         </div>
       </div>
     </main>

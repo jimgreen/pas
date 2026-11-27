@@ -1,293 +1,417 @@
-/* 新版三栏 EMS 状态估计主画面逻辑（真实数据驱动 + 今日/昨日合格率双曲线） */
+/* 新版大屏可投放 EMS 状态估计主画面（量测清洗流水线 + 五维雷达 + 分类合格率 + 24h 双曲线 + 最大残差 Top） */
 (() => {
   'use strict';
 
   const I18N = {
     'zh-CN': {
       'title.home': '状态估计主画面',
-      'sec.meas_ctrl': '量测分析与控制',
-      'sec.calc_ctrl': '计算控制',
-      'sec.result': '计算结果',
-      'sec.metrics': '指标统计',
-      'sub.obs': '可观测性分析',
-      'sub.prefilter': '预处理信息',
-      'sub.control': '量测控制',
-      'sub.params': '参数管理',
-      'm.bus_count': '母线总数（交/直）',
-      'm.meas_count': '量测总数',
-      'm.valid_meas': '有效量测数',
-      'm.state_count': '状态变量数',
-      'm.rank': '雅可比矩阵秩',
-      'm.deficiency': '不可观测点数',
-      'm.redundancy': '量测冗余度',
-      'm.pf_total': '预过滤总数',
-      'm.pf_rate': '预过滤占比',
-      'm.pf_rule': '越限规则命中',
-      'm.pf_kernel': '内核预过滤',
-      'm.pf_rules': '预过滤规则（启/总）',
-      'm.nomeas': '缺测 / 坏质量',
-      'm.suspect': '可疑遥信数',
-      'm.pseudo_stat': '伪遥信（启/总）',
-      'm.pseudo_meas': '伪遥测（配/生）',
-      'm.policy': '遥测屏蔽（启/总）',
-      'm.bad_total': '坏量测（未确/总）',
-      'm.branches': '交直流支路数',
-      'm.converters': '换流器数',
-      'm.devices': '建模设备总数',
+      'sec.meas_flow': '量测清洗与构成',
+      'sec.health_radar': '估计质量画像',
+      'sec.top_residuals': '最大残差 Top 测点',
+      'sec.solve_metrics': '求解结果与运行指标',
+      'sub.pipeline': '量测清洗流水线',
+      'sub.donut': '量测健康构成',
+      'sub.topology': '交直流拓扑规模',
+      'sub.radar': 'SE 五维健康雷达',
+      'sub.by_type': '分类型量测合格率',
+      'sub.run_cfg': '当前基态与调度',
       'btn.start_calc': '启动计算',
       'btn.pause_calc': '暂停周期',
       'btn.resume_calc': '启动周期',
-      'btn.open_flow': '打开潮流图',
-      'lbl.snap_time': '状态估计断面时间',
-      'lbl.model_scene': '当前模型 / 场景',
-      'p.periodic': '周期运行',
-      'p.cycle': '执行周期',
-      'p.trigger': '触发方式',
-      'p.flat': '平启动',
-      'p.tol': '收敛精度判据',
-      'p.diffstep': '数值差分步长',
-      'p.maxiter': '最大迭代次数',
-      'p.badeps': '坏数据门槛',
-      'p.badmax': '坏数据上限',
-      'p.badstep': '坏数据单步上限',
-      'p.pweight': '伪量测权重',
-      'p.pmax': '定向伪量测上限',
-      'p.vfloor': '电压下限保护',
-      'p.pftol': '初值潮流容差',
-      'p.pfiter': '初值潮流迭代',
+      'btn.open_flow': '潮流图 →',
       'r.cur_pass': '当前合格率',
       'r.today_avg': '今日平均',
       'r.yest_avg': '对比日平均',
       'r.conv_rate': '当日收敛率',
-      'res.start': '计算开始时间',
-      'res.end': '计算结束时间',
-      'res.elapsed': '计算耗时',
-      'res.iters': '迭代次数',
-      'res.obj': '目标函数 J(x)',
-      'res.residual': '总残差 / 最大',
-      'res.bad': '大误差点数',
-      'st.host': '运行主机',
-      'st.runs': '当天运行次数',
-      'st.conv_cnt': '收敛次数',
-      'st.conv_rate': '收敛率',
-      'st.pass_rate': '量测合格率',
-      'st.good_valid': '合格 / 有效量测',
-      'st.coverage': '量测覆盖率',
+      'chart.mode_pass': '合格率对比',
+      'chart.mode_bad': '坏数据趋势',
       'foot.run_info': '运行信息',
       'link.more': '更多…',
-      'link.pseudo': '伪量测…',
-      'link.bad': '坏量测…',
+      'link.prefilter': '预过滤',
+      'link.pseudo': '伪量测',
+      'link.bad': '坏量测',
+      'link.params': '参数…',
       'yes': '是',
       'no': '否',
       'conv.ok': '全网收敛',
       'conv.fail': '未收敛',
+      'obs.ok': '全网可观测',
+      'obs.lack': '缺秩 {n}',
       'lg.today': '今日合格率',
       'lg.yest': '对比日合格率',
+      'lg.bad': '今日坏数据点数',
       'msg.daemon_on': '周期调度已启动',
       'msg.daemon_off': '周期调度已暂停',
       'action.auto_on': '自动刷新: 开',
       'action.auto_off': '自动刷新: 关',
       'chart.click_log': '点击查看日志',
       'chart.bad_cnt': '坏数据',
+      'hero.pass_rate': '量测合格率',
+      'hero.conv_rate': '当日收敛率',
+      'hero.redundancy': '量测冗余度',
+      'hero.bad_pf': '坏数据 / 预过滤',
+      'hero.solve': '求解耗时 / 迭代',
+      'pipe.total': '采集量测总数',
+      'pipe.prefilter': '预过滤拦截',
+      'pipe.valid': '有效 + 伪量测',
+      'pipe.bad': '坏数据辨识',
+      'pipe.good': '合格估计量测',
+      'donut.good': '正常有效',
+      'donut.pf': '预过滤',
+      'donut.bad': '坏数据',
+      'donut.miss': '缺测/坏质量',
+      'donut.center': '量测总数',
+      'radar.pass': '合格率',
+      'radar.conv': '收敛率',
+      'radar.cov': '覆盖率',
+      'radar.obs': '可观测',
+      'radar.red': '冗余度',
+      'cat.U': '电压 U',
+      'cat.P': '有功 P',
+      'cat.Q': '无功 Q',
+      'cat.I': '电流 I',
+      'cat.OTHER': '其他',
+      'topo.bus': '母线 (交/直)',
+      'topo.branch': '交直流支路',
+      'topo.conv': '换流器',
+      'topo.dev': '建模设备总数',
+      'cfg.cycle': '周期调度',
+      'cfg.flat': '平启动',
+      'cfg.tol': '收敛容差',
+      'solve.obj': '目标函数 J(x)',
+      'solve.res': '总残差 / 最大',
+      'solve.runs': '当日收敛 / 运行',
+      'solve.host': '运行主机',
+      'empty.res': '暂无高残差测点',
     },
     'en-US': {
-      'title.home': 'State Estimation Home',
-      'sec.meas_ctrl': 'Measurement & Control',
-      'sec.calc_ctrl': 'Calculation Control',
-      'sec.result': 'Calculation Result',
-      'sec.metrics': 'Daily Metrics',
-      'sub.obs': 'Observability',
-      'sub.prefilter': 'Prefilter Summary',
-      'sub.control': 'Measurement Control',
-      'sub.params': 'Parameters',
-      'm.bus_count': 'Buses (AC/DC)',
-      'm.meas_count': 'Total Meas',
-      'm.valid_meas': 'Valid Meas',
-      'm.state_count': 'State Vars',
-      'm.rank': 'Jacobian Rank',
-      'm.deficiency': 'Unobservable',
-      'm.redundancy': 'Redundancy',
-      'm.pf_total': 'Prefiltered',
-      'm.pf_rate': 'Prefilter Rate',
-      'm.pf_rule': 'Rule Hits',
-      'm.pf_kernel': 'Kernel Filter',
-      'm.pf_rules': 'Rules (On/All)',
-      'm.nomeas': 'Missing / Bad Qual',
-      'm.suspect': 'Suspect Status',
-      'm.pseudo_stat': 'Pseudo Stat (On/All)',
-      'm.pseudo_meas': 'Pseudo Meas (Cfg/Eff)',
-      'm.policy': 'Policy (On/All)',
-      'm.bad_total': 'Bad (Unack/All)',
-      'm.branches': 'AC/DC Branches',
-      'm.converters': 'Converters',
-      'm.devices': 'Model Devices',
-      'btn.start_calc': 'Run SE Now',
+      'title.home': 'State Estimation Console',
+      'sec.meas_flow': 'Measurement Pipeline',
+      'sec.health_radar': 'Quality Profile',
+      'sec.top_residuals': 'Top Residual Points',
+      'sec.solve_metrics': 'Solver & Daily KPIs',
+      'sub.pipeline': 'Cleaning Pipeline',
+      'sub.donut': 'Health Breakdown',
+      'sub.topology': 'AC/DC Grid Scale',
+      'sub.radar': '5D Health Radar',
+      'sub.by_type': 'Pass Rate by Type',
+      'sub.run_cfg': 'Runtime & Cycle',
+      'btn.start_calc': 'Run SE',
       'btn.pause_calc': 'Pause Cycle',
       'btn.resume_calc': 'Start Cycle',
-      'btn.open_flow': 'Power Flow Map',
-      'lbl.snap_time': 'SE Snapshot Time',
-      'lbl.model_scene': 'Model / Scenario',
-      'p.periodic': 'Periodic',
-      'p.cycle': 'Cycle Period',
-      'p.trigger': 'Trigger Mode',
-      'p.flat': 'Flat Start',
-      'p.tol': 'Tolerance',
-      'p.diffstep': 'Diff Step',
-      'p.maxiter': 'Max Iterations',
-      'p.badeps': 'Bad Threshold',
-      'p.badmax': 'Bad Max Count',
-      'p.badstep': 'Bad Step Limit',
-      'p.pweight': 'Pseudo Weight',
-      'p.pmax': 'Targeted Pseudo Max',
-      'p.vfloor': 'Voltage Floor',
-      'p.pftol': 'Init PF Tol',
-      'p.pfiter': 'Init PF Max Iter',
-      'r.cur_pass': 'Current Pass',
+      'btn.open_flow': 'Flow Map →',
+      'r.cur_pass': 'Current',
       'r.today_avg': 'Today Avg',
       'r.yest_avg': 'Compare Avg',
       'r.conv_rate': 'Conv Rate',
-      'res.start': 'Start Time',
-      'res.end': 'End Time',
-      'res.elapsed': 'Elapsed',
-      'res.iters': 'Iterations',
-      'res.obj': 'Objective J(x)',
-      'res.residual': 'Total / Max Res',
-      'res.bad': 'Bad Points',
-      'st.host': 'Host',
-      'st.runs': 'Today Runs',
-      'st.conv_cnt': 'Converged',
-      'st.conv_rate': 'Conv Rate',
-      'st.pass_rate': 'Pass Rate',
-      'st.good_valid': 'Good / Valid',
-      'st.coverage': 'Coverage',
-      'foot.run_info': 'Run Info',
+      'chart.mode_pass': 'Pass Rate',
+      'chart.mode_bad': 'Bad Data',
+      'foot.run_info': 'Run Log',
       'link.more': 'More…',
-      'link.pseudo': 'Pseudo…',
-      'link.bad': 'Bad…',
-      'yes': 'Yes',
-      'no': 'No',
+      'link.prefilter': 'Prefilter',
+      'link.pseudo': 'Pseudo',
+      'link.bad': 'Bad',
+      'link.params': 'Params…',
+      'yes': 'On',
+      'no': 'Off',
       'conv.ok': 'Converged',
       'conv.fail': 'Diverged',
+      'obs.ok': 'Observable',
+      'obs.lack': 'Deficit {n}',
       'lg.today': 'Today Pass Rate',
       'lg.yest': 'Compare Pass Rate',
+      'lg.bad': 'Today Bad Data',
       'msg.daemon_on': 'Periodic scheduler started',
       'msg.daemon_off': 'Periodic scheduler paused',
       'action.auto_on': 'Auto: On',
       'action.auto_off': 'Auto: Off',
       'chart.click_log': 'Click to open log',
       'chart.bad_cnt': 'Bad',
+      'hero.pass_rate': 'Pass Rate',
+      'hero.conv_rate': 'Daily Conv Rate',
+      'hero.redundancy': 'Redundancy',
+      'hero.bad_pf': 'Bad / Prefiltered',
+      'hero.solve': 'Solve Time / Iter',
+      'pipe.total': 'Raw Telemetry',
+      'pipe.prefilter': 'Prefiltered',
+      'pipe.valid': 'Valid + Pseudo',
+      'pipe.bad': 'Bad Detected',
+      'pipe.good': 'Qualified Est.',
+      'donut.good': 'Qualified',
+      'donut.pf': 'Prefiltered',
+      'donut.bad': 'Bad Data',
+      'donut.miss': 'Missing/BadQ',
+      'donut.center': 'Total',
+      'radar.pass': 'Pass',
+      'radar.conv': 'Conv',
+      'radar.cov': 'Cover',
+      'radar.obs': 'Observ',
+      'radar.red': 'Redund',
+      'cat.U': 'Voltage U',
+      'cat.P': 'Active P',
+      'cat.Q': 'Reactive Q',
+      'cat.I': 'Current I',
+      'cat.OTHER': 'Other',
+      'topo.bus': 'Buses (AC/DC)',
+      'topo.branch': 'Branches',
+      'topo.conv': 'Converters',
+      'topo.dev': 'Total Devices',
+      'cfg.cycle': 'Cycle',
+      'cfg.flat': 'Flat Start',
+      'cfg.tol': 'Tolerance',
+      'solve.obj': 'Objective J(x)',
+      'solve.res': 'Total / Max Res',
+      'solve.runs': 'Conv / Runs',
+      'solve.host': 'Host',
+      'empty.res': 'No high-residual points',
     },
     'ru-RU': {
-      'title.home': 'Главный экран SE',
-      'sec.meas_ctrl': 'Анализ измерений',
-      'sec.calc_ctrl': 'Управление расчётом',
-      'sec.result': 'Результаты',
-      'sec.metrics': 'Статистика',
-      'sub.obs': 'Наблюдаемость',
-      'sub.prefilter': 'Предфильтр',
-      'sub.control': 'Контроль изм.',
-      'sub.params': 'Параметры',
-      'm.bus_count': 'Узлы (AC/DC)',
-      'm.meas_count': 'Измерений',
-      'm.valid_meas': 'Валидных ТИ',
-      'm.state_count': 'Перем. сост.',
-      'm.rank': 'Ранг матрицы',
-      'm.deficiency': 'Ненаблюдаемых',
-      'm.redundancy': 'Избыточность',
-      'm.pf_total': 'Отфильтровано',
-      'm.pf_rate': 'Доля фильтра',
-      'm.pf_rule': 'По правилам',
-      'm.pf_kernel': 'Ядро SE',
-      'm.pf_rules': 'Правила (вкл/все)',
-      'm.nomeas': 'Пропуски',
-      'm.suspect': 'Подозр. ТС',
-      'm.pseudo_stat': 'Псевдо-ТС',
-      'm.pseudo_meas': 'Псевдо-ТИ',
-      'm.policy': 'Блок. (вкл/все)',
-      'm.bad_total': 'Плохие ТИ',
-      'm.branches': 'Ветви AC/DC',
-      'm.converters': 'Преобразоват.',
-      'm.devices': 'Оборудование',
-      'btn.start_calc': 'Запустить SE',
-      'btn.pause_calc': 'Пауза цикла',
-      'btn.resume_calc': 'Старт цикла',
-      'btn.open_flow': 'Схема потоков',
-      'lbl.snap_time': 'Время среза SE',
-      'lbl.model_scene': 'Модель / Сценарий',
-      'p.periodic': 'Цикл',
-      'p.cycle': 'Период',
-      'p.trigger': 'Триггер',
-      'p.flat': 'Плоский старт',
-      'p.tol': 'Точность',
-      'p.diffstep': 'Шаг дифф.',
-      'p.maxiter': 'Макс. итераций',
-      'p.badeps': 'Порог сбоя',
-      'p.badmax': 'Макс. плохих',
-      'p.badstep': 'Лимит за шаг',
-      'p.pweight': 'Вес псевдо-ТИ',
-      'p.pmax': 'Макс. псевдо-ТИ',
-      'p.vfloor': 'Мин. напр.',
-      'p.pftol': 'Точность УР',
-      'p.pfiter': 'Итерац. УР',
-      'r.cur_pass': 'Текущ. годн.',
-      'r.today_avg': 'Сред. сегодня',
-      'r.yest_avg': 'Сред. вчера',
+      'title.home': 'Пульт оценки состояния SE',
+      'sec.meas_flow': 'Поток измерений',
+      'sec.health_radar': 'Профиль качества',
+      'sec.top_residuals': 'Топ невязок ТИ',
+      'sec.solve_metrics': 'Решатель и итоги дня',
+      'sub.pipeline': 'Конвейер очистки ТИ',
+      'sub.donut': 'Состав измерений',
+      'sub.topology': 'Масштаб AC/DC сети',
+      'sub.radar': 'Радар качества SE',
+      'sub.by_type': 'Годность по типам',
+      'sub.run_cfg': 'Режим и цикл',
+      'btn.start_calc': 'Запуск SE',
+      'btn.pause_calc': 'Пауза',
+      'btn.resume_calc': 'Старт',
+      'btn.open_flow': 'Схема →',
+      'r.cur_pass': 'Текущ.',
+      'r.today_avg': 'Сегодня',
+      'r.yest_avg': 'Вчера',
       'r.conv_rate': 'Сходимость',
-      'res.start': 'Начало',
-      'res.end': 'Окончание',
-      'res.elapsed': 'Время',
-      'res.iters': 'Итерации',
-      'res.obj': 'Цель J(x)',
-      'res.residual': 'Сумм. / Макс.',
-      'res.bad': 'Плохих точек',
-      'st.host': 'Узел',
-      'st.runs': 'Запусков',
-      'st.conv_cnt': 'Сошлось',
-      'st.conv_rate': 'Сходимость',
-      'st.pass_rate': 'Доля годных',
-      'st.good_valid': 'Годных / Всего',
-      'st.coverage': 'Охват',
-      'foot.run_info': 'Статус',
+      'chart.mode_pass': 'Годность %',
+      'chart.mode_bad': 'Плохие ТИ',
+      'foot.run_info': 'Журнал',
       'link.more': 'Далее…',
-      'link.pseudo': 'Псевдо…',
-      'link.bad': 'Сбои…',
+      'link.prefilter': 'Фильтр',
+      'link.pseudo': 'Псевдо',
+      'link.bad': 'Сбои',
+      'link.params': 'Парам…',
       'yes': 'Да',
       'no': 'Нет',
       'conv.ok': 'Сходится',
-      'conv.fail': 'Не сходится',
+      'conv.fail': 'Расходится',
+      'obs.ok': 'Наблюдаема',
+      'obs.lack': 'Дефицит {n}',
       'lg.today': 'Сегодня',
-      'lg.yest': 'Предыдущий',
+      'lg.yest': 'Сравнение',
+      'lg.bad': 'Плохие ТИ сегодня',
       'msg.daemon_on': 'Цикл запущен',
       'msg.daemon_off': 'Цикл остановлен',
       'action.auto_on': 'Авто: Вкл',
       'action.auto_off': 'Авто: Выкл',
       'chart.click_log': 'Клик — журнал',
       'chart.bad_cnt': 'Сбои',
+      'hero.pass_rate': 'Доля годных ТИ',
+      'hero.conv_rate': 'Сходимость дня',
+      'hero.redundancy': 'Избыточность',
+      'hero.bad_pf': 'Сбои / Фильтр',
+      'hero.solve': 'Время / Итерац.',
+      'pipe.total': 'Всего ТИ',
+      'pipe.prefilter': 'Отфильтровано',
+      'pipe.valid': 'Валид. + Псевдо',
+      'pipe.bad': 'Выявлено сбоев',
+      'pipe.good': 'Годных оценок',
+      'donut.good': 'Годные',
+      'donut.pf': 'Фильтр',
+      'donut.bad': 'Плохие',
+      'donut.miss': 'Пропуск',
+      'donut.center': 'Всего',
+      'radar.pass': 'Годн.',
+      'radar.conv': 'Сход.',
+      'radar.cov': 'Охват',
+      'radar.obs': 'Набл.',
+      'radar.red': 'Избыт.',
+      'cat.U': 'Напр. U',
+      'cat.P': 'Актив. P',
+      'cat.Q': 'Реакт. Q',
+      'cat.I': 'Ток I',
+      'cat.OTHER': 'Прочее',
+      'topo.bus': 'Узлы AC/DC',
+      'topo.branch': 'Ветви',
+      'topo.conv': 'Преобр.',
+      'topo.dev': 'Оборуд.',
+      'cfg.cycle': 'Цикл',
+      'cfg.flat': 'Плоск. старт',
+      'cfg.tol': 'Точность',
+      'solve.obj': 'Цель J(x)',
+      'solve.res': 'Сумм./Макс.',
+      'solve.runs': 'Сход./Зап.',
+      'solve.host': 'Сервер',
+      'empty.res': 'Нет крупных невязок',
     },
   };
 
   let homeData = null;
+  let chartMode = 'pass';
 
   const common = window.createSECommon(I18N, () => {
     if (homeData) renderHome(homeData);
   });
   const { t, esc, fmtNum, fmtTime, api, notify } = common;
 
-  function setVal(id, text, cls = '') {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
-    el.className = `v tabular${cls ? ' ' + cls : ''}`;
+  function renderHeroStrip(d) {
+    const host = document.getElementById('se-hero-strip');
+    if (!host) return;
+    const latest = d.latest;
+    const obs = d.observability || {};
+    const pf = d.prefilter || {};
+    const ctrl = d.control || {};
+    const ts = d.today_stats || {};
+
+    const passRate = ts.current_pass_rate != null ? Number(ts.current_pass_rate) : null;
+    const deltaPass = (passRate != null && ts.yesterday_avg_pass_rate != null)
+      ? (passRate - Number(ts.yesterday_avg_pass_rate))
+      : null;
+    const deltaBadge = deltaPass != null
+      ? `${deltaPass >= 0 ? '▲ +' : '▼ '}${deltaPass.toFixed(2)}%`
+      : (ts.today_avg_pass_rate != null ? `均 ${Number(ts.today_avg_pass_rate).toFixed(1)}%` : '—');
+    const passTone = passRate == null ? 'accent' : (passRate >= 95 ? 'ok' : (passRate >= 85 ? 'warn' : 'bad'));
+
+    const convRate = Number(ts.today_conv_rate || 0);
+    const convTone = convRate >= 95 ? 'ok' : (convRate >= 80 ? 'warn' : 'bad');
+
+    const red = obs.redundancy != null ? Number(obs.redundancy) : null;
+    const defCnt = Number(obs.deficiency || 0);
+    const obsPct = obs.state_count > 0 ? Math.min(100, (Number(obs.rank || 0) / Number(obs.state_count)) * 100) : (obs.observable ? 100 : 0);
+    const obsTone = defCnt > 0 ? 'bad' : (red != null && red < 1.2 ? 'warn' : 'ok');
+
+    const badCnt = Number(latest?.bad_data_count ?? ctrl.bad_total ?? 0);
+    const pfCnt = Number(pf.total ?? 0);
+    const badTone = badCnt > 0 ? 'bad' : (pfCnt > 0 ? 'warn' : 'ok');
+
+    const elapsed = latest?.elapsed_seconds != null ? Number(latest.elapsed_seconds) : null;
+    const iters = latest?.iterations ?? 0;
+
+    const tiles = [
+      {
+        tone: passTone,
+        label: t('hero.pass_rate'),
+        badge: deltaBadge,
+        badgeCls: deltaPass == null ? 'accent' : (deltaPass >= 0 ? 'ok' : 'warn'),
+        val: passRate != null ? `${passRate.toFixed(2)}<small>%</small>` : '—',
+        valCls: passTone === 'accent' ? '' : passTone,
+        sub: `${obs.good_meas_count ?? 0} / ${obs.valid_meas_count ?? 0}`,
+        meter: passRate ?? 0,
+      },
+      {
+        tone: convTone,
+        label: t('hero.conv_rate'),
+        badge: `${ts.today_converged ?? 0} / ${ts.today_runs ?? 0}`,
+        badgeCls: convTone,
+        val: `${convRate.toFixed(1)}<small>%</small>`,
+        valCls: convTone,
+        sub: latest ? (latest.converged ? t('conv.ok') : t('conv.fail')) : '—',
+        meter: convRate,
+      },
+      {
+        tone: obsTone,
+        label: t('hero.redundancy'),
+        badge: defCnt > 0 ? t('obs.lack', { n: defCnt }) : t('obs.ok'),
+        badgeCls: defCnt > 0 ? 'bad' : 'ok',
+        val: red != null ? `${red.toFixed(2)}<small>×</small>` : '—',
+        valCls: defCnt > 0 ? 'bad' : '',
+        sub: `R ${obs.rank ?? 0} / S ${obs.state_count ?? 0}`,
+        meter: obsPct,
+      },
+      {
+        tone: badTone,
+        label: t('hero.bad_pf'),
+        badge: `${Number(pf.prefilter_rate || 0).toFixed(1)}% PF`,
+        badgeCls: pfCnt > 0 ? 'warn' : 'ok',
+        val: `${badCnt}<small> / ${pfCnt}</small>`,
+        valCls: badCnt > 0 ? 'bad' : 'ok',
+        sub: `未确认 ${ctrl.bad_unacked ?? 0} · 缺测 ${pf.nomeas_count ?? 0}`,
+        meter: Math.min(100, (obs.meas_count > 0 ? ((badCnt + pfCnt) / obs.meas_count) * 100 : 0) * 4),
+      },
+      {
+        tone: 'accent',
+        label: t('hero.solve'),
+        badge: `${iters} iter`,
+        badgeCls: 'accent',
+        val: elapsed != null ? `${elapsed.toFixed(3)}<small>s</small>` : '—',
+        valCls: '',
+        sub: latest ? `J(x) ${fmtNum(latest.objective, 3)}` : '—',
+        meter: elapsed != null ? Math.min(100, Math.max(8, (1 - Math.min(elapsed, 5) / 5) * 100)) : 0,
+      },
+    ];
+
+    host.innerHTML = tiles.map((c) => `
+      <div class="pas-hero-tile tone-${c.tone}">
+        <div class="pas-hero-top">
+          <span class="pas-hero-lbl">${esc(c.label)}</span>
+          <span class="pas-hero-badge tabular ${c.badgeCls}">${esc(c.badge)}</span>
+        </div>
+        <div class="pas-hero-val-row">
+          <div class="pas-hero-val tabular ${c.valCls}">${c.val}</div>
+          <span class="pas-hero-sub tabular">${esc(c.sub)}</span>
+        </div>
+        <div class="pas-hero-meter"><i style="width:${Math.max(0, Math.min(100, c.meter)).toFixed(1)}%"></i></div>
+      </div>`).join('');
   }
 
-  function renderPassChart(seriesObj) {
+  function renderMainChart(seriesObj) {
     const host = document.getElementById('home-pass-chart');
     const legend = document.getElementById('home-pass-legend');
     const today = seriesObj?.today || [];
     const yest = seriesObj?.yesterday || [];
 
+    if (chartMode === 'bad') {
+      legend.innerHTML = `<span><i style="background:var(--sem-warn)"></i>${esc(t('lg.bad'))} (${esc(seriesObj?.today_date || '')})</span>`;
+      if (!today.length) {
+        host.innerHTML = `<div class="se-empty">—</div>`;
+        return;
+      }
+      const w = Math.max(420, host.clientWidth || 620);
+      const h = Math.max(170, host.clientHeight || 220);
+      const pad = { top: 14, right: 20, bottom: 24, left: 42 };
+      const plotW = w - pad.left - pad.right;
+      const plotH = h - pad.top - pad.bottom;
+      const maxBad = Math.max(4, ...today.map((p) => Number(p.bad_data_count || 0)));
+      const xOf = (minOfDay) => pad.left + (Math.max(0, Math.min(1440, minOfDay)) / 1440) * plotW;
+      const yOf = (val) => pad.top + plotH - (val / maxBad) * plotH;
+      const yTicks = [0, 0.5, 1].map((r) => maxBad * r);
+      const xHours = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+      const barW = Math.max(4, Math.min(14, plotW / Math.max(today.length * 1.8, 20)));
+
+      host.innerHTML = `
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="none">
+          <rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="var(--bg-subtle)" opacity="0.35"/>
+          ${yTicks.map((v) => {
+            const y = yOf(v);
+            return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${w - pad.right}" y2="${y.toFixed(1)}" stroke="var(--grid-line)" stroke-dasharray="2 3"/>
+                    <text x="${pad.left - 6}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="var(--text-secondary)" font-size="10.5" class="tabular">${Math.round(v)}</text>`;
+          }).join('')}
+          ${xHours.map((hr) => {
+            const x = xOf(hr * 60);
+            return `<line x1="${x.toFixed(1)}" y1="${pad.top}" x2="${x.toFixed(1)}" y2="${pad.top + plotH}" stroke="var(--grid-line)" stroke-dasharray="2 3"/>
+                    <text x="${x.toFixed(1)}" y="${h - 6}" text-anchor="${hr === 0 ? 'start' : hr === 24 ? 'end' : 'middle'}" fill="var(--text-secondary)" font-size="10" class="tabular">${String(hr).padStart(2, '0')}:00</text>`;
+          }).join('')}
+          ${today.map((p) => {
+            const v = Number(p.bad_data_count || 0);
+            const x = xOf(p.minute) - barW / 2;
+            const bh = Math.max(v > 0 ? 3 : 1, (v / maxBad) * plotH);
+            const y = pad.top + plotH - bh;
+            const fill = v > 0 ? 'var(--sem-danger)' : 'var(--sem-ok)';
+            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${fill}" opacity="${v > 0 ? '0.88' : '0.35'}"/>`;
+          }).join('')}
+          <line id="home-crosshair" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + plotH}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>
+          <rect id="home-chart-overlay" x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/>
+        </svg>
+        <div class="se-chart-tip" id="home-chart-tip" hidden></div>`;
+
+      bindChartHover(host, today.map((p) => ({ ...p, series: 'today', date: seriesObj.today_date })), xOf, (p) => yOf(Number(p.bad_data_count || 0)), false);
+      return;
+    }
+
     legend.innerHTML = `
-      <span><i style="background:var(--sem-danger)"></i>${esc(t('lg.today'))} (${esc(seriesObj?.today_date || '')})</span>
+      <span><i style="background:var(--accent)"></i>${esc(t('lg.today'))} (${esc(seriesObj?.today_date || '')})</span>
       <span><i style="background:var(--text-secondary)"></i>${esc(t('lg.yest'))} (${esc(seriesObj?.compare_date || '')})</span>`;
 
     if (!today.length && !yest.length) {
@@ -296,8 +420,8 @@
     }
 
     const w = Math.max(420, host.clientWidth || 620);
-    const h = Math.max(175, host.clientHeight || 220);
-    const pad = { top: 14, right: 24, bottom: 24, left: 46 };
+    const h = Math.max(170, host.clientHeight || 220);
+    const pad = { top: 14, right: 20, bottom: 24, left: 46 };
     const plotW = w - pad.left - pad.right;
     const plotH = h - pad.top - pad.bottom;
 
@@ -317,45 +441,56 @@
     const yOf = (val) => pad.top + plotH - ((val - minY) / (maxY - minY || 1)) * plotH;
 
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map((r) => minY + (maxY - minY) * r);
-    const xHours = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
-
+    const xHours = plotW < 460
+      ? [0, 4, 8, 12, 16, 20, 24]
+      : (plotW < 620 ? [0, 3, 6, 9, 12, 15, 18, 21, 24] : [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]);
     const polyStr = (arr) => arr.map((p) => `${xOf(p.minute).toFixed(1)},${yOf(p.pass_rate).toFixed(1)}`).join(' ');
+    const todayArea = today.length > 1
+      ? `${xOf(today[0].minute).toFixed(1)},${(pad.top + plotH).toFixed(1)} ${polyStr(today)} ${xOf(today[today.length - 1].minute).toFixed(1)},${(pad.top + plotH).toFixed(1)}`
+      : '';
 
     host.innerHTML = `
       <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="none">
-        <rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="var(--bg-subtle)" opacity="0.45"/>
+        <defs>
+          <linearGradient id="sePassGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.26"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.01"/>
+          </linearGradient>
+        </defs>
+        <rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="var(--bg-subtle)" opacity="0.35"/>
         ${yTicks.map((v) => {
           const y = yOf(v);
           return `<line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${w - pad.right}" y2="${y.toFixed(1)}" stroke="var(--grid-line)" stroke-dasharray="2 3"/>
-                  <text x="${pad.left - 6}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="var(--text-secondary)" font-size="10.5" class="tabular">${v.toFixed(1)}</text>`;
+                  <text x="${pad.left - 6}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="var(--text-secondary)" font-size="10.5" class="tabular">${v.toFixed(1)}%</text>`;
         }).join('')}
         ${xHours.map((hr) => {
           const x = xOf(hr * 60);
-          const lbl = `${String(hr).padStart(2, '0')}:00`;
           return `<line x1="${x.toFixed(1)}" y1="${pad.top}" x2="${x.toFixed(1)}" y2="${pad.top + plotH}" stroke="var(--grid-line)" stroke-dasharray="2 3"/>
-                  <text x="${x.toFixed(1)}" y="${h - 6}" text-anchor="${hr === 0 ? 'start' : hr === 24 ? 'end' : 'middle'}" fill="var(--text-secondary)" font-size="10" class="tabular">${lbl}</text>`;
+                  <text x="${x.toFixed(1)}" y="${h - 6}" text-anchor="${hr === 0 ? 'start' : hr === 24 ? 'end' : 'middle'}" fill="var(--text-secondary)" font-size="10" class="tabular">${String(hr).padStart(2, '0')}:00</text>`;
         }).join('')}
-        ${yest.length > 1 ? `<polyline fill="none" stroke="var(--text-secondary)" stroke-width="1.5" opacity="0.8" points="${polyStr(yest)}"/>` : ''}
-        ${yest.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.2" fill="var(--text-secondary)"/>`).join('')}
-        ${today.length > 1 ? `<polyline fill="none" stroke="var(--sem-danger)" stroke-width="2" points="${polyStr(today)}"/>` : ''}
-        ${today.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.8" fill="var(--sem-danger)"/>`).join('')}
+        ${yest.length > 1 ? `<polyline fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.75" points="${polyStr(yest)}"/>` : ''}
+        ${todayArea ? `<polygon points="${todayArea}" fill="url(#sePassGrad)"/>` : ''}
+        ${today.length > 1 ? `<polyline fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" points="${polyStr(today)}"/>` : ''}
+        ${today.length <= 60 ? today.map((p) => `<circle cx="${xOf(p.minute).toFixed(1)}" cy="${yOf(p.pass_rate).toFixed(1)}" r="2.7" fill="var(--accent)"/>`).join('') : ''}
         <line id="home-crosshair" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + plotH}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>
-        <circle id="home-hover-dot" cx="0" cy="0" r="4.5" fill="var(--accent)" stroke="var(--bg-surface)" stroke-width="1.5" visibility="hidden"/>
+        <circle id="home-hover-dot" cx="0" cy="0" r="4.5" fill="var(--accent)" stroke="var(--bg-surface)" stroke-width="1.6" visibility="hidden"/>
         <rect id="home-chart-overlay" x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/>
       </svg>
       <div class="se-chart-tip" id="home-chart-tip" hidden></div>`;
-
-    // 绑定十字准星与点击下钻运行日志交互
-    const overlay = document.getElementById('home-chart-overlay');
-    const cross = document.getElementById('home-crosshair');
-    const dot = document.getElementById('home-hover-dot');
-    const tip = document.getElementById('home-chart-tip');
-    if (!overlay || !cross || !dot || !tip) return;
 
     const allPts = [
       ...today.map((p) => ({ ...p, series: 'today', date: seriesObj.today_date })),
       ...yest.map((p) => ({ ...p, series: 'yest', date: seriesObj.compare_date })),
     ];
+    bindChartHover(host, allPts, xOf, (p) => yOf(p.pass_rate), true);
+  }
+
+  function bindChartHover(host, allPts, xOf, yOfFn, hasDot) {
+    const overlay = document.getElementById('home-chart-overlay');
+    const cross = document.getElementById('home-crosshair');
+    const dot = document.getElementById('home-hover-dot');
+    const tip = document.getElementById('home-chart-tip');
+    if (!overlay || !cross || !tip) return;
     let nearestPt = null;
 
     overlay.addEventListener('mousemove', (e) => {
@@ -366,29 +501,27 @@
       let bestDist = Infinity;
       for (const p of allPts) {
         const d = Math.abs(p.minute - targetMin);
-        if (d < bestDist) {
-          bestDist = d;
-          best = p;
-        }
+        if (d < bestDist) { bestDist = d; best = p; }
       }
       nearestPt = best;
       if (!best) return;
       const sx = xOf(best.minute);
-      const sy = yOf(best.pass_rate);
       cross.setAttribute('x1', sx.toFixed(1));
       cross.setAttribute('x2', sx.toFixed(1));
       cross.setAttribute('visibility', 'visible');
-      dot.setAttribute('cx', sx.toFixed(1));
-      dot.setAttribute('cy', sy.toFixed(1));
-      dot.setAttribute('visibility', 'visible');
+      if (hasDot && dot) {
+        dot.setAttribute('cx', sx.toFixed(1));
+        dot.setAttribute('cy', yOfFn(best).toFixed(1));
+        dot.setAttribute('visibility', 'visible');
+      }
       const hostRect = host.getBoundingClientRect();
       const leftPx = Math.min(hostRect.width - 175, Math.max(8, e.clientX - hostRect.left + 12));
-      const topPx = Math.max(6, Math.min(hostRect.height - 68, e.clientY - hostRect.top - 12));
+      const topPx = Math.max(6, Math.min(hostRect.height - 72, e.clientY - hostRect.top - 12));
       tip.style.left = `${leftPx}px`;
       tip.style.top = `${topPx}px`;
       tip.innerHTML = `
         <div class="tip-hd tabular">${esc(best.date)} ${esc(best.time_hm)} · #${best.run_id}</div>
-        <div class="tip-row"><span>${esc(best.series === 'today' ? t('lg.today') : t('lg.yest'))}</span><strong class="tabular">${best.pass_rate.toFixed(2)}%</strong></div>
+        <div class="tip-row"><span>${esc(best.series === 'today' ? t('lg.today') : t('lg.yest'))}</span><strong class="tabular">${Number(best.pass_rate).toFixed(2)}%</strong></div>
         <div class="tip-row"><span>${esc(t('chart.bad_cnt'))}</span><strong class="tabular">${best.bad_data_count}</strong></div>
         <div class="tip-sub">${esc(t('chart.click_log'))}</div>`;
       tip.hidden = false;
@@ -396,7 +529,7 @@
 
     overlay.addEventListener('mouseleave', () => {
       cross.setAttribute('visibility', 'hidden');
-      dot.setAttribute('visibility', 'hidden');
+      if (dot) dot.setAttribute('visibility', 'hidden');
       tip.hidden = true;
       nearestPt = null;
     });
@@ -419,126 +552,234 @@
     const ts = d.today_stats || {};
     const rt = d.runtime || {};
 
-    // 顶栏状态
+    // 顶栏状态与按钮
     const convPill = document.getElementById('home-conv-pill');
     if (latest) {
       const ok = Boolean(latest.converged);
       convPill.className = `se-pill ${ok ? 'ok' : 'bad'}`;
       convPill.textContent = ok ? t('conv.ok') : t('conv.fail');
-      document.getElementById('home-run-meta').textContent = `#${latest.run_id} · ${fmtTime(latest.calc_time)}`;
+      document.getElementById('home-run-meta').textContent = `SE #${latest.run_id} · ${fmtTime(latest.calc_time)}`;
     } else {
       convPill.className = 'se-pill neutral';
       convPill.textContent = '—';
       document.getElementById('home-run-meta').textContent = '—';
     }
 
-    // 左栏：量测分析与控制
-    const busText = obs.ac_bus_count != null && obs.dc_bus_count != null
-      ? `${obs.bus_count ?? 0} (${obs.ac_bus_count}/${obs.dc_bus_count})`
-      : String(obs.bus_count ?? 0);
-    setVal('h-bus-count', busText);
-    setVal('h-meas-count', String(obs.meas_count ?? 0));
-    setVal('h-valid-meas', String(obs.valid_meas_count ?? 0));
-    setVal('h-state-count', String(obs.state_count ?? 0));
-    setVal('h-rank', String(obs.rank ?? 0));
-    setVal('h-deficiency', String(obs.deficiency ?? 0), (obs.deficiency || 0) > 0 ? 'bad' : 'ok');
-    setVal('h-redundancy', obs.redundancy != null ? `${Number(obs.redundancy).toFixed(2)}x` : '—');
-
-    setVal('h-pf-total', String(pf.total ?? 0), (pf.total || 0) > 0 ? 'warn' : '');
-    setVal('h-pf-rate', pf.prefilter_rate != null ? `${Number(pf.prefilter_rate).toFixed(1)}%` : '—');
-    setVal('h-pf-rule', String(pf.by_rule ?? 0));
-    setVal('h-pf-kernel', String(pf.by_kernel ?? 0));
-    setVal('h-pf-rules', `${pf.rule_enabled ?? 0} / ${pf.rule_total ?? 0}`);
-    setVal('h-nomeas', String(pf.nomeas_count ?? 0), (pf.nomeas_count || 0) > 0 ? 'warn' : '');
-    setVal('h-suspect', String(pf.suspect_count ?? 0), (pf.suspect_count || 0) > 0 ? 'bad' : '');
-
-    setVal('h-pseudo-stat', `${ctrl.pseudo_stat_enabled ?? 0} / ${ctrl.pseudo_stat_total ?? 0}`);
-    setVal('h-pseudo-meas', `${ctrl.pseudo_meas_enabled ?? 0} / ${ctrl.pseudo_result_total ?? 0}`);
-    setVal('h-policy', `${ctrl.policy_enabled ?? 0} / ${ctrl.policy_total ?? 0}`);
-    setVal('h-bad-left', `${ctrl.bad_unacked ?? 0} / ${ctrl.bad_total ?? 0}`, (ctrl.bad_total || 0) > 0 ? 'bad' : 'ok');
-    setVal('h-branches', String(ctrl.branch_count ?? 0));
-    setVal('h-converters', String(ctrl.converter_count ?? 0));
-    setVal('h-dev-total', String(ctrl.total_devices ?? 0));
-
-    // 中栏：计算控制（仅控制 SE 周期调度开关，不误停 LF/CA 全站服务）
     const sePeriodicOn = Boolean(sched.enabled);
     const btnToggle = document.getElementById('btn-home-toggle-daemon');
-    btnToggle.dataset.running = sePeriodicOn ? '1' : '0';
-    btnToggle.textContent = sePeriodicOn ? t('btn.pause_calc') : t('btn.resume_calc');
+    if (btnToggle) {
+      btnToggle.dataset.running = sePeriodicOn ? '1' : '0';
+      btnToggle.classList.toggle('active', sePeriodicOn);
+      btnToggle.textContent = sePeriodicOn ? t('btn.pause_calc') : t('btn.resume_calc');
+    }
 
-    document.getElementById('h-snap-time').textContent = latest ? fmtTime(latest.calc_time) : '—';
-    document.getElementById('h-model-scene').textContent = rt.scenario ? `${rt.runtime || 'realtime'} / ${rt.scenario}` : '—';
+    // 顶部大屏英雄指标带
+    renderHeroStrip(d);
 
-    setVal('h-p-periodic', sched.enabled ? t('yes') : t('no'), sched.enabled ? 'ok' : '');
-    setVal('h-p-cycle', sched.period_seconds != null ? `${sched.period_seconds} s` : `${params.do_cycle ?? 60} s`);
-    setVal('h-p-trigger', String(params.calc_trigger ?? 1));
-    setVal('h-p-flat', params.flat_start ? t('yes') : t('no'));
-    setVal('h-p-tol', params.tol != null ? Number(params.tol).toExponential(1) : '—');
-    setVal('h-p-diffstep', params.diff_step != null ? Number(params.diff_step).toExponential(1) : '—');
-    setVal('h-p-maxiter', params.max_iterator != null ? String(params.max_iterator) : '—');
-    setVal('h-p-badeps', params.baderr_eps != null ? String(params.baderr_eps) : '—');
-    setVal('h-p-badmax', params.badnum_max != null ? String(params.badnum_max) : '—');
-    setVal('h-p-badstep', params.badnum_step != null ? String(params.badnum_step) : '—');
-    setVal('h-p-pweight', params.pseudo_measurement_weight != null ? Number(params.pseudo_measurement_weight).toExponential(1) : '—');
-    setVal('h-p-pmax', params.targeted_pseudo_measurement_max != null ? String(params.targeted_pseudo_measurement_max) : '—');
-    setVal('h-p-vfloor', params.voltage_floor != null ? String(params.voltage_floor) : '—');
-    setVal('h-p-pftol', params.power_flow_tol != null ? Number(params.power_flow_tol).toExponential(1) : '—');
-    setVal('h-p-pfiter', params.power_flow_max_iter != null ? String(params.power_flow_max_iter) : '—');
+    // 左栏 1：量测清洗动态流水线
+    const totalMeas = Number(obs.meas_count || 0);
+    const pfCnt = Number(pf.total || 0);
+    const validCnt = Number(obs.valid_meas_count || 0);
+    const pseudoEff = Number(ctrl.pseudo_result_total || 0);
+    const badCnt = Number(latest?.bad_data_count ?? ctrl.bad_total ?? 0);
+    const goodCnt = Number(obs.good_meas_count ?? Math.max(0, validCnt - badCnt));
+    const missCnt = Number(pf.nomeas_count || 0);
+    const denom = Math.max(1, totalMeas);
 
-    // 右上：合格率摘要 + 双曲线
-    document.getElementById('h-r-cur').textContent = ts.current_pass_rate != null ? `${ts.current_pass_rate.toFixed(2)}%` : '—';
-    document.getElementById('h-r-today').textContent = ts.today_avg_pass_rate != null ? `${ts.today_avg_pass_rate.toFixed(2)}%` : '—';
-    document.getElementById('h-r-yest').textContent = ts.yesterday_avg_pass_rate != null ? `${ts.yesterday_avg_pass_rate.toFixed(2)}%` : '—';
-    document.getElementById('h-r-conv').textContent = `${Number(ts.today_conv_rate || 0).toFixed(1)}%`;
-    renderPassChart(d.pass_rate_series);
+    const pipeMeta = document.getElementById('se-pipe-meta');
+    if (pipeMeta) pipeMeta.textContent = `${totalMeas} → ${goodCnt}`;
+    if (window.PAS_KIT?.renderPipelineFlow) {
+      window.PAS_KIT.renderPipelineFlow(document.getElementById('se-meas-pipeline'), {
+        steps: [
+          {
+            label: t('pipe.total'),
+            value: totalMeas,
+            pct: 100,
+            tone: 'accent',
+            href: '/se-measurements.html',
+            tip: `${t('pipe.total')}: <strong>${totalMeas}</strong> (缺测/坏质 ${missCnt})`,
+          },
+          {
+            label: t('pipe.prefilter'),
+            value: pfCnt,
+            display: `${pfCnt} (${Number(pf.prefilter_rate || 0).toFixed(1)}%)`,
+            pct: Math.min(100, (pfCnt / denom) * 100),
+            tone: pfCnt > 0 ? 'warn' : 'ok',
+            href: '/se-prefilter.html',
+            tip: `规则命中 ${pf.by_rule ?? 0} · 内核过滤 ${pf.by_kernel ?? 0} · 规则 ${pf.rule_enabled ?? 0}/${pf.rule_total ?? 0}`,
+          },
+          {
+            label: t('pipe.valid'),
+            value: validCnt,
+            display: `${validCnt}${pseudoEff > 0 ? ` (+${pseudoEff})` : ''}`,
+            pct: Math.min(100, (validCnt / denom) * 100),
+            tone: 'accent',
+            href: '/se-pseudo.html',
+            tip: `有效量测 ${validCnt} · 定向伪量测生效 ${pseudoEff} · 遥测屏蔽 ${ctrl.policy_enabled ?? 0}/${ctrl.policy_total ?? 0}`,
+          },
+          {
+            label: t('pipe.bad'),
+            value: badCnt,
+            display: `${badCnt} (未确 ${ctrl.bad_unacked ?? 0})`,
+            pct: Math.min(100, (badCnt / denom) * 100),
+            tone: badCnt > 0 ? 'bad' : 'ok',
+            href: '/se-bad.html',
+            tip: `坏量测 ${badCnt} · 未确认 ${ctrl.bad_unacked ?? 0} · 可疑遥信 ${pf.suspect_count ?? 0}`,
+          },
+          {
+            label: t('pipe.good'),
+            value: goodCnt,
+            display: `${goodCnt} (${Number(ts.current_pass_rate || 0).toFixed(1)}%)`,
+            pct: Math.min(100, (goodCnt / denom) * 100),
+            tone: 'ok',
+            href: '/se-measurements.html?sub=balance',
+            tip: `合格量测 ${goodCnt} / 有效 ${validCnt}`,
+          },
+        ],
+      });
+    }
 
-    // 左下：计算结果
-    setVal('h-res-start', latest ? fmtTime(latest.started_at || latest.calc_time) : '—');
-    setVal('h-res-end', latest ? fmtTime(latest.finished_at || latest.calc_time) : '—');
-    setVal('h-res-elapsed', latest ? `${Number(latest.elapsed_seconds || 0).toFixed(3)} s` : '—');
-    setVal('h-res-iters', latest ? String(latest.iterations ?? 0) : '—');
-    setVal('h-res-obj', latest ? fmtNum(latest.objective, 4) : '—');
-    setVal('h-res-residual', latest ? `${fmtNum(latest.total_residual, 2)} / ${fmtNum(latest.residual_inf, 2)}` : '—');
-    setVal('h-res-bad', latest ? String(latest.bad_data_count ?? 0) : '0', (latest?.bad_data_count || 0) > 0 ? 'bad' : 'ok');
-
-    // 右下：指标统计
-    setVal('h-st-host', rt.host || '—');
-    setVal('h-st-runs', String(ts.today_runs ?? 0));
-    setVal('h-st-conv-cnt', String(ts.today_converged ?? 0));
-    setVal('h-st-conv-rate', `${Number(ts.today_conv_rate || 0).toFixed(1)}%`, 'ok');
-    setVal('h-st-pass-rate', ts.current_pass_rate != null ? `${ts.current_pass_rate.toFixed(2)}%` : '—', 'ok');
-    setVal('h-st-good-valid', `${obs.good_meas_count ?? 0} / ${obs.valid_meas_count ?? 0}`);
-    const covPct = obs.meas_count > 0 ? ((obs.valid_meas_count / obs.meas_count) * 100).toFixed(1) + '%' : '—';
-    setVal('h-st-coverage', covPct);
-
-    // 多维图表：量测健康环形饼图 + 三率对比柱状图
-    if (window.PAS_KIT) {
-      const goodCnt = Number(obs.good_meas_count ?? obs.valid_meas_count ?? 0);
-      const badCnt = Number(latest?.bad_data_count ?? ctrl.bad_total ?? 0);
-      const pfCnt = Number(pf.total ?? 0);
-      const missCnt = Number(pf.nomeas_count ?? 0);
+    // 左栏 2：量测健康构成环形图
+    if (window.PAS_KIT?.renderDonut) {
       window.PAS_KIT.renderDonut(document.getElementById('se-home-meas-donut'), {
         slices: [
-          { label: '正常有效', value: goodCnt, color: '#22c55e' },
-          { label: '预过滤', value: pfCnt, color: '#f59e0b' },
-          { label: '坏数据', value: badCnt, color: '#ef4444' },
-          { label: '缺测/坏质量', value: missCnt, color: '#64748b' },
+          { label: t('donut.good'), value: goodCnt, color: '#22c55e' },
+          { label: t('donut.pf'), value: pfCnt, color: '#f59e0b' },
+          { label: t('donut.bad'), value: badCnt, color: '#ef4444' },
+          { label: t('donut.miss'), value: missCnt, color: '#64748b' },
         ],
-        centerTitle: '量测构成',
-        centerValue: String(obs.meas_count ?? (goodCnt + badCnt + pfCnt + missCnt)),
-        size: 98,
+        centerTitle: t('donut.center'),
+        centerValue: String(totalMeas || (goodCnt + pfCnt + badCnt + missCnt)),
+        size: 100,
       });
-      const covVal = obs.meas_count > 0 ? (obs.valid_meas_count / obs.meas_count) * 100 : 0;
+    }
+
+    // 左栏 3：交直流拓扑规模胶囊
+    const topoHost = document.getElementById('se-topo-chips');
+    if (topoHost) {
+      const busTxt = obs.ac_bus_count != null && obs.dc_bus_count != null
+        ? `${obs.bus_count ?? 0} (${obs.ac_bus_count}/${obs.dc_bus_count})`
+        : String(obs.bus_count ?? 0);
+      topoHost.innerHTML = [
+        [t('topo.bus'), busTxt],
+        [t('topo.branch'), String(ctrl.branch_count ?? 0)],
+        [t('topo.conv'), String(ctrl.converter_count ?? 0)],
+        [t('topo.dev'), String(ctrl.total_devices ?? 0)],
+      ].map(([k, v]) => `<div class="pas-stat-chip"><span>${esc(k)}</span><strong class="tabular">${esc(v)}</strong></div>`).join('');
+    }
+
+    // 中栏 1：SE 五维质量雷达图
+    const obsBadge = document.getElementById('se-obs-badge');
+    const defCnt = Number(obs.deficiency || 0);
+    if (obsBadge) {
+      obsBadge.textContent = defCnt > 0 ? t('obs.lack', { n: defCnt }) : t('obs.ok');
+      obsBadge.className = `se-pill tabular ${defCnt > 0 ? 'bad' : 'ok'}`;
+    }
+    const covVal = totalMeas > 0 ? (validCnt / totalMeas) * 100 : 0;
+    const obsScore = obs.state_count > 0 ? Math.min(100, (Number(obs.rank || 0) / Number(obs.state_count)) * 100) : (obs.observable ? 100 : 0);
+    const redScore = obs.redundancy != null ? Math.min(100, (Number(obs.redundancy) / 2.5) * 100) : 0;
+    if (window.PAS_KIT?.renderRadarChart) {
+      window.PAS_KIT.renderRadarChart(document.getElementById('se-health-radar'), {
+        size: 162,
+        axes: [
+          { label: t('radar.pass'), value: Number(ts.current_pass_rate || 0), max: 100, unit: '%' },
+          { label: t('radar.conv'), value: Number(ts.today_conv_rate || 0), max: 100, unit: '%' },
+          { label: t('radar.cov'), value: covVal, max: 100, unit: '%' },
+          { label: t('radar.obs'), value: obsScore, max: 100, unit: '%', sub: `R=${obs.rank ?? 0} / S=${obs.state_count ?? 0}` },
+          { label: t('radar.red'), value: redScore, max: 100, unit: 'pt', sub: `${Number(obs.redundancy || 0).toFixed(2)}×` },
+        ],
+      });
+    }
+
+    // 中栏 2：分类型量测合格率柱图
+    const byType = d.meas_by_type || [];
+    const typeMeta = document.getElementById('se-type-meta');
+    if (typeMeta) typeMeta.textContent = byType.length ? `${byType.length} 类` : '—';
+    if (window.PAS_KIT?.renderBarChart) {
+      const catColor = { U: '#38bdf8', P: '#22c55e', Q: '#a855f7', I: '#f59e0b', OTHER: '#64748b' };
+      const items = byType.length
+        ? byType.map((c) => ({
+          label: t(`cat.${c.category}`) || c.category,
+          value: Number(c.pass_rate || 0),
+          color: c.bad > 0 ? '#f59e0b' : (catColor[c.category] || 'var(--accent)'),
+          sub: `合格 ${c.good} / 有效 ${c.valid} · 坏数据 ${c.bad}`,
+          subShort: `${c.good}/${c.valid}`,
+        }))
+        : [
+          { label: t('r.cur_pass'), value: Number(ts.current_pass_rate || 0), color: '#22c55e' },
+          { label: t('radar.cov'), value: covVal, color: '#38bdf8' },
+        ];
+      window.PAS_KIT.renderBarChart(document.getElementById('se-type-bars'), {
+        items,
+        maxVal: 100,
+        unit: '%',
+        digits: 1,
+      });
+    }
+
+    // 中栏 3：精简核心基态与调度配置胶囊（移除 15 行冗余超参数列表）
+    const sceneEl = document.getElementById('h-model-scene');
+    if (sceneEl) sceneEl.textContent = rt.scenario ? `${rt.runtime || 'realtime'} / ${rt.scenario}` : '—';
+    const cfgHost = document.getElementById('se-cfg-chips');
+    if (cfgHost) {
+      const periodTxt = sched.period_seconds != null ? `${sched.period_seconds}s` : `${params.do_cycle ?? 60}s`;
+      cfgHost.innerHTML = [
+        [t('cfg.cycle'), `${sched.enabled ? t('yes') : t('no')} · ${periodTxt}`, sched.enabled ? 'ok' : ''],
+        [t('cfg.flat'), params.flat_start ? t('yes') : t('no'), ''],
+        [t('cfg.tol'), params.tol != null ? Number(params.tol).toExponential(0) : '—', ''],
+      ].map(([k, v, cls]) => `<div class="pas-stat-chip"><span>${esc(k)}</span><strong class="tabular ${cls}">${esc(v)}</strong></div>`).join('');
+    }
+
+    // 右上：合格率摘要 + 双曲线 / 坏数据柱图
+    document.getElementById('h-r-cur').textContent = ts.current_pass_rate != null ? `${Number(ts.current_pass_rate).toFixed(2)}%` : '—';
+    document.getElementById('h-r-today').textContent = ts.today_avg_pass_rate != null ? `${Number(ts.today_avg_pass_rate).toFixed(2)}%` : '—';
+    document.getElementById('h-r-yest').textContent = ts.yesterday_avg_pass_rate != null ? `${Number(ts.yesterday_avg_pass_rate).toFixed(2)}%` : '—';
+    document.getElementById('h-r-conv').textContent = `${Number(ts.today_conv_rate || 0).toFixed(1)}%`;
+    renderMainChart(d.pass_rate_series);
+
+    // 右下左卡：最大残差 Top 测点（点击设备打开 360° 抽屉）
+    const topRes = d.top_residuals || [];
+    if (window.PAS_KIT?.renderBarChart) {
+      const badThr = Number(params.baderr_eps || 3.0);
+      window.PAS_KIT.renderBarChart(document.getElementById('se-top-residuals'), {
+        items: topRes.map((r) => ({
+          label: r.device_name || r.measurement_name,
+          device: r.device_name || '',
+          value: Number(r.score || 0),
+          color: r.is_bad ? '#ef4444' : (Number(r.score || 0) >= badThr * 0.7 ? '#f59e0b' : 'var(--accent)'),
+          sub: `${r.measurement_type} · 量测 ${fmtNum(r.value, 3)} / 估计 ${fmtNum(r.estimated_value, 3)}`,
+          subShort: r.category,
+        })),
+        threshold: badThr,
+        unit: 'σ',
+        digits: 2,
+        emptyText: t('empty.res'),
+      });
+    }
+
+    // 右下右卡：三率对比柱图 + 核心求解结果胶囊
+    if (window.PAS_KIT?.renderBarChart) {
       window.PAS_KIT.renderBarChart(document.getElementById('se-home-rate-bars'), {
         items: [
-          { label: '当前合格率', value: Number(ts.current_pass_rate || 0), color: '#22c55e' },
-          { label: '当日收敛率', value: Number(ts.today_conv_rate || 0), color: '#38bdf8' },
-          { label: '量测覆盖率', value: covVal, color: '#6366f1' },
+          { label: t('r.cur_pass'), value: Number(ts.current_pass_rate || 0), color: '#22c55e' },
+          { label: t('r.conv_rate'), value: Number(ts.today_conv_rate || 0), color: '#38bdf8' },
+          { label: t('radar.cov'), value: covVal, color: '#6366f1' },
         ],
         maxVal: 100,
         unit: '%',
         digits: 1,
       });
+    }
+    const solveHost = document.getElementById('se-solve-chips');
+    if (solveHost) {
+      const totRes = latest?.total_residual != null ? fmtNum(latest.total_residual, Math.abs(Number(latest.total_residual)) >= 100 ? 1 : 2) : '—';
+      const infRes = latest?.residual_inf != null ? fmtNum(latest.residual_inf, Math.abs(Number(latest.residual_inf)) >= 100 ? 1 : 2) : '—';
+      solveHost.innerHTML = [
+        [t('solve.obj'), latest ? fmtNum(latest.objective, 4) : '—', ''],
+        [t('solve.res'), latest ? `${totRes} / ${infRes}` : '—', ''],
+        [t('solve.runs'), `${ts.today_converged ?? 0} / ${ts.today_runs ?? 0}`, 'ok'],
+        [t('solve.host'), rt.host || '—', ''],
+      ].map(([k, v, cls]) => `<div class="pas-stat-chip"><span>${esc(k)}</span><strong class="tabular ${cls}" title="${esc(v)}">${esc(v)}</strong></div>`).join('');
     }
 
     // 底部运行信息条
@@ -575,7 +816,7 @@
   }
 
   function bindEvents() {
-    document.getElementById('btn-home-start').addEventListener('click', async () => {
+    document.getElementById('btn-home-start')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-home-start');
       btn.disabled = true;
       try {
@@ -590,7 +831,7 @@
       }
     });
 
-    document.getElementById('btn-home-toggle-daemon').addEventListener('click', async (e) => {
+    document.getElementById('btn-home-toggle-daemon')?.addEventListener('click', async (e) => {
       const running = e.currentTarget.dataset.running === '1';
       const periodSec = Number(homeData?.schedule?.period_seconds ?? homeData?.params?.do_cycle ?? 60);
       try {
@@ -605,11 +846,19 @@
       }
     });
 
+    document.querySelectorAll('#se-chart-mode [data-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        chartMode = btn.dataset.mode || 'pass';
+        document.querySelectorAll('#se-chart-mode [data-mode]').forEach((b) => b.classList.toggle('active', b === btn));
+        if (homeData) renderMainChart(homeData.pass_rate_series);
+      });
+    });
+
     let timer;
     window.addEventListener('resize', () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (homeData) renderPassChart(homeData.pass_rate_series);
+        if (homeData) renderMainChart(homeData.pass_rate_series);
       }, 150);
     });
   }
@@ -627,17 +876,17 @@
     const sBotV = document.getElementById('split-bottom-v');
     if (!grid || !right || !bottom) return;
 
-    const LAYOUT_KEY = 'pas_se_home_layout';
-    const DEFAULTS = { col1: 248, col2: 252, bottomH: null, botRatio: 0.5 };
+    const LAYOUT_KEY = 'pas_se_home_layout_v2';
+    const DEFAULTS = { col1: 274, col2: 266, bottomH: null, botRatio: 0.52 };
 
     let layout = { ...DEFAULTS };
     try {
       const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}');
       if (saved && typeof saved === 'object') {
-        if (Number.isFinite(saved.col1)) layout.col1 = Math.max(180, Math.min(460, Number(saved.col1)));
-        if (Number.isFinite(saved.col2)) layout.col2 = Math.max(180, Math.min(460, Number(saved.col2)));
-        if (Number.isFinite(saved.bottomH) && saved.bottomH >= 140) layout.bottomH = Number(saved.bottomH);
-        if (Number.isFinite(saved.botRatio)) layout.botRatio = Math.max(0.28, Math.min(0.72, Number(saved.botRatio)));
+        if (Number.isFinite(saved.col1)) layout.col1 = Math.max(210, Math.min(480, Number(saved.col1)));
+        if (Number.isFinite(saved.col2)) layout.col2 = Math.max(210, Math.min(480, Number(saved.col2)));
+        if (Number.isFinite(saved.bottomH) && saved.bottomH >= 150) layout.bottomH = Number(saved.bottomH);
+        if (Number.isFinite(saved.botRatio)) layout.botRatio = Math.max(0.30, Math.min(0.70, Number(saved.botRatio)));
       }
     } catch (_) {
       layout = { ...DEFAULTS };
@@ -648,35 +897,32 @@
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = 0;
-        if (homeData) renderPassChart(homeData.pass_rate_series);
+        if (homeData) renderMainChart(homeData.pass_rate_series);
       });
     };
 
     const applyLayout = (redraw = false) => {
-      grid.style.setProperty('--col1', `${Math.round(layout.col1)}px`);
-      grid.style.setProperty('--col2', `${Math.round(layout.col2)}px`);
-      right.style.setProperty('--bottom-h', layout.bottomH != null ? `${Math.round(layout.bottomH)}px` : 'auto');
+      if (!document.body.classList.contains('pas-wall-mode')) {
+        grid.style.setProperty('--col1', `${Math.round(layout.col1)}px`);
+        grid.style.setProperty('--col2', `${Math.round(layout.col2)}px`);
+      } else {
+        grid.style.removeProperty('--col1');
+        grid.style.removeProperty('--col2');
+      }
+      right.style.setProperty('--bottom-h', layout.bottomH != null ? `${Math.round(layout.bottomH)}px` : 'minmax(200px, 44%)');
       bottom.style.setProperty('--bot-left', `calc(${(layout.botRatio * 100).toFixed(2)}% - 4px)`);
       if (redraw) scheduleChartRedraw();
     };
 
     const saveLayout = () => {
-      try {
-        localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
-      } catch (_) {}
+      try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (_) {}
     };
 
     const bindDrag = (el, orientation, onMove, onReset) => {
       if (!el) return;
       let dragging = false;
       const bodyCls = orientation === 'v' ? 'se-splitting-v' : 'se-splitting-h';
-
-      el.addEventListener('dblclick', () => {
-        onReset();
-        applyLayout(true);
-        saveLayout();
-      });
-
+      el.addEventListener('dblclick', () => { onReset(); applyLayout(true); saveLayout(); });
       el.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
         dragging = true;
@@ -684,13 +930,7 @@
         el.classList.add('is-active');
         document.body.classList.add(bodyCls);
       });
-
-      el.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        onMove(e);
-        applyLayout(true);
-      });
-
+      el.addEventListener('pointermove', (e) => { if (dragging) { onMove(e); applyLayout(true); } });
       const end = (e) => {
         if (!dragging) return;
         dragging = false;
@@ -700,56 +940,35 @@
         saveLayout();
         scheduleChartRedraw();
       };
-
       el.addEventListener('pointerup', end);
       el.addEventListener('pointercancel', end);
     };
 
-    bindDrag(
-      sCol1,
-      'v',
-      (e) => {
-        const rect = grid.getBoundingClientRect();
-        const maxCol1 = Math.max(180, Math.min(460, rect.width - layout.col2 - 340 - 16));
-        layout.col1 = Math.max(180, Math.min(maxCol1, e.clientX - rect.left - 4));
-      },
-      () => { layout.col1 = DEFAULTS.col1; },
-    );
+    bindDrag(sCol1, 'v', (e) => {
+      const rect = grid.getBoundingClientRect();
+      const maxCol1 = Math.max(210, Math.min(480, rect.width - layout.col2 - 360 - 16));
+      layout.col1 = Math.max(210, Math.min(maxCol1, e.clientX - rect.left - 4));
+    }, () => { layout.col1 = DEFAULTS.col1; });
 
-    bindDrag(
-      sCol2,
-      'v',
-      (e) => {
-        const rect = grid.getBoundingClientRect();
-        const maxCol2 = Math.max(180, Math.min(460, rect.width - layout.col1 - 340 - 16));
-        layout.col2 = Math.max(180, Math.min(maxCol2, e.clientX - rect.left - layout.col1 - 12));
-      },
-      () => { layout.col2 = DEFAULTS.col2; },
-    );
+    bindDrag(sCol2, 'v', (e) => {
+      const rect = grid.getBoundingClientRect();
+      const maxCol2 = Math.max(210, Math.min(480, rect.width - layout.col1 - 360 - 16));
+      layout.col2 = Math.max(210, Math.min(maxCol2, e.clientX - rect.left - layout.col1 - 12));
+    }, () => { layout.col2 = DEFAULTS.col2; });
 
-    bindDrag(
-      sRightH,
-      'h',
-      (e) => {
-        const rect = right.getBoundingClientRect();
-        const maxBottom = Math.max(140, rect.height - 188);
-        layout.bottomH = Math.max(140, Math.min(maxBottom, rect.bottom - e.clientY - 4));
-      },
-      () => { layout.bottomH = DEFAULTS.bottomH; },
-    );
+    bindDrag(sRightH, 'h', (e) => {
+      const rect = right.getBoundingClientRect();
+      const maxBottom = Math.max(150, rect.height - 190);
+      layout.bottomH = Math.max(150, Math.min(maxBottom, rect.bottom - e.clientY - 4));
+    }, () => { layout.bottomH = DEFAULTS.bottomH; });
 
-    bindDrag(
-      sBotV,
-      'v',
-      (e) => {
-        const rect = bottom.getBoundingClientRect();
-        if (rect.width <= 0) return;
-        const ratio = (e.clientX - rect.left) / rect.width;
-        layout.botRatio = Math.max(0.28, Math.min(0.72, ratio));
-      },
-      () => { layout.botRatio = DEFAULTS.botRatio; },
-    );
+    bindDrag(sBotV, 'v', (e) => {
+      const rect = bottom.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      layout.botRatio = Math.max(0.30, Math.min(0.70, (e.clientX - rect.left) / rect.width));
+    }, () => { layout.botRatio = DEFAULTS.botRatio; });
 
+    window.addEventListener('resize', () => applyLayout(false));
     applyLayout(false);
   }
 

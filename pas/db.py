@@ -546,6 +546,83 @@ class Repository:
         )
         latest_log = latest_logs[0] if latest_logs else None
 
+        # 按量测类型汇总最新断面合格率，并提取最大残差 Top 8 测点用于主画面可视化
+        meas_by_type: list[dict[str, Any]] = []
+        top_residuals: list[dict[str, Any]] = []
+        if latest and latest.get("run_id") is not None:
+            lat_rid = int(latest["run_id"])
+            m_rows = self._rows(
+                """SELECT measurement_name, device_type, device_name, measurement_type,
+                          value, estimated_value, residual, normalized_residual, valid, source
+                   FROM se_measurement_result
+                   WHERE run_id = ?""",
+                (lat_rid,),
+            )
+            cat_buckets: dict[str, dict[str, Any]] = {}
+
+            def _meas_cat(mtype: str) -> str:
+                u = (mtype or "").upper()
+                if any(k in u for k in ("VOLT", "V_MAG", "UAB", "UBC", "UCA", "UA", "UB", "UC")) or u in {"V", "U", "VM", "UDC"}:
+                    return "U"
+                if any(k in u for k in ("ACTIVE", "P_", "_P", "PINJ", "PFLOW")) or u in {"P", "PDC", "PT"}:
+                    return "P"
+                if any(k in u for k in ("REACTIVE", "Q_", "_Q", "QINJ", "QFLOW")) or u in {"Q", "QT"}:
+                    return "Q"
+                if any(k in u for k in ("CURR", "I_", "_I", "IMAG")) or u in {"I", "IDC", "IA", "IB", "IC"}:
+                    return "I"
+                if u.startswith("U") or u.startswith("V"):
+                    return "U"
+                if u.startswith("P"):
+                    return "P"
+                if u.startswith("Q"):
+                    return "Q"
+                if u.startswith("I"):
+                    return "I"
+                return "OTHER"
+
+            res_candidates: list[dict[str, Any]] = []
+            for mr in m_rows:
+                cat = _meas_cat(str(mr.get("measurement_type") or ""))
+                b = cat_buckets.setdefault(cat, {"category": cat, "total": 0, "valid": 0, "bad": 0, "good": 0})
+                b["total"] += 1
+                src = str(mr.get("source") or "")
+                is_bad = src == "bad_data"
+                is_valid = bool(mr.get("valid")) and src not in {"prefiltered"}
+                if is_bad:
+                    b["bad"] += 1
+                if is_valid:
+                    b["valid"] += 1
+                    if not is_bad:
+                        b["good"] += 1
+                nres = mr.get("normalized_residual")
+                ares = mr.get("residual")
+                score = abs(float(nres)) if nres is not None else (abs(float(ares)) if ares is not None else None)
+                if score is not None and src != "prefiltered":
+                    res_candidates.append(
+                        {
+                            "measurement_name": str(mr.get("measurement_name") or ""),
+                            "device_name": str(mr.get("device_name") or ""),
+                            "device_type": str(mr.get("device_type") or ""),
+                            "measurement_type": str(mr.get("measurement_type") or ""),
+                            "category": cat,
+                            "value": mr.get("value"),
+                            "estimated_value": mr.get("estimated_value"),
+                            "residual": mr.get("residual"),
+                            "normalized_residual": mr.get("normalized_residual"),
+                            "score": round(score, 4),
+                            "is_bad": is_bad,
+                            "source": src,
+                        }
+                    )
+            for cat in ("U", "P", "Q", "I", "OTHER"):
+                if cat in cat_buckets:
+                    b = cat_buckets[cat]
+                    denom = b["valid"] or b["total"]
+                    b["pass_rate"] = round((b["good"] / denom) * 100.0, 2) if denom > 0 else 100.0
+                    meas_by_type.append(b)
+            res_candidates.sort(key=lambda x: (1 if x["is_bad"] else 0, x["score"]), reverse=True)
+            top_residuals = res_candidates[:8]
+
         if not was_in_tx and conn.in_transaction:
             conn.commit()
 
@@ -596,6 +673,9 @@ class Repository:
                 "converter_count": converter_count,
                 "total_devices": total_devices,
             },
+            "device_breakdown": device_counts,
+            "meas_by_type": meas_by_type,
+            "top_residuals": top_residuals,
             "params": params,
             "schedule": schedule,
             "today_stats": {
@@ -2627,6 +2707,82 @@ class Repository:
                 key=lambda x: abs(float(x["v_pu"]) - 1.0),
                 reverse=True,
             )[:8]
+
+        # 电压区间分布直方图（5 档）
+        v_min_thr = float(params.get("v_min_pu") or 0.93)
+        v_max_thr = float(params.get("v_max_pu") or 1.07)
+        v_bins = [
+            {"key": "low", "label": f"<{v_min_thr:.2f}", "count": 0, "tone": "danger"},
+            {"key": "low_warn", "label": f"{v_min_thr:.2f}-0.97", "count": 0, "tone": "warn"},
+            {"key": "norm", "label": "0.97-1.03", "count": 0, "tone": "ok"},
+            {"key": "high_warn", "label": f"1.03-{v_max_thr:.2f}", "count": 0, "tone": "info"},
+            {"key": "high", "label": f">{v_max_thr:.2f}", "count": 0, "tone": "danger"},
+        ]
+        for b in snap["buses"]:
+            vp = b.get("v_pu")
+            if vp is None:
+                continue
+            v = float(vp)
+            if v < v_min_thr:
+                v_bins[0]["count"] += 1
+            elif v < 0.97:
+                v_bins[1]["count"] += 1
+            elif v <= 1.03:
+                v_bins[2]["count"] += 1
+            elif v <= v_max_thr:
+                v_bins[3]["count"] += 1
+            else:
+                v_bins[4]["count"] += 1
+
+        # 支路负载率区间分布直方图（5 档）
+        ol_warn = float(params.get("overload_warn_pct") or 80.0)
+        ol_lim = float(params.get("overload_limit_pct") or 100.0)
+        l_bins = [
+            {"key": "light", "label": "<30%", "count": 0, "tone": "info"},
+            {"key": "econ", "label": "30-60%", "count": 0, "tone": "ok"},
+            {"key": "mid", "label": f"60-{int(ol_warn)}%", "count": 0, "tone": "accent"},
+            {"key": "heavy", "label": f"{int(ol_warn)}-{int(ol_lim)}%", "count": 0, "tone": "warn"},
+            {"key": "over", "label": f"≥{int(ol_lim)}%", "count": 0, "tone": "danger"},
+        ]
+        converters: list[dict[str, Any]] = []
+        for br in snap["branches"]:
+            lp = br.get("loading_pct")
+            if lp is not None:
+                val = float(lp)
+                if val < 30.0:
+                    l_bins[0]["count"] += 1
+                elif val < 60.0:
+                    l_bins[1]["count"] += 1
+                elif val < ol_warn:
+                    l_bins[2]["count"] += 1
+                elif val < ol_lim:
+                    l_bins[3]["count"] += 1
+                else:
+                    l_bins[4]["count"] += 1
+            dt = str(br.get("device_type") or "")
+            if "Converter" in dt:
+                converters.append(
+                    {
+                        "device_name": str(br.get("device_name") or ""),
+                        "device_type": dt,
+                        "domain": str(br.get("domain") or ""),
+                        "p_from": br.get("p_from"),
+                        "p_to": br.get("p_to"),
+                        "p_loss": br.get("p_loss"),
+                        "loading_pct": br.get("loading_pct"),
+                        "overload": bool(br.get("overload")),
+                    }
+                )
+
+        # 电源与负荷分设备类有功构成
+        unit_by_type: dict[str, dict[str, Any]] = {}
+        for u in snap["units"]:
+            dt = str(u.get("device_type") or "Other")
+            p_val = float(u.get("p") or 0.0)
+            entry = unit_by_type.setdefault(dt, {"device_type": dt, "domain": str(u.get("domain") or ""), "count": 0, "p_sum": 0.0})
+            entry["count"] += 1
+            entry["p_sum"] = round(entry["p_sum"] + p_val, 3)
+
         log_rows = self._rows("SELECT * FROM lf_run_log ORDER BY log_id DESC LIMIT 1")
         latest_log = log_rows[0] if log_rows else None
         if not was_in_tx and conn.in_transaction:
@@ -2640,6 +2796,12 @@ class Repository:
             "trend_series": series,
             "top_loading": top_loading,
             "voltage_extremes": v_alerts,
+            "voltage_bins": v_bins,
+            "loading_bins": l_bins,
+            "converters": converters[:6],
+            "unit_summary": list(unit_by_type.values()),
+            "bus_total": len(snap["buses"]),
+            "branch_total": len(snap["branches"]),
             "latest_log": latest_log,
         }
 
@@ -2973,6 +3135,69 @@ class Repository:
         trend.reverse()
         top_risks = snap["risks"][:10]
         top_contingencies = snap["contingencies"][:10]
+
+        # 全量风险分类统计（不再截断于前 10 条）
+        risk_by_category: dict[str, int] = {
+            "voltage_low": 0,
+            "voltage_high": 0,
+            "overload": 0,
+            "heavy_load": 0,
+            "load_loss": 0,
+            "divergence": 0,
+        }
+        dev_heat_map: dict[str, dict[str, Any]] = {}
+        sev_weight = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        for r in snap["risks"]:
+            rc = str(r.get("risk_category") or "")
+            if rc in risk_by_category:
+                risk_by_category[rc] += 1
+            else:
+                risk_by_category[rc or "other"] = risk_by_category.get(rc or "other", 0) + 1
+            dname = str(r.get("device_name") or "").strip()
+            if dname:
+                ent = dev_heat_map.setdefault(
+                    dname,
+                    {
+                        "device_name": dname,
+                        "device_type": str(r.get("device_type") or ""),
+                        "risk_count": 0,
+                        "max_violation_pct": 0.0,
+                        "max_severity": "low",
+                        "sev_rank": 0,
+                    },
+                )
+                ent["risk_count"] += 1
+                vp = float(r.get("violation_pct") or 0.0)
+                if vp > ent["max_violation_pct"]:
+                    ent["max_violation_pct"] = round(vp, 2)
+                sev = str(r.get("severity") or "low")
+                rk = sev_weight.get(sev, 1)
+                if rk > ent["sev_rank"]:
+                    ent["sev_rank"] = rk
+                    ent["max_severity"] = sev
+
+        device_risk_heat = sorted(
+            dev_heat_map.values(),
+            key=lambda x: (x["sev_rank"], x["risk_count"], x["max_violation_pct"]),
+            reverse=True,
+        )[:8]
+
+        # 全景故障扫描热力矩阵（按类别/严重度紧凑返回，支撑大屏故障扫描墙）
+        contingency_matrix = [
+            {
+                "contingency_name": str(c.get("contingency_name") or ""),
+                "category": str(c.get("category") or "N-1"),
+                "target_desc": str(c.get("target_desc") or ""),
+                "converged": bool(c.get("converged")),
+                "severity": str(c.get("severity") or "normal"),
+                "risk_count": int(c.get("risk_count") or 0),
+                "load_loss_kw": float(c.get("load_loss_kw") or 0.0),
+                "max_loading_pct": float(c.get("max_loading_pct") or 0.0),
+                "min_v_pu": c.get("min_v_pu"),
+            }
+            for c in snap["contingencies"][:64]
+        ]
+
         log_rows = self._rows("SELECT * FROM ca_run_log ORDER BY log_id DESC LIMIT 1")
         latest_log = log_rows[0] if log_rows else None
         if not was_in_tx and conn.in_transaction:
@@ -2991,6 +3216,9 @@ class Repository:
             "trend_series": trend,
             "top_risks": top_risks,
             "top_contingencies": top_contingencies,
+            "risk_by_category": risk_by_category,
+            "device_risk_heat": device_risk_heat,
+            "contingency_matrix": contingency_matrix,
             "latest_log": latest_log,
         }
 

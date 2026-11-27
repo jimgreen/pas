@@ -30,10 +30,11 @@
       'action.reset_default': '恢复默认', 'action.save_params': '保存参数', 'action.save_and_trial': '保存并试算对比',
       'action.seed_limits': '从模型播种限值', 'action.open_limits': '限值管理页 →',
       'action.save_sched': '保存调度', 'action.purge_now': '立即按策略清理', 'action.replay': '回放',
-      'home.security_overview': '安全评估与基态', 'home.risk_dist': '风险分级分布', 'home.scan_extremes': '故障扫描与极值',
-      'home.recent_runs': '近期 CA 运行', 'home.trend_title': '安全健康与风险趋势',
-      'home.top_risks': '高危风险排行', 'home.top_contingencies': '严重预想故障 Top', 'home.view_source_lf': '查看源 LF',
-      'metric.score': '安全评分', 'metric.total_risks': '风险总数', 'metric.max_loading': '最大负载 %',
+      'home.security_overview': '安全评估与防线', 'home.defense_lines': 'N-0 / N-1 / N-k 安全防线',
+      'home.risk_dist': '风险分级构成', 'home.scan_extremes': '故障扫描与极值', 'home.scan_matrix': '预想故障全景矩阵',
+      'home.device_heat': '脆弱设备风险频次 Top', 'home.recent_runs': '近期 CA 运行', 'home.trend_title': '安全健康与风险趋势',
+      'home.top_risks': '高危风险排行', 'home.top_contingencies': '严重预想故障 Top', 'home.view_source_lf': '源 LF',
+      'metric.score': '安全评分', 'metric.total_risks': '风险总数', 'metric.max_loading': '最大负载 %', 'metric.risk_cat': '风险分类',
       'tab.risks': '风险明细表', 'tab.cont_results': '故障扫描总览', 'tab.risk_map': '接线图风险分布',
       'tab.ca_params': '扫描与越限参数', 'tab.ca_limits': '设备安全限值',
       'tab.log_list': '日志明细', 'tab.run_sched': '运行与调度', 'tab.log_policy': '清理策略',
@@ -90,10 +91,11 @@
       'action.reset_default': 'Reset Default', 'action.save_params': 'Save Params', 'action.save_and_trial': 'Save & Trial',
       'action.seed_limits': 'Seed Limits', 'action.open_limits': 'Limits Page →',
       'action.save_sched': 'Save Schedule', 'action.purge_now': 'Purge Now', 'action.replay': 'Replay',
-      'home.security_overview': 'Security & Base', 'home.risk_dist': 'Risk Breakdown', 'home.scan_extremes': 'Scan & Extremes',
-      'home.recent_runs': 'Recent CA Runs', 'home.trend_title': 'Security Score & Risk Trend',
+      'home.security_overview': 'Security & Defenses', 'home.defense_lines': 'N-0 / N-1 / N-k Defenses',
+      'home.risk_dist': 'Risk Breakdown', 'home.scan_extremes': 'Scan & Extremes', 'home.scan_matrix': 'Contingency Scan Matrix',
+      'home.device_heat': 'Vulnerable Devices Top', 'home.recent_runs': 'Recent CA Runs', 'home.trend_title': 'Security Score & Risk Trend',
       'home.top_risks': 'Top Risks', 'home.top_contingencies': 'Worst Contingencies', 'home.view_source_lf': 'Source LF',
-      'metric.score': 'Score', 'metric.total_risks': 'Total Risks', 'metric.max_loading': 'Max Load %',
+      'metric.score': 'Score', 'metric.total_risks': 'Total Risks', 'metric.max_loading': 'Max Load %', 'metric.risk_cat': 'Risk Types',
       'tab.risks': 'Risks', 'tab.cont_results': 'Scan Results', 'tab.risk_map': 'Topology Map',
       'tab.ca_params': 'Scan Params', 'tab.ca_limits': 'Device Limits',
       'tab.log_list': 'Logs', 'tab.run_sched': 'Runs & Schedule', 'tab.log_policy': 'Retention',
@@ -150,10 +152,11 @@
       'action.reset_default': 'Сброс', 'action.save_params': 'Сохранить', 'action.save_and_trial': 'Сохр. и расчет',
       'action.seed_limits': 'Заполнить пределы', 'action.open_limits': 'Пределы →',
       'action.save_sched': 'Сохранить', 'action.purge_now': 'Очистить', 'action.replay': 'Обзор',
-      'home.security_overview': 'Надежность и база', 'home.risk_dist': 'Уровни риска', 'home.scan_extremes': 'Сканирование',
-      'home.recent_runs': 'Последние запуски CA', 'home.trend_title': 'Динамика надежности',
+      'home.security_overview': 'Надежность и рубежи', 'home.defense_lines': 'Рубежи N-0 / N-1 / N-k',
+      'home.risk_dist': 'Уровни риска', 'home.scan_extremes': 'Сканирование', 'home.scan_matrix': 'Матрица возмущений',
+      'home.device_heat': 'Уязвимые элементы Top', 'home.recent_runs': 'Последние запуски CA', 'home.trend_title': 'Динамика надежности',
       'home.top_risks': 'Топ рисков', 'home.top_contingencies': 'Опасные возмущения', 'home.view_source_lf': 'База LF',
-      'metric.score': 'Индекс', 'metric.total_risks': 'Риски', 'metric.max_loading': 'Загрузка %',
+      'metric.score': 'Индекс', 'metric.total_risks': 'Риски', 'metric.max_loading': 'Загрузка %', 'metric.risk_cat': 'Типы риска',
       'tab.risks': 'Список рисков', 'tab.cont_results': 'Итоги сканирования', 'tab.risk_map': 'Схема рисков',
       'tab.ca_params': 'Параметры CA', 'tab.ca_limits': 'Пределы',
       'tab.log_list': 'Журнал', 'tab.run_sched': 'Запуски и график', 'tab.log_policy': 'Очистка',
@@ -346,23 +349,25 @@
     const box = $('#ca-home-trend');
     if (!box) return;
     if (metric === 'risk_categories' && window.PAS_KIT?.renderBarChart) {
-      const risks = st.homeData?.top_risks || [];
-      const counts = { voltage_low: 0, voltage_high: 0, overload: 0, heavy_load: 0, load_loss: 0, divergence: 0 };
-      risks.forEach((r) => {
-        const k = r.risk_category || 'other';
-        counts[k] = (counts[k] || 0) + 1;
-      });
+      const catCounts = st.homeData?.risk_by_category || null;
+      const counts = catCounts ? { ...catCounts } : { voltage_low: 0, voltage_high: 0, overload: 0, heavy_load: 0, load_loss: 0, divergence: 0 };
+      if (!catCounts) {
+        (st.homeData?.top_risks || []).forEach((r) => {
+          const k = r.risk_category || 'other';
+          counts[k] = (counts[k] || 0) + 1;
+        });
+      }
       const labels = {
-        voltage_low: ['电压越下限', '#ef4444'],
-        voltage_high: ['电压越上限', '#f97316'],
-        overload: ['设备过载', '#dc2626'],
-        heavy_load: ['重载预警', '#f59e0b'],
-        load_loss: ['失电负荷', '#a855f7'],
-        divergence: ['潮流发散', '#be123c'],
+        voltage_low: [t('rtype.voltage_low'), '#ef4444'],
+        voltage_high: [t('rtype.voltage_high'), '#f97316'],
+        overload: [t('rtype.overload'), '#dc2626'],
+        heavy_load: [t('rtype.heavy_load'), '#f59e0b'],
+        load_loss: [t('rtype.load_loss'), '#a855f7'],
+        divergence: [t('rtype.divergence'), '#be123c'],
       };
       const items = Object.entries(labels).map(([k, [lbl, color]]) => ({
         label: lbl,
-        value: counts[k] || 0,
+        value: Number(counts[k] || 0),
         color,
       })).filter((x) => x.value > 0);
       if (!items.length && st.homeData?.latest) {
@@ -402,26 +407,104 @@
       });
       return;
     }
-    const vals = series.map((p) => {
-      if (metric === 'total_risks') return (p.n0_risk_count || 0) + (p.n1_risk_count || 0) + (p.nk_risk_count || 0);
-      return Number(p[metric] ?? 0);
-    });
-    const w = 720, h = 196, padL = 42, padR = 14, padT = 14, padB = 24;
-    const minV = metric === 'security_score' ? 0 : Math.min(0, ...vals);
-    const maxV = metric === 'security_score' ? 100 : Math.max(1, ...vals) * 1.1;
-    const span = Math.max(1e-6, maxV - minV);
-    const xAt = (i) => padL + (series.length === 1 ? (w - padL - padR) / 2 : (i / (series.length - 1)) * (w - padL - padR));
-    const yAt = (v) => padT + (1 - (v - minV) / span) * (h - padT - padB);
-    const pts = vals.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
-    const area = `${padL},${h - padB} ${pts} ${xAt(vals.length - 1).toFixed(1)},${h - padB}`;
-    const ticks = [0, 0.5, 1].map((r) => {
-      const y = padT + r * (h - padT - padB);
-      const val = maxV - r * span;
-      return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-dasharray="3 3"/>` +
-        `<text x="${padL - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${val.toFixed(metric === 'total_risks' ? 0 : 1)}</text>`;
-    }).join('');
-    const dots = vals.map((v, i) => `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3" fill="var(--accent)"><title>#${series[i].run_id} (${fmtTime(series[i].calc_time)}): ${v.toFixed(1)}</title></circle>`).join('');
-    box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:100%;min-height:175px;display:block">${ticks}<polygon points="${area}" fill="var(--accent)" opacity="0.12"/><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>${dots}<text x="${padL}" y="${h - 6}" font-size="10" fill="var(--muted)">#${series[0].run_id}</text><text x="${w - padR}" y="${h - 6}" text-anchor="end" font-size="10" fill="var(--muted)">#${series[series.length - 1].run_id}</text></svg>`;
+  }
+
+  function renderCaHeroStrip(data) {
+    const host = $('#ca-hero-strip');
+    if (!host) return;
+    const lat = data.latest;
+    const score = lat?.security_score != null ? Number(lat.security_score) : null;
+    const scoreTone = score == null ? 'accent' : (score >= 80 ? 'ok' : (score >= 60 ? 'warn' : 'bad'));
+
+    const n0r = Number(lat?.n0_risk_count || 0);
+    const n1r = Number(lat?.n1_risk_count || 0);
+    const nkr = Number(lat?.nk_risk_count || 0);
+    const totR = lat ? (lat.critical_count + lat.high_count + lat.medium_count + lat.low_count) : 0;
+    const critHigh = Number(lat?.critical_count || 0) + Number(lat?.high_count || 0);
+    const riskTone = critHigh > 0 ? 'bad' : (totR > 0 ? 'warn' : 'ok');
+
+    const n1Tot = Number(lat?.n1_total_count || 0);
+    const n1Conv = Number(lat?.n1_converged_count || 0);
+    const n1Div = Number(lat?.n1_diverged_count || 0);
+    const passPct = n1Tot > 0 ? (n1Conv / n1Tot) * 100 : 100;
+    const scanTone = n1Div > 0 ? 'bad' : (n1r > 0 ? 'warn' : 'ok');
+
+    const maxLoad = lat?.max_loading_pct != null ? Number(lat.max_loading_pct) : null;
+    const loadTone = maxLoad == null ? 'accent' : (maxLoad >= 100 ? 'bad' : (maxLoad >= 80 ? 'warn' : 'ok'));
+
+    const lossKw = Number(lat?.max_load_loss_kw || 0);
+    const minV = lat?.min_v_pu != null ? Number(lat.min_v_pu) : null;
+    const extTone = lossKw > 0 || (minV != null && minV < 0.93) ? 'bad' : 'ok';
+
+    const tiles = [
+      {
+        tone: scoreTone,
+        label: t('metric.score'),
+        badge: lat ? lat.risk_level : '—',
+        badgeCls: scoreTone,
+        val: score != null ? `${num(score, 1)}<small>/100</small>` : '—',
+        valCls: scoreTone === 'accent' ? '' : scoreTone,
+        sub: lat?.worst_contingency ? `最严峻 ${lat.worst_contingency}` : '全网安全',
+        meter: score ?? 0,
+      },
+      {
+        tone: riskTone,
+        label: t('metric.total_risks'),
+        badge: critHigh > 0 ? `严重/高 ${critHigh}` : '无高危',
+        badgeCls: riskTone,
+        val: `${totR}<small> 项</small>`,
+        valCls: riskTone,
+        sub: `N-0:${n0r} · N-1:${n1r} · N-k:${nkr}`,
+        meter: Math.min(100, totR * 6),
+      },
+      {
+        tone: scanTone,
+        label: 'N-1 收敛通过率',
+        badge: n1Div > 0 ? `发散 ${n1Div}` : `${n1Conv}/${n1Tot}`,
+        badgeCls: scanTone,
+        val: `${passPct.toFixed(1)}<small>%</small>`,
+        valCls: scanTone,
+        sub: `启用故障 ${data.contingency_defs?.enabled ?? 0}/${data.contingency_defs?.total ?? 0}`,
+        meter: passPct,
+      },
+      {
+        tone: loadTone,
+        label: t('metric.max_loading'),
+        badge: maxLoad != null && maxLoad >= 100 ? '越限' : (maxLoad != null && maxLoad >= 80 ? '重载' : '正常'),
+        badgeCls: loadTone,
+        val: maxLoad != null ? `${num(maxLoad, 1)}<small>%</small>` : '—',
+        valCls: loadTone === 'accent' ? '' : loadTone,
+        sub: lat?.max_loading_dev || '—',
+        subDev: lat?.max_loading_dev || '',
+        meter: maxLoad != null ? Math.min(100, maxLoad) : 0,
+      },
+      {
+        tone: extTone,
+        label: '最低电压 / 最大失电',
+        badge: lossKw > 0 ? `失电 ${num(lossKw, 1)} ${lat?.p_unit || 'kW'}` : '零失电',
+        badgeCls: lossKw > 0 ? 'bad' : 'ok',
+        val: minV != null ? `${num(minV, 4)}<small>pu</small>` : '—',
+        valCls: extTone,
+        sub: lat?.min_v_bus || '—',
+        subDev: lat?.min_v_bus || '',
+        meter: minV != null ? Math.max(0, Math.min(100, ((minV - 0.85) / 0.25) * 100)) : 0,
+      },
+    ];
+
+    host.innerHTML = tiles.map((c) => `
+      <div class="pas-hero-tile tone-${c.tone}">
+        <div class="pas-hero-top">
+          <span class="pas-hero-lbl">${esc(c.label)}</span>
+          <span class="pas-hero-badge tabular ${c.badgeCls}">${esc(c.badge)}</span>
+        </div>
+        <div class="pas-hero-val-row">
+          <div class="pas-hero-val tabular ${c.valCls}">${c.val}</div>
+          ${c.subDev
+            ? `<a class="pas-hero-sub pas-clickable" data-pas-device="${esc(c.subDev)}" title="${esc(c.sub)}">${esc(c.sub)}</a>`
+            : `<span class="pas-hero-sub tabular" title="${esc(c.sub)}">${esc(c.sub)}</span>`}
+        </div>
+        <div class="pas-hero-meter"><i style="width:${Math.max(0, Math.min(100, c.meter)).toFixed(1)}%"></i></div>
+      </div>`).join('');
   }
 
   async function loadMainView() {
@@ -444,87 +527,144 @@
     if ($('#ca-src-lf-link') && lat?.source_lf_run_id) {
       $('#ca-src-lf-link').href = `/lf-results.html?run_id=${lat.source_lf_run_id}`;
     }
+    if ($('#ca-home-elapsed')) {
+      $('#ca-home-elapsed').textContent = lat ? `${num(lat.elapsed_seconds, 2)} s` : '—';
+    }
+
+    // 顶部 5 格大屏态势英雄带
+    renderCaHeroStrip(data);
+
+    // 左栏 1：立体刻度半圆安全仪表盘
     if (window.PAS_KIT?.renderGauge) {
       window.PAS_KIT.renderGauge($('#ca-home-gauge'), {
         value: lat ? Number(lat.security_score || 0) : 0,
         max: 100,
         unit: '分',
-        statusText: lat ? `安全定级：${lat.risk_level}` : '暂无评估',
+        statusText: lat ? `安全定级 · ${lat.risk_level}` : '暂无评估',
+        width: 174,
+        height: 98,
       });
     }
-    const defs = data.contingency_defs || { total: 0, enabled: 0, n1: 0, nk: 0 };
-    if ($('#ca-kv-overview')) {
-      $('#ca-kv-overview').innerHTML = [
-        ['源 LF 断面', lat?.source_lf_run_id ? `LF #${lat.source_lf_run_id}` : '—'],
-        ['溯源 SE 断面', lat?.source_se_run_id ? `SE #${lat.source_se_run_id}` : '—'],
-        ['N-0 基态风险', lat ? String(lat.n0_risk_count) : '—'],
-        ['N-1 扫描 / 风险', lat ? `${lat.n1_total_count} / ${lat.n1_risk_count}` : '—'],
-        ['N-k 扫描 / 风险', lat ? `${lat.nk_total_count} / ${lat.nk_risk_count}` : '—'],
-        ['启用故障定义', `${defs.enabled} / ${defs.total}`],
-      ].map(([k, v]) => `<div class="se-kv-row"><span>${esc(k)}</span><strong class="tabular">${esc(v)}</strong></div>`).join('');
+
+    // 左栏 2：N-0 / N-1 / N-k 三道安全防线通过率条
+    const defHost = $('#ca-defense-bars');
+    if (defHost) {
+      const n0r = Number(lat?.n0_risk_count || 0);
+      const n1Tot = Number(lat?.n1_total_count || 0);
+      const n1Conv = Number(lat?.n1_converged_count || 0);
+      const n1r = Number(lat?.n1_risk_count || 0);
+      const nkTot = Number(lat?.nk_total_count || 0);
+      const nkr = Number(lat?.nk_risk_count || 0);
+
+      const n0Pct = lat ? (n0r === 0 ? 100 : Math.max(15, 100 - n0r * 20)) : 0;
+      const n1Safe = (data.contingency_matrix || []).filter((c) => c.category === 'N-1' && c.converged && c.risk_count === 0).length;
+      const n1Pct = n1Tot > 0 ? ((n1Safe || Math.max(0, n1Tot - n1r)) / n1Tot) * 100 : 100;
+      const nkPct = nkTot > 0 ? Math.max(0, ((nkTot - Math.min(nkTot, nkr)) / nkTot) * 100) : 100;
+
+      const lines = [
+        { name: 'N-0 基态防线', val: n0r === 0 ? '全通过' : `${n0r} 项风险`, pct: n0Pct, col: n0r > 0 ? 'var(--sem-danger)' : 'var(--sem-ok)' },
+        { name: `N-1 单故障 (${n1Conv}/${n1Tot})`, val: n1r === 0 ? '全通过' : `${n1r} 项风险`, pct: n1Pct, col: n1r > 0 ? 'var(--sem-warn)' : 'var(--sem-ok)' },
+        { name: `N-k 多重故障 (${nkTot})`, val: nkTot === 0 ? '未配置' : (nkr === 0 ? '全通过' : `${nkr} 项风险`), pct: nkTot === 0 ? 0 : nkPct, col: nkr > 0 ? 'var(--sem-danger)' : 'var(--accent)' },
+      ];
+      defHost.innerHTML = `<div class="pas-defense-list">${lines.map((ln) => `
+        <div class="pas-defense-row">
+          <div class="pas-defense-head">
+            <span style="color:var(--text-secondary);font-weight:600">${esc(ln.name)}</span>
+            <strong class="tabular" style="color:${ln.col}">${esc(ln.val)}</strong>
+          </div>
+          <div class="pas-defense-track"><span class="pas-defense-fill" style="width:${Math.max(ln.pct > 0 ? 4 : 0, Math.min(100, ln.pct)).toFixed(1)}%;background:${ln.col}"></span></div>
+        </div>`).join('')}</div>`;
     }
+
+    // 左栏 3：风险严重度环形图
     const totRisks = lat ? (lat.critical_count + lat.high_count + lat.medium_count + lat.low_count) : 0;
     if ($('#ca-home-total-risks')) $('#ca-home-total-risks').textContent = String(totRisks);
-    if ($('#ca-kv-severity')) {
-      if (window.PAS_KIT?.renderDonut) {
-        window.PAS_KIT.renderDonut($('#ca-kv-severity'), {
-          slices: [
-            { label: t('sev.critical'), value: lat ? lat.critical_count : 0, color: '#ef4444' },
-            { label: t('sev.high'), value: lat ? lat.high_count : 0, color: '#f97316' },
-            { label: t('sev.medium'), value: lat ? lat.medium_count : 0, color: '#f59e0b' },
-            { label: t('sev.low'), value: lat ? lat.low_count : 0, color: '#22c55e' },
-          ],
-          centerTitle: '风险总计',
-          centerValue: String(totRisks),
-          size: 102,
-        });
-      } else {
-        $('#ca-kv-severity').innerHTML = [
-          [t('sev.critical'), lat ? lat.critical_count : 0, 'bad'],
-          [t('sev.high'), lat ? lat.high_count : 0, 'bad'],
-          [t('sev.medium'), lat ? lat.medium_count : 0, 'warn'],
-          [t('sev.low'), lat ? lat.low_count : 0, 'neutral'],
-        ].map(([k, v, cls]) => `<div class="se-kv-row"><span>${esc(k)}</span><span class="se-pill ${v > 0 ? cls : 'ok'} tabular">${v}</span></div>`).join('');
-      }
+    if ($('#ca-kv-severity') && window.PAS_KIT?.renderDonut) {
+      window.PAS_KIT.renderDonut($('#ca-kv-severity'), {
+        slices: [
+          { label: t('sev.critical'), value: lat ? lat.critical_count : 0, color: '#ef4444' },
+          { label: t('sev.high'), value: lat ? lat.high_count : 0, color: '#f97316' },
+          { label: t('sev.medium'), value: lat ? lat.medium_count : 0, color: '#f59e0b' },
+          { label: t('sev.low'), value: lat ? lat.low_count : 0, color: '#22c55e' },
+        ],
+        centerTitle: '风险总计',
+        centerValue: String(totRisks),
+        size: 98,
+      });
     }
-    if ($('#ca-home-elapsed')) $('#ca-home-elapsed').textContent = lat ? `${num(lat.elapsed_seconds, 2)} s` : '—';
-    if ($('#ca-kv-extremes')) {
-      $('#ca-kv-extremes').innerHTML = [
-        ['最严重预想故障', lat?.worst_contingency || '—'],
-        ['N-1 收敛 / 发散', lat ? `${lat.n1_converged_count} / ${lat.n1_diverged_count}` : '—'],
-        ['最大支路负载率', lat ? `${num(lat.max_loading_pct, 2)}% ${lat.max_loading_dev ? `(${lat.max_loading_dev})` : ''}` : '—'],
-        ['最低母线电压', lat?.min_v_pu != null ? `${num(lat.min_v_pu, 4)} pu (${lat.min_v_bus || ''})` : '—'],
-        ['最高母线电压', lat?.max_v_pu != null ? `${num(lat.max_v_pu, 4)} pu (${lat.max_v_bus || ''})` : '—'],
-        ['最大失电负荷', lat ? `${num(lat.max_load_loss_kw, 2)} ${lat.p_unit || 'kW'}` : '—'],
-      ].map(([k, v]) => `<div class="se-kv-row"><span>${esc(k)}</span><strong class="tabular">${esc(v)}</strong></div>`).join('');
+
+    // 中栏 1：预想故障全景热力矩阵墙
+    const matrix = data.contingency_matrix || [];
+    const safeCnt = matrix.filter((c) => c.converged && c.risk_count === 0).length;
+    if ($('#ca-matrix-meta')) $('#ca-matrix-meta').textContent = matrix.length ? `${safeCnt}/${matrix.length} 通过` : '—';
+    if (window.PAS_KIT?.renderHeatMatrix) {
+      window.PAS_KIT.renderHeatMatrix($('#ca-heat-matrix'), {
+        cells: matrix,
+        onClickCell: (item) => {
+          window.location.href = `/ca-risks.html?tab=contingencies&q=${encodeURIComponent(item.contingency_name || '')}`;
+        },
+        emptyText: t('msg.empty'),
+      });
     }
-    if ($('#ca-home-runs')) {
-      const runs = (data.recent_runs || []).slice(0, 8);
-      $('#ca-home-runs').innerHTML = runs.length ? runs.map((r) => `<tr>
-        <td class="tabular"><a class="se-link" href="/ca-risks.html?run_id=${r.run_id}">#${r.run_id}</a></td>
-        <td class="tabular">${r.source_lf_run_id ? `#${r.source_lf_run_id}` : '—'}</td>
-        <td><span class="se-pill ${sevClass(r.risk_level)}">${esc(r.risk_level || r.status)}</span></td>
-        <td class="tabular">${r.security_score != null ? num(r.security_score, 1) : '—'}</td>
-      </tr>`).join('') : `<tr><td colspan="4" class="se-empty">${t('msg.empty')}</td></tr>`;
+
+    // 中栏 2：脆弱设备风险频次 Top（点击设备直达 360° 全景抽屉）
+    const devHeat = data.device_risk_heat || [];
+    if (window.PAS_KIT?.renderBarChart) {
+      const sevCol = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#38bdf8' };
+      window.PAS_KIT.renderBarChart($('#ca-device-heat'), {
+        items: devHeat.map((d) => ({
+          label: d.device_name,
+          device: d.device_name,
+          value: Number(d.risk_count || 0),
+          color: sevCol[d.max_severity] || 'var(--accent)',
+          sub: `${d.device_type} · 最大越限 ${num(d.max_violation_pct, 1)}% (${sevLabel(d.max_severity)})`,
+          subShort: `${num(d.max_violation_pct, 0)}%`,
+        })),
+        unit: '次',
+        digits: 0,
+        emptyText: '全网设备零越限风险',
+      });
     }
+
+    // 右栏 1：趋势图 / 全量风险类型柱图
     renderTrendSvg(data.trend_series || [], st.trendMetric);
+
+    // 右栏 2：高危风险排行（带紧凑越限进度条）
     if ($('#ca-home-top-risks')) {
       const tr = data.top_risks || [];
-      $('#ca-home-top-risks').innerHTML = tr.length ? tr.map((r) => `<tr>
-        <td><span class="se-pill ${sevClass(r.severity)}">${esc(sevLabel(r.severity))}</span></td>
-        <td title="${esc(r.contingency_name)}">${esc(r.contingency_name)}</td>
-        <td title="${esc(r.detail)}"><a class="pas-clickable" data-pas-device="${esc(r.device_name)}">${esc(r.device_name)}</a></td>
-        <td class="tabular">${num(r.violation_pct, 1)}%</td>
-      </tr>`).join('') : `<tr><td colspan="4" class="se-empty">${t('msg.empty')}</td></tr>`;
+      $('#ca-home-top-risks').innerHTML = tr.length ? tr.map((r) => {
+        const vp = Number(r.violation_pct || 0);
+        const w = Math.max(6, Math.min(100, vp * 2));
+        const col = r.severity === 'critical' || r.severity === 'high' ? 'var(--sem-danger)' : 'var(--sem-warn)';
+        return `<tr>
+          <td><span class="se-pill ${sevClass(r.severity)}">${esc(sevLabel(r.severity))}</span></td>
+          <td title="${esc(r.contingency_name)}">${esc(r.contingency_name)}</td>
+          <td title="${esc(r.detail)}"><a class="pas-clickable" data-pas-device="${esc(r.device_name)}">${esc(r.device_name)}</a></td>
+          <td class="tabular"><span class="pas-mini-prog"><span class="pas-mini-prog-track"><i style="width:${w.toFixed(0)}%;background:${col}"></i></span>${num(vp, 1)}%</span></td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="4" class="se-empty">${t('msg.empty')}</td></tr>`;
     }
+
+    // 右栏 3：严重预想故障 Top
     if ($('#ca-home-top-conts')) {
       const tc = data.top_contingencies || [];
       $('#ca-home-top-conts').innerHTML = tc.length ? tc.map((c) => `<tr>
-        <td title="${esc(c.target_desc)}">${esc(c.contingency_name)}</td>
+        <td title="${esc(c.target_desc)}"><a class="se-link" href="/ca-risks.html?tab=contingencies&q=${encodeURIComponent(c.contingency_name || '')}">${esc(c.contingency_name)}</a></td>
         <td><span class="se-pill ${c.converged ? 'ok' : 'bad'}">${c.converged ? 'OK' : 'FAIL'}</span></td>
         <td class="tabular">${num(c.load_loss_kw, 1)}</td>
         <td class="tabular"><span class="se-pill ${sevClass(c.severity)}">${c.risk_count}</span></td>
       </tr>`).join('') : `<tr><td colspan="4" class="se-empty">${t('msg.empty')}</td></tr>`;
+    }
+
+    // 底部通栏：最新 CA 运行日志
+    const log = data.latest_log;
+    if (log && $('#ca-log-msg')) {
+      $('#ca-log-tag').textContent = log.level || 'INFO';
+      $('#ca-log-time').textContent = fmtTime(log.calc_time);
+      $('#ca-log-msg').textContent = `[${log.stage || 'ca'}] ${log.message || '—'}`;
+      if ($('#ca-home-footer-log') && log.run_id) {
+        $('#ca-home-footer-log').href = `/ca-logs.html?run_id=${log.run_id}`;
+      }
     }
   }
 

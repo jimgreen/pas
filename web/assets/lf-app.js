@@ -63,6 +63,14 @@
       'snap.history': '历史回放',
       'home.power_title': '功率平衡与基态',
       'home.ctrl_title': '运行控制与极值',
+      'home.energy_hub': '交直流能量流中枢',
+      'home.sankey_sub': '交直流能量流（动态桑基）',
+      'home.acdc_mix': '交直流源荷结构',
+      'home.converters': '互联换流器 / 分域工况',
+      'home.grid_health': '全网电压与负载分布',
+      'home.v_dist': '母线电压区间分布 (pu)',
+      'home.l_dist': '支路负载率区间分布 (%)',
+      'home.base_state': '求解基态与方式',
       'home.top_load': '重过载排行',
       'home.v_extremes': '电压偏差与越限',
       'metric.loss_rate': '网损率 %',
@@ -242,6 +250,14 @@
       'snap.history': 'History',
       'home.power_title': 'Power Balance & Base',
       'home.ctrl_title': 'Control & Extremes',
+      'home.energy_hub': 'AC/DC Energy Flow Hub',
+      'home.sankey_sub': 'AC/DC Power Flow (Sankey)',
+      'home.acdc_mix': 'AC/DC Source-Load Mix',
+      'home.converters': 'Converters & Domains',
+      'home.grid_health': 'Voltage & Loading Profile',
+      'home.v_dist': 'Bus Voltage Distribution (pu)',
+      'home.l_dist': 'Branch Loading Distribution (%)',
+      'home.base_state': 'Base State & Study',
       'home.top_load': 'Top Loading',
       'home.v_extremes': 'Voltage Extremes',
       'metric.loss_rate': 'Loss %',
@@ -421,6 +437,14 @@
       'snap.history': 'Архив',
       'home.power_title': 'Баланс и база SE',
       'home.ctrl_title': 'Контроль и экстремумы',
+      'home.energy_hub': 'Потоки энергии AC/DC',
+      'home.sankey_sub': 'Диаграмма Санки (AC/DC)',
+      'home.acdc_mix': 'Структура AC/DC',
+      'home.converters': 'Преобразователи / Потери',
+      'home.grid_health': 'Распределение U и загрузки',
+      'home.v_dist': 'Узлы по напряжению (о.е.)',
+      'home.l_dist': 'Ветви по загрузке (%)',
+      'home.base_state': 'Базовый режим и коррекции',
       'home.top_load': 'Загрузка оборуд.',
       'home.v_extremes': 'Отклонения U',
       'metric.loss_rate': 'Потери %',
@@ -700,8 +724,8 @@
     }
   }
 
-  /* ==================== 通用 SVG 折线图（十字准星 + 点击跳转） ==================== */
-  function renderSimpleLineChart(container, rows, { metricKey, label, unit = '', color = null, onClickRun = null }) {
+  /* ==================== 通用 SVG 折线图（渐变面积 + 阈值参考线 + 十字准星 + 点击跳转） ==================== */
+  function renderSimpleLineChart(container, rows, { metricKey, label, unit = '', color = null, threshold = null, thresholdLabel = '', onClickRun = null }) {
     if (!container) return;
     if (!rows?.length) {
       container.innerHTML = `<div class="se-empty">${esc(t('common.empty'))}</div>`;
@@ -721,6 +745,10 @@
     const pH = H - pad.top - pad.bottom;
     let minV = Math.min(...finite);
     let maxV = Math.max(...finite);
+    if (threshold != null && Number.isFinite(threshold)) {
+      minV = Math.min(minV, threshold);
+      maxV = Math.max(maxV, threshold);
+    }
     if (Math.abs(maxV - minV) < 1e-6) { const sp = Math.max(0.5, Math.abs(maxV) * 0.1); minV -= sp; maxV += sp; }
     else { const m = (maxV - minV) * 0.1; minV -= m; maxV += m; }
     const n = rows.length;
@@ -729,6 +757,7 @@
     const stroke = color || cssVar('--chart-se') || '#2563EB';
     const grid = cssVar('--chart-grid') || '#E2E8F0';
     const muted = cssVar('--text-secondary') || '#64748B';
+    const gradId = `lfGrad_${Math.random().toString(36).slice(2, 7)}`;
 
     let gridSvg = '';
     for (let i = 0; i <= 4; i++) {
@@ -744,19 +773,41 @@
       gridSvg += `<text x="${xAt(idx)}" y="${H - 6}" text-anchor="${anchor}" font-size="11" fill="${muted}" class="tabular">${esc(fmtTime(rows[idx].calc_time).slice(11, 16))}</text>`;
     });
 
+    let thrSvg = '';
+    if (threshold != null && Number.isFinite(threshold)) {
+      const ty = yAt(threshold);
+      thrSvg = `<line x1="${pad.left}" x2="${W - pad.right}" y1="${ty.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="var(--sem-warn)" stroke-width="1.3" stroke-dasharray="5 3"/>`
+        + (thresholdLabel ? `<text x="${W - pad.right - 4}" y="${(ty - 4).toFixed(1)}" text-anchor="end" font-size="10.5" fill="var(--sem-warn)">${esc(thresholdLabel)}</text>` : '');
+    }
+
     let pathD = '';
     let dots = '';
+    let firstX = null;
+    let lastX = null;
     vals.forEach((v, i) => {
       if (v === null) return;
       const x = xAt(i); const y = yAt(v);
+      if (firstX === null) firstX = x;
+      lastX = x;
       pathD += `${pathD ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
-      dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.8" fill="${stroke}"/>`;
+      if (n <= 60) dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.7" fill="${stroke}"/>`;
     });
+    const areaD = (firstX !== null && lastX !== null && firstX !== lastX)
+      ? `${pathD} L${lastX.toFixed(1)},${(H - pad.bottom).toFixed(1)} L${firstX.toFixed(1)},${(H - pad.bottom).toFixed(1)} Z`
+      : '';
 
     container.innerHTML = `
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="${onClickRun ? 'cursor:pointer' : ''}">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${stroke}" stop-opacity="0.24"/>
+            <stop offset="100%" stop-color="${stroke}" stop-opacity="0.01"/>
+          </linearGradient>
+        </defs>
         ${gridSvg}
-        <path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="2"/>
+        ${thrSvg}
+        ${areaD ? `<path d="${areaD}" fill="url(#${gradId})"/>` : ''}
+        <path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="2.2" stroke-linejoin="round"/>
         ${dots}
         <line class="se-crosshair" x1="0" x2="0" y1="${pad.top}" y2="${H - pad.bottom}" stroke="${muted}" stroke-dasharray="3 3" visibility="hidden"/>
       </svg>
@@ -789,6 +840,98 @@
   }
 
   /* ==================== 1. 主画面 (lf-main.html) ==================== */
+  function renderLfHeroStrip(data) {
+    const host = document.getElementById('lf-hero-strip');
+    if (!host) return;
+    const lat = data.latest;
+    const pu = lat?.p_unit || 'kW';
+    const genP = Number(lat?.total_gen_p || 0);
+    const loadP = Number(lat?.total_load_p || 0);
+    const acGen = Number(lat?.ac_gen_p || 0);
+    const dcGen = Number(lat?.dc_gen_p || 0);
+    const acShare = genP > 1e-6 ? Math.round((acGen / genP) * 100) : 0;
+    const lossRate = Number(lat?.loss_rate || 0);
+    const maxLoad = Number(lat?.max_loading_pct || 0);
+    const olWarn = Number(data.params?.overload_warn_pct || 80);
+    const olLim = Number(data.params?.overload_limit_pct || 100);
+    const vViol = Number(lat?.v_violation_count || 0);
+    const olCnt = Number(lat?.overload_count || 0);
+
+    const lossTone = lossRate > 8 ? 'bad' : (lossRate > 5 ? 'warn' : 'ok');
+    const loadTone = maxLoad >= olLim ? 'bad' : (maxLoad >= olWarn ? 'warn' : 'ok');
+    const vTone = vViol > 0 ? 'bad' : 'ok';
+
+    const tiles = [
+      {
+        tone: 'accent',
+        label: t('kv.total_gen'),
+        badge: `AC ${acShare}% / DC ${100 - acShare}%`,
+        badgeCls: 'accent',
+        val: `${fmtNum(genP, 1)}<small>${esc(pu)}</small>`,
+        valCls: '',
+        sub: `AC ${fmtNum(acGen, 1)} · DC ${fmtNum(dcGen, 1)}`,
+        meter: Math.max(8, Math.min(100, acShare)),
+      },
+      {
+        tone: 'ok',
+        label: t('kv.total_load'),
+        badge: `${data.bus_total ?? '—'} Bus`,
+        badgeCls: 'ok',
+        val: `${fmtNum(loadP, 1)}<small>${esc(pu)}</small>`,
+        valCls: '',
+        sub: `AC ${fmtNum(lat?.ac_load_p, 1)} · DC ${fmtNum(lat?.dc_load_p, 1)}`,
+        meter: genP > 1e-6 ? Math.min(100, (loadP / genP) * 100) : 0,
+      },
+      {
+        tone: lossTone,
+        label: t('kv.loss_rate'),
+        badge: `${fmtNum(lat?.total_loss_p, 2)} ${pu}`,
+        badgeCls: lossTone,
+        val: `${fmtNum(lossRate, 2)}<small>%</small>`,
+        valCls: lossTone,
+        sub: `AC ${fmtNum(lat?.ac_loss_p, 2)} · DC ${fmtNum(lat?.dc_loss_p, 2)}`,
+        meter: Math.min(100, lossRate * 10),
+      },
+      {
+        tone: loadTone,
+        label: t('kv.max_load'),
+        badge: olCnt > 0 ? `过载 ${olCnt}` : '安全裕度足',
+        badgeCls: loadTone,
+        val: `${fmtNum(maxLoad, 1)}<small>%</small>`,
+        valCls: loadTone,
+        sub: lat?.max_loading_dev || '—',
+        subDev: lat?.max_loading_dev || '',
+        meter: Math.min(100, maxLoad),
+      },
+      {
+        tone: vTone,
+        label: t('kv.alerts'),
+        badge: vViol > 0 ? `越限 ${vViol}` : '电压正常',
+        badgeCls: vTone,
+        val: lat?.min_v_pu != null ? `${Number(lat.min_v_pu).toFixed(3)}<small>~${Number(lat.max_v_pu || 1).toFixed(3)}</small>` : '—',
+        valCls: vTone,
+        sub: lat?.min_v_bus ? `最低 ${lat.min_v_bus}` : '—',
+        subDev: lat?.min_v_bus || '',
+        meter: lat?.min_v_pu != null ? Math.max(0, Math.min(100, (Number(lat.min_v_pu) - 0.85) / 0.25 * 100)) : 0,
+      },
+    ];
+
+    host.innerHTML = tiles.map((c) => `
+      <div class="pas-hero-tile tone-${c.tone}">
+        <div class="pas-hero-top">
+          <span class="pas-hero-lbl">${esc(c.label)}</span>
+          <span class="pas-hero-badge tabular ${c.badgeCls}">${esc(c.badge)}</span>
+        </div>
+        <div class="pas-hero-val-row">
+          <div class="pas-hero-val tabular ${c.valCls}">${c.val}</div>
+          ${c.subDev
+            ? `<a class="pas-hero-sub pas-clickable" data-pas-device="${esc(c.subDev)}" title="${esc(c.sub)}">${esc(c.sub)}</a>`
+            : `<span class="pas-hero-sub tabular" title="${esc(c.sub)}">${esc(c.sub)}</span>`}
+        </div>
+        <div class="pas-hero-meter"><i style="width:${Math.max(0, Math.min(100, c.meter)).toFixed(1)}%"></i></div>
+      </div>`).join('');
+  }
+
   async function loadHomeView() {
     const data = await api('/api/lf/home');
     st.home = data;
@@ -797,33 +940,20 @@
     updateStatusPill(latest);
     const pu = latest?.p_unit || 'kW';
     const uu = latest?.u_unit || 'V';
-    const kv = (list) => list.map(([k, v, cls = '']) => `<div class="se-kv-row"><span>${esc(k)}</span><strong class="tabular ${cls}">${v}</strong></div>`).join('');
 
-    const seLink = latest?.source_se_run_id
-      ? `<a href="/se-flow.html?run_id=${latest.source_se_run_id}" style="color:var(--accent)">SE #${latest.source_se_run_id} →</a>`
-      : '—';
-    document.getElementById('lf-home-power-kv').innerHTML = kv([
-      [t('kv.source_se'), seLink],
-      [t('kv.mode'), esc(latest?.mode || '—')],
-      [t('kv.total_gen'), `${fmtNum(latest?.total_gen_p, 2)} ${esc(pu)}`],
-      [t('kv.total_load'), `${fmtNum(latest?.total_load_p, 2)} ${esc(pu)}`],
-      [t('kv.total_loss'), `${fmtNum(latest?.total_loss_p, 3)} ${esc(pu)}`],
-      [t('kv.loss_rate'), `${fmtNum(latest?.loss_rate, 2)} %`, (latest?.loss_rate || 0) > 8 ? 'warn' : 'ok'],
-    ]);
-    document.getElementById('lf-home-acdc-kv').innerHTML = kv([
-      [t('kv.ac_gen_load'), `${fmtNum(latest?.ac_gen_p, 2)} / ${fmtNum(latest?.ac_load_p, 2)} ${esc(pu)}`],
-      [t('kv.ac_loss'), `${fmtNum(latest?.ac_loss_p, 3)} ${esc(pu)}`],
-      [t('kv.dc_gen_load'), `${fmtNum(latest?.dc_gen_p, 2)} / ${fmtNum(latest?.dc_load_p, 2)} ${esc(pu)}`],
-      [t('kv.dc_loss'), `${fmtNum(latest?.dc_loss_p, 3)} ${esc(pu)}`],
-    ]);
+    // 顶部 5 格大屏态势带
+    renderLfHeroStrip(data);
 
+    // 左栏 1：动态光流交直流桑基图
+    const skMeta = document.getElementById('lf-sankey-meta');
+    if (skMeta) skMeta.textContent = latest ? `${fmtNum(latest.total_gen_p, 1)} ${pu} · L ${fmtNum(latest.loss_rate, 2)}%` : '—';
     if (window.PAS_KIT?.renderSankey) {
       window.PAS_KIT.renderSankey(document.getElementById('lf-home-sankey'), {
         leftNodes: [
           { label: '交流发电', value: Number(latest?.ac_gen_p || 0), color: '#38bdf8' },
           { label: '直流发电', value: Number(latest?.dc_gen_p || 0), color: '#22c55e' },
         ],
-        midNode: { label: '母线汇流', color: 'var(--accent)' },
+        midNode: { label: '交直流母线', color: 'var(--accent)' },
         rightNodes: [
           { label: '交流负荷', value: Number(latest?.ac_load_p || 0), color: '#6366f1' },
           { label: '直流负荷', value: Number(latest?.dc_load_p || 0), color: '#14b8a6' },
@@ -831,27 +961,96 @@
           { label: '直流网损', value: Number(latest?.dc_loss_p || 0), color: '#ef4444' },
         ],
         unit: pu,
-        height: 158,
+        height: 170,
         compact: true,
       });
     }
 
-    document.getElementById('lf-home-ctrl-kv').innerHTML = kv([
-      [t('kv.iters'), latest ? `${latest.iterations} (${latest.ac_iterations ?? '—'} / ${latest.dc_iterations ?? '—'})` : '—'],
-      [t('kv.norm_f'), latest?.norm_f != null ? Number(latest.norm_f).toExponential(2) : '—'],
-      [t('kv.elapsed'), latest?.elapsed_seconds != null ? `${Number(latest.elapsed_seconds).toFixed(3)} s` : '—'],
-      [t('kv.use_se'), esc(data.params?.use_se_base ? t('bool.on') : t('bool.off'))],
-      [t('kv.overrides'), `${data.overrides?.enabled ?? 0} / ${data.overrides?.total ?? 0}`],
-    ]);
-    const vViol = latest?.v_violation_count ?? 0;
-    const olCnt = latest?.overload_count ?? 0;
-    document.getElementById('lf-home-extreme-kv').innerHTML = kv([
-      [t('kv.v_min'), latest?.min_v_pu != null ? `${Number(latest.min_v_pu).toFixed(4)} pu (${esc(latest.min_v_bus)})` : '—'],
-      [t('kv.v_max'), latest?.max_v_pu != null ? `${Number(latest.max_v_pu).toFixed(4)} pu (${esc(latest.max_v_bus)})` : '—'],
-      [t('kv.max_load'), latest?.max_loading_dev ? `${fmtNum(latest.max_loading_pct, 1)}% (${esc(latest.max_loading_dev)})` : '—'],
-      [t('kv.alerts'), `${vViol} / ${olCnt}`, (vViol + olCnt) > 0 ? 'bad' : 'ok'],
-    ]);
+    // 左栏 2：交直流源荷结构环形图
+    const mixMeta = document.getElementById('lf-mix-meta');
+    if (mixMeta) mixMeta.textContent = latest ? `网损 ${fmtNum(latest.total_loss_p, 2)} ${pu}` : '—';
+    if (window.PAS_KIT?.renderDonut) {
+      window.PAS_KIT.renderDonut(document.getElementById('lf-home-mix-donut'), {
+        slices: [
+          { label: '交流负荷', value: Number(Number(latest?.ac_load_p || 0).toFixed(1)), color: '#6366f1' },
+          { label: '直流负荷', value: Number(Number(latest?.dc_load_p || 0).toFixed(1)), color: '#14b8a6' },
+          { label: '交流网损', value: Number(Number(latest?.ac_loss_p || 0).toFixed(2)), color: '#f59e0b' },
+          { label: '直流网损', value: Number(Number(latest?.dc_loss_p || 0).toFixed(2)), color: '#ef4444' },
+        ],
+        centerTitle: `总计 ${pu}`,
+        centerValue: fmtNum(latest?.total_gen_p, 1),
+        size: 98,
+      });
+    }
 
+    // 左栏 3：互联换流器动态工况条（无换流器时降级为 AC/DC 网损对比）
+    const convHost = document.getElementById('lf-home-converters');
+    if (convHost) {
+      const convs = data.converters || [];
+      if (convs.length) {
+        convHost.innerHTML = `<div class="pas-conv-list">${convs.slice(0, 4).map((c) => {
+          const pct = Math.max(0, Math.min(100, Number(c.loading_pct || 0)));
+          const col = c.overload ? 'var(--sem-danger)' : (pct >= 80 ? 'var(--sem-warn)' : 'var(--accent)');
+          const dir = Number(c.p_from || 0) >= 0 ? '→' : '←';
+          return `<div class="pas-conv-card">
+            <div class="pas-conv-head">
+              <a class="pas-clickable" data-pas-device="${esc(c.device_name)}" title="${esc(c.device_type)}">${esc(c.device_name)}</a>
+              <span class="tabular"><strong>${fmtNum(Math.abs(Number(c.p_from || 0)), 1)} ${esc(pu)}</strong> ${dir} · <strong style="color:${col}">${fmtNum(pct, 1)}%</strong></span>
+            </div>
+            <div class="pas-conv-bar"><i style="width:${Math.max(3, pct).toFixed(1)}%;background:${col}"></i></div>
+          </div>`;
+        }).join('')}</div>`;
+      } else if (window.PAS_KIT?.renderBarChart) {
+        window.PAS_KIT.renderBarChart(convHost, {
+          items: [
+            { label: t('kv.ac_loss'), value: Number(latest?.ac_loss_p || 0), color: '#f59e0b' },
+            { label: t('kv.dc_loss'), value: Number(latest?.dc_loss_p || 0), color: '#ef4444' },
+          ],
+          unit: pu,
+          digits: 2,
+        });
+      }
+    }
+
+    // 中栏 1 & 2：母线电压分布直方图 + 支路负载率分布直方图
+    const vDistMeta = document.getElementById('lf-vdist-meta');
+    if (vDistMeta) vDistMeta.textContent = `${data.bus_total ?? 0} 母线`;
+    if (window.PAS_KIT?.renderHistogram) {
+      window.PAS_KIT.renderHistogram(document.getElementById('lf-home-vbins'), {
+        bins: data.voltage_bins || [],
+        unit: '条母线',
+        height: 106,
+      });
+    }
+
+    const lDistMeta = document.getElementById('lf-ldist-meta');
+    if (lDistMeta) lDistMeta.textContent = `${data.branch_total ?? 0} 支路`;
+    if (window.PAS_KIT?.renderHistogram) {
+      window.PAS_KIT.renderHistogram(document.getElementById('lf-home-lbins'), {
+        bins: data.loading_bins || [],
+        unit: '条支路',
+        height: 106,
+      });
+    }
+
+    // 中栏 3：求解基态与方式控制胶囊
+    const seSrc = document.getElementById('lf-se-src-link');
+    if (seSrc) {
+      seSrc.innerHTML = latest?.source_se_run_id
+        ? `<a class="se-more-link" style="margin:0;padding:0" href="/se-flow.html?run_id=${latest.source_se_run_id}">SE #${latest.source_se_run_id} →</a>`
+        : '<span class="se-muted">—</span>';
+    }
+    const baseChips = document.getElementById('lf-home-base-chips');
+    if (baseChips) {
+      baseChips.innerHTML = [
+        [t('kv.iters'), latest ? `${latest.iterations} (${latest.ac_iterations ?? '—'}/${latest.dc_iterations ?? '—'})` : '—', ''],
+        [t('kv.norm_f'), latest?.norm_f != null ? Number(latest.norm_f).toExponential(1) : '—', ''],
+        [t('kv.elapsed'), latest?.elapsed_seconds != null ? `${Number(latest.elapsed_seconds).toFixed(3)} s` : '—', ''],
+        [t('kv.overrides'), `${data.overrides?.enabled ?? 0} / ${data.overrides?.total ?? 0}`, (data.overrides?.enabled || 0) > 0 ? 'warn' : ''],
+      ].map(([k, v, cls]) => `<div class="pas-stat-chip"><span>${esc(k)}</span><strong class="tabular ${cls}">${esc(v)}</strong></div>`).join('');
+    }
+
+    // 右上：趋势曲线摘要与图表
     document.getElementById('lf-home-rate-items').innerHTML = `
       <span class="se-home-rate-item"><span>${esc(t('kv.total_load'))}</span><strong class="tabular">${fmtNum(latest?.total_load_p, 2)} ${esc(pu)}</strong></span>
       <span class="se-home-rate-item"><span>${esc(t('kv.loss_rate'))}</span><strong class="tabular ok">${fmtNum(latest?.loss_rate, 2)}%</strong></span>
@@ -859,6 +1058,7 @@
     `;
     renderHomeChart();
 
+    // 右下左卡：重过载排行
     const loadHost = document.getElementById('lf-home-top-load');
     const topLoad = data.top_loading || [];
     if (window.PAS_KIT?.renderBarChart) {
@@ -872,19 +1072,14 @@
           color: b.overload ? '#ef4444' : ((b.loading_pct || 0) >= 80 ? '#f59e0b' : 'var(--accent)'),
         })),
         maxVal: 100,
-        threshold: 80,
+        threshold: Number(data.params?.overload_warn_pct || 80),
         unit: '%',
         digits: 1,
         emptyText: t('common.empty'),
       });
-    } else {
-      loadHost.innerHTML = topLoad.length ? topLoad.map((b) => `
-        <div class="se-kv-row">
-          <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
-          <strong class="tabular ${b.overload ? 'bad' : ''}">${fmtNum(b.loading_pct, 1)}% · ${fmtNum(b.p_from, 2)} ${esc(pu)}</strong>
-        </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
     }
 
+    // 右下右卡：电压双向偏差图
     const vHost = document.getElementById('lf-home-v-extremes');
     const vList = data.voltage_extremes || [];
     if (window.PAS_KIT?.renderDivergingBar) {
@@ -902,12 +1097,6 @@
         unit: 'pu',
         emptyText: t('common.empty'),
       });
-    } else {
-      vHost.innerHTML = vList.length ? vList.map((b) => `
-        <div class="se-kv-row">
-          <a href="/lf-flow.html?dev_id=${encodeURIComponent(`${b.device_type}-${b.device_idx}`)}" style="color:inherit;text-decoration:none">${esc(b.device_name)}</a>
-          <strong class="tabular ${b.v_status !== 'normal' ? 'bad' : ''}">${Number(b.v_pu || 0).toFixed(4)} pu · ${fmtNum(b.v_eng, 2)} ${esc(uu)}</strong>
-        </div>`).join('') : `<div class="se-empty">${esc(t('common.empty'))}</div>`;
     }
 
     const log = data.latest_log;
@@ -924,12 +1113,22 @@
     if (!st.home) return;
     const rows = st.home.trend_series || [];
     const m = st.homeMetric;
-    const uMap = { loss_rate: '%', max_loading_pct: '%', total_load_p: st.home.latest?.p_unit || 'kW' };
-    const lMap = { loss_rate: t('metric.loss_rate'), max_loading_pct: t('metric.max_load'), total_load_p: t('metric.total_load') };
+    const uMap = { loss_rate: '%', max_loading_pct: '%', total_load_p: st.home.latest?.p_unit || 'kW', min_v_pu: 'pu' };
+    const lMap = { loss_rate: t('metric.loss_rate'), max_loading_pct: t('metric.max_load'), total_load_p: t('metric.total_load'), min_v_pu: t('metric.min_v') };
+    const thrMap = {
+      max_loading_pct: Number(st.home.params?.overload_warn_pct || 80),
+      min_v_pu: Number(st.home.params?.v_min_pu || 0.93),
+    };
+    const thrLblMap = {
+      max_loading_pct: `预警 ${thrMap.max_loading_pct}%`,
+      min_v_pu: `下限 ${thrMap.min_v_pu} pu`,
+    };
     renderSimpleLineChart(document.getElementById('lf-home-chart'), rows, {
       metricKey: m,
       label: lMap[m] || m,
       unit: uMap[m] || '',
+      threshold: thrMap[m] ?? null,
+      thresholdLabel: thrLblMap[m] || '',
       onClickRun: (rid) => { window.location.href = `/lf-flow.html?run_id=${rid}`; },
     });
   }
@@ -1721,6 +1920,12 @@
       st.homeMetric = btn.dataset.hmetric;
       document.querySelectorAll('#lf-home-chart-seg .seg').forEach((b) => b.classList.toggle('active', b === btn));
       renderHomeChart();
+    });
+    let lfResizeTimer;
+    window.addEventListener('resize', () => {
+      if (VIEW !== 'home') return;
+      clearTimeout(lfResizeTimer);
+      lfResizeTimer = setTimeout(() => renderHomeChart(), 140);
     });
 
     // 潮流图

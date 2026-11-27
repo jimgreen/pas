@@ -10,7 +10,7 @@
   <script src="/assets/theme-registry.js"></script>
   <script src="/assets/pas-kit.js"></script>
 </head>
-<body data-page="/se-main" class="se-main-body">
+<body data-page="/se-main" data-wall-ready="1" class="se-main-body">
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -61,6 +61,8 @@
           </div>
         </div>
         <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-home-start" data-i18n="btn.start_calc">启动计算</button>
+          <button type="button" class="se-chip-btn" id="btn-home-toggle-daemon" data-i18n="btn.pause_calc">暂停周期</button>
           <button type="button" class="se-chip-btn active" id="btn-auto-refresh" data-i18n="action.auto_on">自动刷新</button>
           <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
           <select id="theme-select" class="se-select compact" aria-label="Theme">
@@ -84,116 +86,79 @@
       <div id="notice" class="notice" role="status" hidden></div>
 
       <div class="se-workspace">
-        <div class="se-home-shell">
+        <div class="pas-screen-shell">
+          <!-- 顶部大屏态势英雄指标带 -->
+          <section class="pas-hero-strip" id="se-hero-strip" aria-label="SE Key Metrics"></section>
+
+          <!-- 核心三栏态势画布（支持拖拽分隔符与大屏自适应） -->
           <div class="se-home-grid" id="se-home-grid">
-            <!-- 左栏：量测分析与控制 -->
+            <!-- 左栏：量测清洗流水线 + 健康构成 + 交直流建模规模 -->
             <div class="se-home-col">
               <section class="se-home-panel accent-meas grow">
                 <div class="se-home-panel-head">
-                  <h2 data-i18n="sec.meas_ctrl">量测分析与控制</h2>
+                  <h2 data-i18n="sec.meas_flow">量测清洗与构成</h2>
+                  <a class="se-more-link" style="margin:0" href="/se-measurements.html?sub=balance" data-i18n="link.more">更多…</a>
                 </div>
                 <div class="se-home-panel-body">
-                  <div class="se-home-sub grow">
-                    <div class="se-home-sub-title" data-i18n="sub.obs">可观测性分析</div>
-                    <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="m.bus_count">母线总数（交/直）</span><span class="v tabular" id="h-bus-count">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.meas_count">量测总数</span><span class="v tabular" id="h-meas-count">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.valid_meas">有效量测数</span><span class="v tabular" id="h-valid-meas">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.state_count">状态变量数</span><span class="v tabular" id="h-state-count">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.rank">雅可比矩阵秩</span><span class="v tabular" id="h-rank">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.deficiency">不可观测点数</span><span class="v tabular" id="h-deficiency">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.redundancy">量测冗余度</span><span class="v tabular" id="h-redundancy">—</span></div>
-                    </div>
-                    <a class="se-more-link" href="/se-measurements.html?sub=balance" data-i18n="link.more">更多…</a>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.pipeline">量测清洗流水线</span>
+                    <span class="se-muted tabular" id="se-pipe-meta">—</span>
                   </div>
-
-                  <div class="se-home-sub grow">
-                    <div class="se-home-sub-title" data-i18n="sub.prefilter">预处理信息</div>
-                    <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_total">预过滤总数</span><span class="v tabular" id="h-pf-total">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rate">预过滤占比</span><span class="v tabular" id="h-pf-rate">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rule">越限规则命中</span><span class="v tabular" id="h-pf-rule">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_kernel">内核预过滤</span><span class="v tabular" id="h-pf-kernel">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pf_rules">预过滤规则（启/总）</span><span class="v tabular" id="h-pf-rules">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.nomeas">缺测 / 坏质量</span><span class="v tabular" id="h-nomeas">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.suspect">可疑遥信数</span><span class="v tabular" id="h-suspect">—</span></div>
-                    </div>
-                    <a class="se-more-link" href="/se-prefilter.html" data-i18n="link.more">更多…</a>
-                  </div>
-
-                  <div class="se-home-sub grow">
-                    <div class="se-home-sub-title" data-i18n="sub.control">量测控制</div>
-                    <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_stat">伪遥信（启/总）</span><span class="v tabular" id="h-pseudo-stat">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.pseudo_meas">伪遥测（配/生）</span><span class="v tabular" id="h-pseudo-meas">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.policy">遥测屏蔽（启/总）</span><span class="v tabular" id="h-policy">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.bad_total">坏量测（未确/总）</span><span class="v tabular" id="h-bad-left">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.branches">交直流支路数</span><span class="v tabular" id="h-branches">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.converters">换流器数</span><span class="v tabular" id="h-converters">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="m.devices">建模设备总数</span><span class="v tabular" id="h-dev-total">—</span></div>
-                    </div>
-                    <div class="se-sub-links">
-                      <a class="se-more-link" href="/se-pseudo.html" data-i18n="link.pseudo">伪量测…</a>
-                      <a class="se-more-link" href="/se-bad.html" data-i18n="link.bad">坏量测…</a>
+                  <div id="se-meas-pipeline"></div>
+                  <div class="se-kv-divider"></div>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.donut">量测健康构成</span>
+                    <div class="se-sub-links" style="margin:0;padding:0;gap:8px">
+                      <a class="se-more-link" style="margin:0;padding:0" href="/se-prefilter.html" data-i18n="link.prefilter">预过滤</a>
+                      <a class="se-more-link" style="margin:0;padding:0" href="/se-pseudo.html" data-i18n="link.pseudo">伪量测</a>
+                      <a class="se-more-link" style="margin:0;padding:0" href="/se-bad.html" data-i18n="link.bad">坏量测</a>
                     </div>
                   </div>
+                  <div id="se-home-meas-donut"></div>
+                  <div class="se-kv-divider"></div>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.topology">交直流拓扑规模</span>
+                    <a class="se-more-link" style="margin:0;padding:0" href="/se-flow.html" data-i18n="btn.open_flow">潮流图 →</a>
+                  </div>
+                  <div class="pas-chip-grid" id="se-topo-chips"></div>
                 </div>
               </section>
             </div>
 
             <div class="se-splitter is-v" id="split-col1" role="separator" aria-orientation="vertical" data-i18n-title="ui.split_v" title="拖动调整宽度 / 双击复位"></div>
 
-            <!-- 中栏：计算控制 -->
+            <!-- 中栏：五维质量雷达 + 分类量测健康 + 核心运行配置 -->
             <div class="se-home-col">
               <section class="se-home-panel accent-ctrl grow">
                 <div class="se-home-panel-head">
-                  <h2 data-i18n="sec.calc_ctrl">计算控制</h2>
+                  <h2 data-i18n="sec.health_radar">估计质量画像</h2>
+                  <a class="se-more-link" style="margin:0" href="/se-params.html" data-i18n="link.params">参数…</a>
                 </div>
                 <div class="se-home-panel-body">
-                  <div class="se-ctrl-btns">
-                    <button type="button" class="se-btn primary" id="btn-home-start" data-i18n="btn.start_calc">启动计算</button>
-                    <button type="button" class="se-btn ghost" id="btn-home-toggle-daemon" data-i18n="btn.pause_calc">暂停周期</button>
-                    <a class="se-btn ghost se-link-btn" href="/se-flow.html" style="justify-content:center" data-i18n="btn.open_flow">打开潮流图</a>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.radar">SE 五维健康雷达</span>
+                    <span class="se-pill ok tabular" id="se-obs-badge">—</span>
                   </div>
-
-                  <div class="se-ctrl-stamp">
-                    <span class="lbl" data-i18n="lbl.snap_time">状态估计断面时间</span>
-                    <span class="val tabular" id="h-snap-time">—</span>
+                  <div id="se-health-radar"></div>
+                  <div class="se-kv-divider"></div>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.by_type">分类型量测合格率</span>
+                    <span class="se-muted tabular" id="se-type-meta">—</span>
                   </div>
-
-                  <div class="se-ctrl-stamp">
-                    <span class="lbl" data-i18n="lbl.model_scene">当前模型 / 场景</span>
-                    <span class="val tabular" id="h-model-scene">—</span>
+                  <div id="se-type-bars"></div>
+                  <div class="se-kv-divider"></div>
+                  <div class="pas-sub-hd">
+                    <span data-i18n="sub.run_cfg">当前基态与调度</span>
+                    <span class="se-muted tabular" id="h-model-scene">—</span>
                   </div>
-
-                  <div class="se-home-sub grow">
-                    <div class="se-home-sub-title" data-i18n="sub.params">参数管理</div>
-                    <div class="se-kv-list">
-                      <div class="se-kv-row"><span class="k" data-i18n="p.periodic">周期运行</span><span class="v" id="h-p-periodic">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.cycle">执行周期</span><span class="v tabular" id="h-p-cycle">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.trigger">触发方式</span><span class="v tabular" id="h-p-trigger">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.flat">平启动</span><span class="v" id="h-p-flat">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.tol">收敛精度判据</span><span class="v tabular" id="h-p-tol">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.diffstep">数值差分步长</span><span class="v tabular" id="h-p-diffstep">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.maxiter">最大迭代次数</span><span class="v tabular" id="h-p-maxiter">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.badeps">坏数据门槛</span><span class="v tabular" id="h-p-badeps">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.badmax">坏数据上限</span><span class="v tabular" id="h-p-badmax">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.badstep">坏数据单步上限</span><span class="v tabular" id="h-p-badstep">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.pweight">伪量测权重</span><span class="v tabular" id="h-p-pweight">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.pmax">定向伪量测上限</span><span class="v tabular" id="h-p-pmax">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.vfloor">电压下限保护</span><span class="v tabular" id="h-p-vfloor">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.pftol">初值潮流容差</span><span class="v tabular" id="h-p-pftol">—</span></div>
-                      <div class="se-kv-row"><span class="k" data-i18n="p.pfiter">初值潮流迭代</span><span class="v tabular" id="h-p-pfiter">—</span></div>
-                    </div>
-                    <a class="se-more-link" href="/se-params.html" data-i18n="link.more">更多…</a>
-                  </div>
+                  <div class="pas-chip-grid cols-3" id="se-cfg-chips"></div>
                 </div>
               </section>
             </div>
 
             <div class="se-splitter is-v" id="split-col2" role="separator" aria-orientation="vertical" data-i18n-title="ui.split_v" title="拖动调整宽度 / 双击复位"></div>
 
-            <!-- 右栏：上方合格率曲线 + 下方计算结果 & 指标统计 -->
+            <!-- 右栏：24h 趋势双曲线 + 下方最大残差 Top & 求解质量统计 -->
             <div class="se-home-right" id="se-home-right">
               <section class="se-home-panel accent-stat">
                 <div class="se-home-rate-bar">
@@ -203,7 +168,13 @@
                     <div class="se-home-rate-item"><span data-i18n="r.yest_avg">对比日平均</span><strong class="tabular" id="h-r-yest">—</strong></div>
                     <div class="se-home-rate-item"><span data-i18n="r.conv_rate">当日收敛率</span><strong class="tabular" id="h-r-conv">—</strong></div>
                   </div>
-                  <a class="se-more-link" style="margin:0" href="/se-curves.html" data-i18n="link.more">更多…</a>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <div class="se-tool-group" id="se-chart-mode">
+                      <button type="button" class="se-chip-btn seg active" data-mode="pass" data-i18n="chart.mode_pass">合格率对比</button>
+                      <button type="button" class="se-chip-btn seg" data-mode="bad" data-i18n="chart.mode_bad">坏数据趋势</button>
+                    </div>
+                    <a class="se-more-link" style="margin:0" href="/se-curves.html" data-i18n="link.more">更多…</a>
+                  </div>
                 </div>
                 <div class="se-home-chart-wrap">
                   <div class="se-home-chart-host" id="home-pass-chart"></div>
@@ -216,39 +187,23 @@
               <div class="se-home-bottom-cards" id="se-home-bottom">
                 <section class="se-home-panel accent-stat">
                   <div class="se-home-panel-head">
-                    <h2 data-i18n="sec.result">计算结果</h2>
-                    <a class="se-more-link" style="margin:0" href="/se-measurements.html?sub=devices" data-i18n="link.more">更多…</a>
+                    <h2 data-i18n="sec.top_residuals">最大残差 Top 测点</h2>
+                    <a class="se-more-link" style="margin:0" href="/se-measurements.html" data-i18n="link.more">更多…</a>
                   </div>
-                  <div class="se-home-panel-body">
-                    <div class="se-kv-row"><span class="k" data-i18n="res.start">计算开始时间</span><span class="v tabular" id="h-res-start">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.end">计算结束时间</span><span class="v tabular" id="h-res-end">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.elapsed">计算耗时</span><span class="v tabular" id="h-res-elapsed">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.iters">迭代次数</span><span class="v tabular" id="h-res-iters">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.obj">目标函数 J(x)</span><span class="v tabular" id="h-res-obj">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.residual">总残差 / 最大</span><span class="v tabular" id="h-res-residual">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="res.bad">大误差点数</span><span class="v tabular" id="h-res-bad">—</span></div>
-                    <div class="se-kv-divider"></div>
-                    <div id="se-home-meas-donut"></div>
-                  </div>
+                  <div class="se-home-panel-body" id="se-top-residuals"></div>
                 </section>
 
                 <div class="se-splitter is-v" id="split-bottom-v" role="separator" aria-orientation="vertical" data-i18n-title="ui.split_v" title="拖动调整比例 / 双击复位"></div>
 
                 <section class="se-home-panel accent-stat">
                   <div class="se-home-panel-head">
-                    <h2 data-i18n="sec.metrics">指标统计</h2>
+                    <h2 data-i18n="sec.solve_metrics">求解结果与运行指标</h2>
                     <a class="se-more-link" style="margin:0" href="/se-logs.html" data-i18n="link.more">更多…</a>
                   </div>
                   <div class="se-home-panel-body">
-                    <div class="se-kv-row"><span class="k" data-i18n="st.host">运行主机</span><span class="v tabular" id="h-st-host">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.runs">当天运行次数</span><span class="v tabular" id="h-st-runs">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.conv_cnt">收敛次数</span><span class="v tabular" id="h-st-conv-cnt">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.conv_rate">收敛率</span><span class="v tabular ok" id="h-st-conv-rate">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.pass_rate">量测合格率</span><span class="v tabular ok" id="h-st-pass-rate">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.good_valid">合格 / 有效量测</span><span class="v tabular" id="h-st-good-valid">—</span></div>
-                    <div class="se-kv-row"><span class="k" data-i18n="st.coverage">量测覆盖率</span><span class="v tabular" id="h-st-coverage">—</span></div>
-                    <div class="se-kv-divider"></div>
                     <div id="se-home-rate-bars"></div>
+                    <div class="se-kv-divider"></div>
+                    <div class="pas-chip-grid" id="se-solve-chips"></div>
                   </div>
                 </section>
               </div>

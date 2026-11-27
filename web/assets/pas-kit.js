@@ -403,16 +403,26 @@
     const leftRibbons = lPos.map((n) => {
       const mh = (n.val / Math.max(sumL, 1e-6)) * midH;
       const d = ribbonPath(xL + barW, n.y, n.h, xM, midOffL, mh);
+      const cy0 = n.y + n.h / 2;
+      const cy1 = midOffL + mh / 2;
+      const mx = (xL + barW + xM) / 2;
+      const flowD = `M${xL + barW},${cy0.toFixed(1)} C${mx},${cy0.toFixed(1)} ${mx},${cy1.toFixed(1)} ${xM},${cy1.toFixed(1)}`;
       midOffL += mh;
-      return `<path class="pas-sk-link" data-sk-tip="${esc(`${n.label} → ${midNode.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumL) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.38" stroke="${n.color}" stroke-opacity="0.65" stroke-width="0.6"/>`;
+      return `<path class="pas-sk-link" data-sk-tip="${esc(`${n.label} → ${midNode.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumL) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.34" stroke="${n.color}" stroke-opacity="0.62" stroke-width="0.6"/>`
+        + `<path class="pas-sk-flow" d="${flowD}" fill="none" stroke="${n.color}" stroke-width="${Math.max(1.2, Math.min(3, n.h * 0.14)).toFixed(1)}" stroke-opacity="0.78" pointer-events="none"/>`;
     }).join('');
 
     let midOffR = midY;
     const rightRibbons = rPos.map((n) => {
       const mh = (n.val / Math.max(sumR, 1e-6)) * midH;
       const d = ribbonPath(xM + barW, midOffR, mh, xR, n.y, n.h);
+      const cy0 = midOffR + mh / 2;
+      const cy1 = n.y + n.h / 2;
+      const mx = (xM + barW + xR) / 2;
+      const flowD = `M${xM + barW},${cy0.toFixed(1)} C${mx},${cy0.toFixed(1)} ${mx},${cy1.toFixed(1)} ${xR},${cy1.toFixed(1)}`;
       midOffR += mh;
-      return `<path class="pas-sk-link" data-sk-tip="${esc(`${midNode.label} → ${n.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumR) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.38" stroke="${n.color}" stroke-opacity="0.65" stroke-width="0.6"/>`;
+      return `<path class="pas-sk-link" data-sk-tip="${esc(`${midNode.label} → ${n.label}<br><strong>${num(n.val, 2)} ${unit}</strong> (${((n.val / sumR) * 100).toFixed(1)}%)`)}" d="${d}" fill="${n.color}" fill-opacity="0.34" stroke="${n.color}" stroke-opacity="0.62" stroke-width="0.6"/>`
+        + `<path class="pas-sk-flow" d="${flowD}" fill="none" stroke="${n.color}" stroke-width="${Math.max(1.2, Math.min(3, n.h * 0.14)).toFixed(1)}" stroke-opacity="0.78" pointer-events="none"/>`;
     }).join('');
 
     const fMain = compact ? 9.5 : 11;
@@ -506,7 +516,7 @@
   }
 
   /**
-   * 半圆工程仪表盘（安全评分 / 合格率 / 负载指标）
+   * 立体刻度半圆工程仪表盘（安全评分 / 合格率 / 负载指标）
    */
   function renderGauge(host, {
     value = 0,
@@ -514,25 +524,238 @@
     label = '',
     unit = '',
     statusText = '',
+    width = 168,
+    height = 96,
   } = {}) {
     if (!host) return;
     const v = Math.max(0, Math.min(max, Number(value) || 0));
     const ratio = max > 0 ? v / max : 0;
-    const color = ratio >= 0.8 ? '#22c55e' : (ratio >= 0.5 ? '#f59e0b' : '#ef4444');
-    const r = 48;
-    const cx = 68;
-    const cy = 62;
+    const color = ratio >= 0.8 ? '#22c55e' : (ratio >= 0.6 ? '#f59e0b' : '#ef4444');
+    const r = 56;
+    const cx = 84;
+    const cy = 74;
     const arcLen = Math.PI * r;
     const filled = Math.max(0, ratio * arcLen);
+    // 末端指示点坐标（从左 180° 顺时针扫到右 0°）
+    const angle = Math.PI * (1 - ratio);
+    const dotX = cx + r * Math.cos(angle);
+    const dotY = cy - r * Math.sin(angle);
+    // 外圈刻度线（0, 20, 40, 60, 80, 100）
+    const ticks = [0, 0.2, 0.4, 0.6, 0.8, 1].map((frac) => {
+      const a = Math.PI * (1 - frac);
+      const x1 = cx + (r + 7) * Math.cos(a);
+      const y1 = cy - (r + 7) * Math.sin(a);
+      const x2 = cx + (r + 11) * Math.cos(a);
+      const y2 = cy - (r + 11) * Math.sin(a);
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--text-secondary)" stroke-opacity="0.45" stroke-width="1.3"/>`;
+    }).join('');
+    // 外圈三色警戒参考细弧（0-60 红，60-80 橙，80-100 绿）
+    const rOuter = r + 5.5;
+    const arcSeg = (f0, f1, strokeCol) => {
+      const a0 = Math.PI * (1 - f0);
+      const a1 = Math.PI * (1 - f1);
+      const x0 = cx + rOuter * Math.cos(a0);
+      const y0 = cy - rOuter * Math.sin(a0);
+      const x1 = cx + rOuter * Math.cos(a1);
+      const y1 = cy - rOuter * Math.sin(a1);
+      return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${rOuter} ${rOuter} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${strokeCol}" stroke-width="2.2" stroke-opacity="0.55"/>`;
+    };
 
     host.innerHTML = `<div class="pas-gauge-box">
-      <svg viewBox="0 0 136 78" style="width:136px;height:78px;display:block;margin:0 auto">
+      <svg viewBox="0 0 168 96" style="width:${width}px;height:${height}px;display:block;margin:0 auto">
+        ${arcSeg(0, 0.59, '#ef4444')}
+        ${arcSeg(0.61, 0.79, '#f59e0b')}
+        ${arcSeg(0.81, 1.0, '#22c55e')}
+        ${ticks}
         <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="var(--bg-subtle)" stroke-width="11" stroke-linecap="round"/>
-        <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${arcLen.toFixed(1)}"/>
-        <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="var(--text-primary)" font-size="20" font-weight="700" class="tabular">${num(v, 1)}<tspan font-size="10.5" fill="var(--text-muted)">${esc(unit)}</tspan></text>
-        <text x="${cx}" y="${cy + 6}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="600">${esc(statusText || label)}</text>
+        <path class="pas-gauge-arc" d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${arcLen.toFixed(1)}"/>
+        <circle cx="${dotX.toFixed(1)}" cy="${dotY.toFixed(1)}" r="4.5" fill="var(--bg-surface)" stroke="${color}" stroke-width="2.6"/>
+        <text x="${cx}" y="${cy - 14}" text-anchor="middle" fill="var(--text-primary)" font-size="24" font-weight="800" class="tabular">${num(v, 1)}<tspan font-size="11" font-weight="600" fill="var(--text-secondary)">${esc(unit)}</tspan></text>
+        <text x="${cx}" y="${cy + 5}" text-anchor="middle" fill="${color}" font-size="11" font-weight="700">${esc(statusText || label)}</text>
       </svg>
     </div>`;
+  }
+
+  /**
+   * 形象化数据流/清洗流水线图（节点 + 动态流光箭头 + 占比进度条 + 点击下钻）
+   */
+  function renderPipelineFlow(host, { steps = [], emptyText = '—' } = {}) {
+    if (!host) return;
+    if (!steps.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const maxVal = Math.max(1, ...steps.map((s) => Number(s.value) || 0));
+    host.innerHTML = `<div class="pas-pipe-list">${steps.map((s, idx) => {
+      const val = Number(s.value) || 0;
+      const pct = s.pct != null ? Math.max(0, Math.min(100, Number(s.pct))) : Math.min(100, (val / maxVal) * 100);
+      const tone = s.tone || 'accent';
+      const tagOpen = s.href ? `<a class="pas-pipe-node tone-${esc(tone)}" href="${esc(s.href)}"` : `<div class="pas-pipe-node tone-${esc(tone)}"`;
+      const tagClose = s.href ? '</a>' : '</div>';
+      const tip = s.tip || `${s.label}：${s.display ?? val}`;
+      const arrow = idx < steps.length - 1 ? '<div class="pas-pipe-arrow" aria-hidden="true"><span></span></div>' : '';
+      return `${tagOpen} data-pipe-tip="${esc(tip)}">
+          <div class="pas-pipe-top">
+            <span class="pas-pipe-badge">${idx + 1}</span>
+            <span class="pas-pipe-name">${esc(s.label)}</span>
+            <strong class="pas-pipe-val tabular">${esc(s.display != null ? s.display : String(val))}</strong>
+          </div>
+          <div class="pas-pipe-bar"><i style="width:${Math.max(val > 0 ? 4 : 0, pct).toFixed(1)}%"></i></div>
+        ${tagClose}${arrow}`;
+    }).join('')}</div>`;
+    host.querySelectorAll('.pas-pipe-node').forEach((node) => {
+      bindSvgTip(node, () => node.dataset.pipeTip);
+    });
+  }
+
+  /**
+   * 多维健康画像雷达图（5~6 维工程指标雷达，带渐变多边形与悬停提示）
+   */
+  function renderRadarChart(host, {
+    axes = [],
+    size = 172,
+    color = 'var(--accent)',
+    emptyText = '—',
+  } = {}) {
+    if (!host) return;
+    if (!axes.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const W = 220;
+    const H = 176;
+    const cx = W / 2;
+    const cy = H / 2 + 4;
+    const R = 58;
+    const n = axes.length;
+    const angleOf = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    const pt = (i, frac) => {
+      const a = angleOf(i);
+      return [cx + R * frac * Math.cos(a), cy + R * frac * Math.sin(a)];
+    };
+
+    const rings = [0.25, 0.5, 0.75, 1].map((f) => {
+      const pts = axes.map((_, i) => pt(i, f).map((v) => v.toFixed(1)).join(',')).join(' ');
+      return `<polygon points="${pts}" fill="none" stroke="var(--grid-line)" stroke-width="${f === 1 ? 1.2 : 0.8}" stroke-dasharray="${f === 1 ? 'none' : '2 2'}"/>`;
+    }).join('');
+
+    const spokes = axes.map((ax, i) => {
+      const [x, y] = pt(i, 1);
+      const [lx, ly] = pt(i, 1.24);
+      const anchor = Math.abs(lx - cx) < 8 ? 'middle' : (lx > cx ? 'start' : 'end');
+      return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--grid-line)" stroke-width="0.9"/>`
+        + `<text x="${lx.toFixed(1)}" y="${(ly + 3.5).toFixed(1)}" text-anchor="${anchor}" fill="var(--text-secondary)" font-size="10.5" font-weight="600">${esc(ax.label)}</text>`;
+    }).join('');
+
+    const dataPts = axes.map((ax, i) => {
+      const ratio = Math.max(0.06, Math.min(1, (Number(ax.value) || 0) / (Number(ax.max) || 100)));
+      return { xy: pt(i, ratio), ax, ratio };
+    });
+    const polyPts = dataPts.map((p) => p.xy.map((v) => v.toFixed(1)).join(',')).join(' ');
+    const dots = dataPts.map((p) => {
+      const tip = `<strong>${p.ax.label}</strong><br>${num(p.ax.value, 1)}${p.ax.unit || '%'}${p.ax.sub ? `<br>${p.ax.sub}` : ''}`;
+      return `<circle class="pas-radar-dot" data-rd-tip="${esc(tip)}" cx="${p.xy[0].toFixed(1)}" cy="${p.xy[1].toFixed(1)}" r="3.8" fill="${color}" stroke="var(--bg-surface)" stroke-width="1.6"/>`;
+    }).join('');
+
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${size}px;display:block">
+      ${rings}
+      ${spokes}
+      <polygon points="${polyPts}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+      ${dots}
+    </svg>`;
+    host.querySelectorAll('.pas-radar-dot').forEach((el) => {
+      bindSvgTip(el, () => el.dataset.rdTip);
+    });
+  }
+
+  /**
+   * 竖向分段分布直方图（母线电压区间 / 支路负载区间分布）
+   */
+  function renderHistogram(host, {
+    bins = [],
+    unit = '',
+    height = 104,
+    emptyText = '—',
+  } = {}) {
+    if (!host) return;
+    if (!bins.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const total = bins.reduce((s, b) => s + (Number(b.count) || 0), 0);
+    const maxCnt = Math.max(1, ...bins.map((b) => Number(b.count) || 0));
+    const toneColor = {
+      ok: 'var(--sem-ok)',
+      info: '#38bdf8',
+      accent: 'var(--accent)',
+      warn: 'var(--sem-warn)',
+      danger: 'var(--sem-danger)',
+    };
+    host.innerHTML = `<div class="pas-hist-grid" style="height:${height}px">${bins.map((b) => {
+      const cnt = Number(b.count) || 0;
+      const pctH = cnt > 0 ? Math.max(10, (cnt / maxCnt) * 100) : 4;
+      const share = total > 0 ? ((cnt / total) * 100).toFixed(1) : '0.0';
+      const col = b.color || toneColor[b.tone] || 'var(--accent)';
+      const tip = `<strong>${b.label}</strong><br>${cnt} ${unit} (${share}%)`;
+      return `<div class="pas-hist-col" data-hist-tip="${esc(tip)}">
+        <div class="pas-hist-cnt tabular" style="color:${cnt > 0 ? col : 'var(--text-secondary)'}">${cnt}</div>
+        <div class="pas-hist-track">
+          <div class="pas-hist-bar" style="height:${pctH.toFixed(1)}%;background:${col};opacity:${cnt > 0 ? '0.88' : '0.18'}"></div>
+        </div>
+        <div class="pas-hist-lbl tabular" title="${esc(b.label)}">${esc(b.label)}</div>
+      </div>`;
+    }).join('')}</div>`;
+    host.querySelectorAll('.pas-hist-col').forEach((el) => {
+      bindSvgTip(el, () => el.dataset.histTip);
+    });
+  }
+
+  /**
+   * 预想故障全景热力矩阵墙（N-0 / N-1 / N-k 状态瓷砖阵列 + 悬停明细 + 点击下钻）
+   */
+  function renderHeatMatrix(host, {
+    cells = [],
+    onClickCell = null,
+    emptyText = '—',
+  } = {}) {
+    if (!host) return;
+    if (!cells.length) {
+      host.innerHTML = `<div class="se-empty">${esc(emptyText)}</div>`;
+      return;
+    }
+    const sevMeta = {
+      critical: { cls: 'sev-critical', badge: '危' },
+      high: { cls: 'sev-high', badge: '高' },
+      medium: { cls: 'sev-medium', badge: '中' },
+      low: { cls: 'sev-low', badge: '低' },
+      normal: { cls: 'sev-ok', badge: '安' },
+    };
+    host.innerHTML = `<div class="pas-heat-matrix">${cells.map((c, idx) => {
+      const sev = !c.converged ? 'critical' : (c.severity || (c.risk_count > 0 ? 'medium' : 'normal'));
+      const meta = sevMeta[sev] || sevMeta.normal;
+      const shortName = String(c.contingency_name || '').replace(/^N-[01k]\s*[:：\-]?\s*/i, '');
+      const tip = [
+        `<strong>${esc(c.contingency_name)}</strong> (${esc(c.category)})`,
+        c.target_desc ? `<span style="color:var(--text-secondary)">${esc(c.target_desc)}</span>` : '',
+        `收敛: <strong>${c.converged ? 'OK' : '发散'}</strong> · 风险: <strong>${c.risk_count}</strong>`,
+        `最大负载: <strong>${num(c.max_loading_pct, 1)}%</strong> · 失电: <strong>${num(c.load_loss_kw, 1)}</strong>`,
+        c.min_v_pu != null ? `最低电压: <strong>${num(c.min_v_pu, 4)} pu</strong>` : '',
+      ].filter(Boolean).join('<br>');
+      return `<button type="button" class="pas-heat-tile ${meta.cls}" data-heat-idx="${idx}" data-heat-tip="${esc(tip)}">
+        <span class="pas-heat-cat">${esc(c.category)}</span>
+        <span class="pas-heat-name">${esc(shortName || c.contingency_name)}</span>
+        <span class="pas-heat-num tabular">${c.converged ? (c.risk_count > 0 ? `${c.risk_count}险` : '✓') : '发散'}</span>
+      </button>`;
+    }).join('')}</div>`;
+    host.querySelectorAll('.pas-heat-tile').forEach((tile) => {
+      bindSvgTip(tile, () => tile.dataset.heatTip);
+      if (typeof onClickCell === 'function') {
+        tile.addEventListener('click', () => {
+          const item = cells[Number(tile.dataset.heatIdx)];
+          if (item) onClickCell(item);
+        });
+      }
+    });
   }
 
   /**
@@ -854,7 +1077,11 @@
       const q = (qRaw || '').trim().toLowerCase();
       const items = [];
       // 快捷操作
+      const sbModeNow = getSidebarMode();
+      const sbHiddenNow = sbModeNow === 'docked' ? getSidebarHidden() : !document.documentElement.classList.contains('pas-sidebar-open');
       const actions = [
+        { title: sbModeNow === 'float' ? '切换左栏模式：改为内嵌固定' : '切换左栏模式：改为边缘悬浮', tag: '左栏', run: () => { setSidebarMode(sbModeNow === 'float' ? 'docked' : 'float'); closeOverlay(); } },
+        { title: sbHiddenNow ? '显示左侧导航栏' : '隐藏左侧导航栏', tag: '左栏', run: () => { setSidebarHidden(!sbHiddenNow); closeOverlay(); } },
         { title: '打开历史断面 A/B 对比 (LF / CA / SE)', tag: '操作', run: () => openDiffModal() },
         { title: '导出 SE→LF→CA 综合分析快照报告 (HTML)', tag: '报告', run: () => { closeOverlay(); window.open('/api/report/snapshot', '_blank'); } },
         { title: '查看数据源健康体检与工作目录', tag: '诊断', run: () => { window.location.href = '/settings.html?tab=datasource'; } },
@@ -937,7 +1164,394 @@
     input.focus();
   }
 
-  /* ==================== 7. 全局事件与旧页快捷工具条自动增强 ==================== */
+  /* ==================== 7. 全局事件、左栏双模式（悬浮/内嵌+均可隐藏）、大屏投放模式与快捷工具条 ==================== */
+  const SB_MODE_KEY = 'pas_sidebar_mode'; // 'float' | 'docked'
+  const SB_HIDDEN_KEY = 'pas_sidebar_hidden'; // '0' | '1'
+  let _wallClockTimer = null;
+  let _sbApi = null;
+
+  function getSidebarMode() {
+    try {
+      const v = localStorage.getItem(SB_MODE_KEY);
+      return v === 'docked' ? 'docked' : 'float';
+    } catch {
+      return 'float';
+    }
+  }
+
+  function getSidebarHidden() {
+    try {
+      return localStorage.getItem(SB_HIDDEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function applySidebarRootClasses(mode, hidden) {
+    const root = document.documentElement;
+    root.classList.add('pas-sb-managed');
+    root.classList.toggle('pas-sb-float', mode === 'float');
+    root.classList.toggle('pas-sb-docked', mode === 'docked');
+    root.classList.toggle('pas-sb-hidden', mode === 'docked' && Boolean(hidden));
+  }
+
+  // 首屏 <head> 阶段同步挂载状态类，杜绝首帧左栏闪现或跳动
+  applySidebarRootClasses(getSidebarMode(), getSidebarHidden());
+
+  function sbText(key) {
+    const lang = getLang();
+    const dict = {
+      'zh-CN': {
+        to_docked: '切换为内嵌模式（固定占栏）',
+        to_float: '切换为悬浮模式（靠左滑出）',
+        hide: '隐藏左栏',
+        edge_float: '移至此处悬浮展开导航栏',
+        edge_docked: '点击展开左侧导航栏',
+      },
+      'en-US': {
+        to_docked: 'Switch to Docked Sidebar',
+        to_float: 'Switch to Floating Sidebar',
+        hide: 'Hide Sidebar',
+        edge_float: 'Hover to peek navigation',
+        edge_docked: 'Click to expand sidebar',
+      },
+      'ru-RU': {
+        to_docked: 'Закрепить панель (встроенная)',
+        to_float: 'Плавающая панель (по наведению)',
+        hide: 'Скрыть панель',
+        edge_float: 'Наведите для показа меню',
+        edge_docked: 'Нажмите для показа меню',
+      },
+    };
+    return (dict[lang] || dict['zh-CN'])[key] || key;
+  }
+
+  function setSidebarMode(nextMode) {
+    const mode = nextMode === 'docked' ? 'docked' : 'float';
+    try { localStorage.setItem(SB_MODE_KEY, mode); } catch { /* ignore */ }
+    if (mode === 'docked') {
+      // 切到内嵌时默认展开，方便立即看到切换反馈
+      try { localStorage.setItem(SB_HIDDEN_KEY, '0'); } catch { /* ignore */ }
+    }
+    if (_sbApi) _sbApi.sync({ mode, hidden: mode === 'docked' ? false : true, triggerResize: true });
+    else applySidebarRootClasses(mode, mode === 'float');
+  }
+
+  function setSidebarHidden(hidden) {
+    const isHide = Boolean(hidden);
+    const mode = getSidebarMode();
+    if (mode === 'docked') {
+      try { localStorage.setItem(SB_HIDDEN_KEY, isHide ? '1' : '0'); } catch { /* ignore */ }
+      if (_sbApi) _sbApi.sync({ mode: 'docked', hidden: isHide, triggerResize: true });
+      else applySidebarRootClasses('docked', isHide);
+    } else if (_sbApi) {
+      if (isHide) _sbApi.hideFloatNow();
+      else _sbApi.showFloatNow();
+    }
+  }
+
+  /**
+   * 左侧导航栏双模式控制器：
+   * - 悬浮模式（默认）：默认隐藏使主内容满屏，鼠标移至左边框附近悬浮滑出，离开自动隐藏，亦支持手动一键隐藏；
+   * - 内嵌模式：常规固定于左侧，支持一键隐藏使主内容满屏、点击左缘手柄重新展开，亦可一键切回悬浮。
+   */
+  function initSidebarController() {
+    const sidebar = document.querySelector('.app-shell > .sidebar');
+    if (!sidebar || sidebar.dataset.pasSbBound === '1') return;
+    sidebar.dataset.pasSbBound = '1';
+
+    let hotzone = document.querySelector('.pas-edge-hotzone');
+    if (!hotzone) {
+      hotzone = document.createElement('div');
+      hotzone.className = 'pas-edge-hotzone';
+      hotzone.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(hotzone);
+    }
+
+    // 在 .sidebar .brand 右侧挂载模式切换（悬浮⇄内嵌）与隐藏双图标按钮
+    const brand = sidebar.querySelector('.brand');
+    let btnMode = null;
+    let btnHide = null;
+    if (brand && !brand.querySelector('.pas-sb-tools')) {
+      const tools = document.createElement('div');
+      tools.className = 'pas-sb-tools';
+      tools.innerHTML = `
+        <button type="button" class="pas-sb-icon-btn" id="pas-sb-mode-btn" aria-label="Sidebar Mode"></button>
+        <button type="button" class="pas-sb-icon-btn" id="pas-sb-hide-btn" aria-label="Hide Sidebar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/><path d="M19 4v16"/></svg>
+        </button>`;
+      brand.appendChild(tools);
+      btnMode = tools.querySelector('#pas-sb-mode-btn');
+      btnHide = tools.querySelector('#pas-sb-hide-btn');
+    }
+
+    const SVG_PIN = '<svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>';
+    const SVG_FLOAT = '<svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" stroke-dasharray="3 2"/><rect x="5" y="6" width="6" height="12" rx="1" fill="currentColor" fill-opacity="0.22"/></svg>';
+
+    let hideTimer = null;
+    let isPeeking = false;
+    let suppressEdgeUntil = 0;
+    const TRIGGER_X = 14;
+    const HIDE_DELAY_MS = 220;
+
+    const isEffectiveFloat = () => getSidebarMode() === 'float' || document.body.classList.contains('pas-wall-mode');
+
+    const cancelHide = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
+
+    const showFloat = () => {
+      if (!isEffectiveFloat()) return;
+      cancelHide();
+      if (isPeeking) return;
+      isPeeking = true;
+      sidebar.classList.remove('is-collapsed');
+      sidebar.classList.add('is-peek');
+      document.documentElement.classList.add('pas-sidebar-open');
+    };
+
+    const hideFloatImmediate = () => {
+      cancelHide();
+      isPeeking = false;
+      sidebar.classList.remove('is-peek');
+      document.documentElement.classList.remove('pas-sidebar-open');
+    };
+
+    const scheduleHideFloat = (delay = HIDE_DELAY_MS) => {
+      if (!isEffectiveFloat()) return;
+      cancelHide();
+      hideTimer = setTimeout(() => {
+        hideTimer = null;
+        if (!isPeeking || !isEffectiveFloat()) return;
+        isPeeking = false;
+        sidebar.classList.remove('is-peek');
+        document.documentElement.classList.remove('pas-sidebar-open');
+      }, delay);
+    };
+
+    const refreshButtons = () => {
+      const mode = getSidebarMode();
+      const effFloat = isEffectiveFloat();
+      if (btnMode) {
+        const isDocked = mode === 'docked';
+        btnMode.innerHTML = isDocked ? SVG_FLOAT : SVG_PIN;
+        btnMode.classList.toggle('is-active', isDocked);
+        btnMode.title = sbText(isDocked ? 'to_float' : 'to_docked');
+      }
+      if (btnHide) {
+        btnHide.title = sbText('hide');
+      }
+      hotzone.title = sbText(effFloat ? 'edge_float' : 'edge_docked');
+    };
+
+    const sync = ({ mode = getSidebarMode(), hidden = getSidebarHidden(), triggerResize = false } = {}) => {
+      cancelHide();
+      applySidebarRootClasses(mode, hidden);
+      sidebar.classList.remove('is-collapsed');
+      if (mode === 'docked' && !document.body.classList.contains('pas-wall-mode')) {
+        isPeeking = false;
+        sidebar.classList.remove('is-peek');
+        document.documentElement.classList.remove('pas-sidebar-open');
+      } else {
+        hideFloatImmediate();
+      }
+      refreshButtons();
+      if (triggerResize) {
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 240);
+      }
+    };
+
+    _sbApi = {
+      sync,
+      showFloatNow: showFloat,
+      hideFloatNow: () => {
+        suppressEdgeUntil = Date.now() + 450;
+        hideFloatImmediate();
+      },
+      refreshButtons,
+    };
+
+    if (btnMode) {
+      btnMode.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = getSidebarMode() === 'float' ? 'docked' : 'float';
+        setSidebarMode(next);
+      });
+    }
+    if (btnHide) {
+      btnHide.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isEffectiveFloat()) {
+          suppressEdgeUntil = Date.now() + 450;
+          hideFloatImmediate();
+        } else {
+          setSidebarHidden(true);
+        }
+      });
+    }
+
+    hotzone.addEventListener('mouseenter', () => {
+      if (isEffectiveFloat() && Date.now() >= suppressEdgeUntil) showFloat();
+    });
+    hotzone.addEventListener('click', () => {
+      if (isEffectiveFloat()) {
+        showFloat();
+      } else if (getSidebarHidden()) {
+        setSidebarHidden(false);
+      }
+    });
+
+    sidebar.addEventListener('mouseenter', () => {
+      if (isEffectiveFloat()) showFloat();
+    });
+    sidebar.addEventListener('mouseleave', () => {
+      if (isEffectiveFloat()) scheduleHideFloat();
+    });
+    sidebar.addEventListener('focusin', () => {
+      if (isEffectiveFloat()) showFloat();
+    });
+    sidebar.addEventListener('focusout', (e) => {
+      if (isEffectiveFloat() && !sidebar.contains(e.relatedTarget)) scheduleHideFloat(160);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isEffectiveFloat()) return;
+      if (e.clientX <= TRIGGER_X) {
+        if (Date.now() >= suppressEdgeUntil) showFloat();
+        return;
+      }
+      if (isPeeking) {
+        const rect = sidebar.getBoundingClientRect();
+        if (e.clientX <= rect.right + 10) {
+          cancelHide();
+        } else if (!hideTimer) {
+          scheduleHideFloat();
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('mouseleave', () => {
+      if (isEffectiveFloat() && isPeeking) scheduleHideFloat(120);
+    });
+
+    const langSel = document.getElementById('lang-select');
+    if (langSel && !langSel.dataset.pasSbLangBound) {
+      langSel.dataset.pasSbLangBound = '1';
+      langSel.addEventListener('change', refreshButtons);
+    }
+
+    sync({ mode: getSidebarMode(), hidden: getSidebarHidden(), triggerResize: false });
+  }
+
+  function wallBtnText(isWall) {
+    const lang = getLang();
+    if (lang === 'en-US') return isWall ? 'Exit Wall' : 'Big Screen';
+    if (lang === 'ru-RU') return isWall ? 'Выход' : 'Экран';
+    return isWall ? '退出大屏' : '大屏投放';
+  }
+
+  function setWallMode(enable, { syncFullscreen = true } = {}) {
+    const active = Boolean(enable);
+    document.body.classList.toggle('pas-wall-mode', active);
+    document.documentElement.classList.toggle('pas-sb-wall', active);
+    try { localStorage.setItem('pas_wall_mode', active ? '1' : '0'); } catch { /* ignore */ }
+    if (_sbApi) _sbApi.sync({ mode: getSidebarMode(), hidden: getSidebarHidden(), triggerResize: false });
+    const btn = document.getElementById('btn-wall-mode');
+    if (btn) {
+      btn.classList.toggle('active', active);
+      const lbl = btn.querySelector('.pas-wall-lbl');
+      if (lbl) lbl.textContent = wallBtnText(active);
+      else btn.textContent = wallBtnText(active);
+    }
+    if (syncFullscreen) {
+      try {
+        if (active && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else if (!active && document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      } catch { /* ignore */ }
+    }
+    // 触发所有自适应 SVG 图表重新计算宽高
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
+  }
+
+  function initWallMode() {
+    const page = document.body?.dataset?.page || '';
+    const isMainScreen = ['/se-main', '/lf-main', '/ca-main'].includes(page) || document.body?.dataset?.wallReady === '1';
+    if (!isMainScreen) return;
+    const topActions = document.querySelector('.se-top-actions');
+    const titleRow = document.querySelector('.se-title-row');
+
+    // 1. 注入实时呼吸状态灯 + 电子时钟（常规下紧凑，大屏模式醒目呈现）
+    if (titleRow && !document.getElementById('pas-live-dot')) {
+      const dot = document.createElement('span');
+      dot.id = 'pas-live-dot';
+      dot.className = 'pas-live-dot';
+      dot.title = '实时在线监控';
+      titleRow.insertBefore(dot, titleRow.firstChild);
+    }
+    if (topActions && !document.getElementById('pas-wall-clock')) {
+      const clk = document.createElement('span');
+      clk.id = 'pas-wall-clock';
+      clk.className = 'pas-wall-clock tabular';
+      topActions.insertBefore(clk, topActions.firstChild);
+      const tick = () => {
+        const d = new Date();
+        const p = (n) => String(n).padStart(2, '0');
+        clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      };
+      tick();
+      if (_wallClockTimer) clearInterval(_wallClockTimer);
+      _wallClockTimer = setInterval(tick, 1000);
+    }
+
+    // 2. 注入「大屏投放」按钮（支持 URL 参数 ?wall=1 直接进大屏态）
+    if (topActions && !document.getElementById('btn-wall-mode')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'btn-wall-mode';
+      btn.className = 'se-chip-btn pas-wall-btn';
+      btn.title = '切换大屏投放模式 (快捷键 F)';
+      btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg><span class="pas-wall-lbl">${esc(wallBtnText(false))}</span>`;
+      btn.addEventListener('click', () => setWallMode(!document.body.classList.contains('pas-wall-mode')));
+      const themeSel = document.getElementById('theme-select');
+      if (themeSel && themeSel.parentElement === topActions) {
+        topActions.insertBefore(btn, themeSel);
+      } else {
+        topActions.appendChild(btn);
+      }
+    }
+
+    // 监听语言切换更新按钮文案
+    const langSel = document.getElementById('lang-select');
+    if (langSel && !langSel.dataset.pasWallLangBound) {
+      langSel.dataset.pasWallLangBound = '1';
+      langSel.addEventListener('change', () => {
+        const btn = document.getElementById('btn-wall-mode');
+        const lbl = btn?.querySelector('.pas-wall-lbl');
+        if (lbl) lbl.textContent = wallBtnText(document.body.classList.contains('pas-wall-mode'));
+      });
+    }
+
+    // 浏览器按 Esc 退出原生全屏时同步退出大屏样式
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && document.body.classList.contains('pas-wall-mode')) {
+        setWallMode(false, { syncFullscreen: false });
+      }
+    });
+
+    // 若 URL 显式带 ?wall=1 则默认以大屏布局打开（不强制弹窗请求 fullscreen）
+    if (new URLSearchParams(window.location.search).get('wall') === '1') {
+      setWallMode(true, { syncFullscreen: false });
+    }
+  }
+
   function mountTopbarEnhancements() {
     // 1. 若旧运行管理页缺少 #lang-select，自动补充三语下拉
     const topActions = document.querySelector('.top-actions, .se-top-actions');
@@ -976,6 +1590,8 @@
         topActions.appendChild(sel);
       }
     }
+    initSidebarController();
+    initWallMode();
     applyLegacyI18n(getLang());
   }
 
@@ -987,7 +1603,7 @@
     openDeviceDrawer(el.dataset.pasDevice);
   });
 
-  // 全局快捷键：Ctrl+K / Cmd+K 打开命令面板，Esc 关闭，R 刷新
+  // 全局快捷键：Ctrl+K / Cmd+K 打开命令面板，Esc 关闭，R 刷新，F 切换大屏投放
   document.addEventListener('keydown', (e) => {
     const tag = (e.target?.tagName || '').toLowerCase();
     const editing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
@@ -1006,6 +1622,14 @@
       if (refreshBtn) {
         e.preventDefault();
         refreshBtn.click();
+      }
+      return;
+    }
+    if (!editing && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f') {
+      const wallBtn = document.getElementById('btn-wall-mode');
+      if (wallBtn) {
+        e.preventDefault();
+        wallBtn.click();
       }
     }
   });
@@ -1026,6 +1650,14 @@
     renderGauge,
     renderBarChart,
     renderDivergingBar,
+    renderPipelineFlow,
+    renderRadarChart,
+    renderHistogram,
+    renderHeatMatrix,
+    setWallMode,
+    setSidebarMode,
+    setSidebarHidden,
+    getSidebarMode,
     createPoller,
     applyLegacyI18n,
     exportReport: () => window.open('/api/report/snapshot', '_blank'),
