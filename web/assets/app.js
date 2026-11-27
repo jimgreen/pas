@@ -8,9 +8,10 @@ const pageUrl = (route, query='') => {
 };
 const initialPage = document.body.dataset.page || location.hash.split('?')[0].slice(1) || '/overview';
 const initialQuery = location.search || (location.hash.includes('?') ? `?${location.hash.split('?')[1]}` : '');
+const initialParams = new URLSearchParams(initialQuery);
 const state = {
   route: initialPage + initialQuery, token: 0, page: 0,
-  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab:'schedule', workspaceTab:'health',
+  filter: {task:'', status:'', source:''}, overviewTab:'tasks', settingsTab: initialParams.get('tab') || 'schedule', workspaceTab:'health',
   tabs: {se:'summary',lf:'summary',ca:'summary'}, selected:{},
   browse: Object.fromEntries(TASKS.map(t => [t,{page:0,col:0,q:'',table:'',mode:'',sort:'',direction:'asc',view:'all'}])),
   controlTab:'config', summaryMode:'result', diagPage:0, diagCol:0, trend:{hours:24,metric:'runs',mode:'chart',page:0}, status:{}, watching:new Map(), exportData:null, logPage:0, scheduleTask:'se'
@@ -212,6 +213,17 @@ async function settings() {
   const cfg=(await api('/api/config')).data;
   const health=state.settingsTab==='database'?(await api('/api/health')).data:null;
   if(state.settingsTab==='schedule')content=`<div class="settings-select"><select aria-label="调度任务" data-schedule-task>${TASKS.map(t=>`<option value="${t}" ${state.scheduleTask===t?'selected':''}>${LABELS[t]}</option>`).join('')}</select></div>${controlView(cfg,state.scheduleTask)}`;
+  else if(state.settingsTab==='datasource') {
+    const w=cfg.workspace||{};
+    let dsCards='<div class="empty">加载中…</div>';
+    try {
+      const ds=(await api('/api/datasources/health')).data;
+      const items=ds.items||[];
+      dsCards=`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">健康数据源：<strong>${ds.ok_count} / ${ds.total}</strong>（缺失 ${ds.missing_count}）</div><div class="pas-ds-grid">${items.map(it=>`<div class="pas-ds-item"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong>${esc(it.label)}</strong><span class="badge ${it.status==='ok'?'success':it.status==='missing'?'failed':'running'}">${it.status==='ok'?'正常':it.status==='missing'?'缺失':'只读告警'} · ${esc(it.mode)}</span></div><div style="margin-top:4px;font-size:11.5px;color:var(--text-secondary)" class="tabular">大小：${esc(it.size_text)} · 更新：${esc(it.mtime||'—')}</div><div class="ds-path">${esc(it.path||'未配置')}</div></div>`).join('')}</div>`;
+    } catch(err) { dsCards=`<div class="error-text">${esc(err.message)}</div>`; }
+    const dirRows=[['根目录',w.workspace_root],['运行态 / 场景',`${w.runtime||'—'} / ${w.scenario||'—'}`],['工作目录',w.workspace_directory],['计算内核',cfg.kernel_root]].map(([l,v])=>`<div class="workspace-row"><strong>${esc(l)}</strong><button class="workspace-path ghost" data-value="${esc(v||'未配置')}" title="查看完整路径">${esc(v||'未配置')}</button></div>`).join('');
+    content=`<section class="card full-panel" style="overflow:auto"><h2>工作目录与数据源体检</h2>${dirRows}<div style="margin-top:10px">${dsCards}</div></section>`;
+  }
   else if(state.settingsTab==='logs') {
     const d=await api(`/api/logs?limit=${pageSize()}&offset=${state.logPage*pageSize()}`);
     content=`<section class="card full-panel"><h2>PAS 日志</h2><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>消息</th><th>上下文</th></tr></thead><tbody>${d.data.map(l=>`<tr><td data-value="${esc(l.created_at)}">${esc(l.created_at)}</td><td>${esc(l.level)}</td><td data-value="${esc(l.message)}">${esc(l.message)}</td><td data-value="${esc(l.context_json)}">${esc(l.context_json)}</td></tr>`).join('')}</tbody></table></div>${pager(state.logPage,d.meta.total,'logs')}</section>`;
@@ -221,7 +233,7 @@ async function settings() {
     const taskRows=TASKS.map(name=>{const item=health?.tasks?.[name]||{};const latest=item.latest_run;return `<div class="health-row"><strong>${name.toUpperCase()}</strong><span>${healthBadge(item.inputs_ready!==false)}</span><span>${item.inputs_ready===false?`缺少：${esc((item.missing_inputs||[]).join('、'))}`:`最近 ${latest?`${statusLabel(latest.status)} · #${latest.run_id}`:'暂无运行'}`}</span></div>`;}).join('');
     content=`<div class="two health-grid"><section class="card"><div class="section-head"><h2>SQLite 数据库</h2>${healthBadge(health?.status==='ok')}</div>${dbRows}<div class="health-row"><strong>内核</strong><span>${healthBadge(Boolean(cfg.kernel_root))}</span><span class="health-path" tabindex="0" data-value="${esc(cfg.kernel_root)}" title="点击查看完整路径">${esc(cfg.kernel_root)}</span></div></section><section class="card"><div class="section-head"><h2>任务输入与最近运行</h2>${healthBadge(health?.status==='ok')}</div>${taskRows}</section></div>`;
   }
-  return tabs([['schedule','调度参数'],['database','数据库'],['logs','运行日志']],state.settingsTab)+`<div class="analysis-body">${content}</div>`;
+  return tabs([['schedule','调度参数'],['datasource','数据源与目录'],['database','数据库'],['logs','运行日志']],state.settingsTab)+`<div class="analysis-body">${content}</div>`;
 }
 async function render() {
   const token=++state.token;state.exportData=null;
@@ -307,7 +319,7 @@ document.addEventListener('click',async e=>{
     if(el.dataset.diagCol){state.diagCol+=Number(el.dataset.diagCol);return render();}
     if(el.dataset.sort){const c=state.browse[task()];c.direction=c.sort===el.dataset.sort&&c.direction==='asc'?'desc':'asc';c.sort=el.dataset.sort;c.page=0;return render();}
     if(el.dataset.control){state.controlTab=el.dataset.control;return render();}
-    if(el.dataset.tab){if(task())state.tabs[task()]=el.dataset.tab;else if(state.route==='/settings')state.settingsTab=el.dataset.tab;else if(state.route==='/workspace')state.workspaceTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
+    if(el.dataset.tab){const baseRoute=state.route.split('?')[0];if(task())state.tabs[task()]=el.dataset.tab;else if(baseRoute==='/settings')state.settingsTab=el.dataset.tab;else if(baseRoute==='/workspace')state.workspaceTab=el.dataset.tab;else state.overviewTab=el.dataset.tab;state.page=0;state.diagPage=0;return render();}
     if(el.dataset.page){const delta=Number(el.dataset.page);if(el.dataset.scope==='trend')state.trend.page+=delta;else if(el.dataset.scope==='diagnostics')state.diagPage+=delta;else if(el.dataset.scope==='browse')state.browse[task()].page+=delta;else if(el.dataset.scope==='logs')state.logPage+=delta;else state.page+=delta;return render();}
     if(el.dataset.col){state.browse[task()].col+=Number(el.dataset.col);return render();}
     const action=el.dataset.action;

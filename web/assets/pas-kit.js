@@ -27,10 +27,8 @@
     { path: '/ca-config.html', title: '静态安全 CA · 参数与限值', en: 'CA Config', ru: 'CA Настройки', cat: '页面' },
     { path: '/ca-logs.html', title: '静态安全 CA · 运行日志', en: 'CA Logs', ru: 'CA Журнал', cat: '页面' },
     { path: '/runs.html', title: '运行管理 · 运行历史', en: 'Run History', ru: 'История запусков', cat: '运行管理' },
-    { path: '/measurements.html', title: '运行管理 · 设备量测', en: 'Device Measurements', ru: 'Измерения устройств', cat: '运行管理' },
-    { path: '/limits.html', title: '运行管理 · 安全限值', en: 'Security Limits', ru: 'Пределы безопасности', cat: '运行管理' },
-    { path: '/workspace.html', title: '运行管理 · 工作目录与数据源体检', en: 'Workspace & Health', ru: 'Рабочий каталог', cat: '运行管理' },
-    { path: '/settings.html', title: '运行管理 · 系统设置', en: 'System Settings', ru: 'Настройки системы', cat: '运行管理' },
+    { path: '/settings.html', title: '运行管理 · 系统设置（调度 / 数据源与目录 / 数据库 / 日志）', en: 'System Settings', ru: 'Настройки системы', cat: '运行管理' },
+    { path: '/settings.html?tab=datasource', title: '系统设置 · 数据源健康体检与工作目录', en: 'Datasources & Workspace', ru: 'Источники данных', cat: '运行管理' },
   ];
 
   /* ==================== 1. 三语通用补强词典（覆盖旧管理 5 页与侧栏） ==================== */
@@ -859,7 +857,7 @@
       const actions = [
         { title: '打开历史断面 A/B 对比 (LF / CA / SE)', tag: '操作', run: () => openDiffModal() },
         { title: '导出 SE→LF→CA 综合分析快照报告 (HTML)', tag: '报告', run: () => { closeOverlay(); window.open('/api/report/snapshot', '_blank'); } },
-        { title: '查看数据源与数据库健康体检', tag: '诊断', run: () => { window.location.href = '/workspace.html'; } },
+        { title: '查看数据源健康体检与工作目录', tag: '诊断', run: () => { window.location.href = '/settings.html?tab=datasource'; } },
       ];
       actions.forEach((a) => {
         if (!q || a.title.toLowerCase().includes(q) || a.tag.toLowerCase().includes(q)) items.push({ group: '快捷操作', ...a });
