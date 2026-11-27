@@ -54,7 +54,7 @@
           </div>
         </div>
         <div class="se-top-actions">
-          <button type="button" class="se-btn primary" id="btn-run-ca" data-i18n="action.run_ca">立即执行 CA</button>
+          <button type="button" class="se-btn primary" id="btn-run-ca" data-i18n="action.run_ca">执行 CA</button>
           <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
           <select id="theme-select" class="se-select compact" aria-label="Theme">
             <option value="minimalist-light" data-i18n="theme.light">极简明亮</option>
@@ -126,10 +126,10 @@
               <div class="se-home-panel-body">
                 <div class="pas-sub-hd">
                   <div class="pas-heat-legend">
-                    <span><i style="background:var(--sem-ok)"></i>安全</span>
+                    <span><i style="background:var(--sem-ok)"></i>安</span>
                     <span><i style="background:var(--sem-warn)"></i>中</span>
                     <span><i style="background:#f97316"></i>高</span>
-                    <span><i style="background:var(--sem-danger)"></i>严重/发散</span>
+                    <span><i style="background:var(--sem-danger)"></i>危</span>
                   </div>
                   <span class="se-muted tabular" id="ca-matrix-meta">—</span>
                 </div>
@@ -149,13 +149,13 @@
             <div class="se-home-right">
               <section class="se-home-panel accent-stat">
                 <div class="se-home-panel-head">
-                  <h2 data-i18n="home.trend_title">安全健康与风险趋势</h2>
-                  <div class="se-tool-group">
-                    <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">健康评分</button>
-                    <button type="button" class="se-chip-btn seg" data-trend-metric="health_history" data-i18n="metric.health_hist">健康历史</button>
-                    <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险总数</button>
-                    <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">最大负载 %</button>
-                    <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories" data-i18n="metric.risk_cat">风险分类</button>
+                  <h2 data-i18n="home.trend_title">健康与风险趋势</h2>
+                  <div class="se-tool-group" style="gap:4px">
+                    <button type="button" class="se-chip-btn seg active" data-trend-metric="security_score" data-i18n="metric.score">评分</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="health_history" data-i18n="metric.health_hist">历史</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="total_risks" data-i18n="metric.total_risks">风险</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="max_loading_pct" data-i18n="metric.max_loading">负载%</button>
+                    <button type="button" class="se-chip-btn seg" data-trend-metric="risk_categories" data-i18n="metric.risk_cat">分类</button>
                   </div>
                 </div>
                 <div class="se-home-panel-body" id="ca-home-trend"></div>

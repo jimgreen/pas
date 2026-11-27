@@ -677,44 +677,86 @@
   overflow: hidden;
 }
 
-/* 顶部上下文栏（高密度单行 38px） */
+/* 顶部上下文栏（严格单行不折行，38px 高密度） */
 .se-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 5px 12px;
+  padding: 4px 10px;
+  min-height: 38px;
   background: var(--bg-surface);
   border-bottom: var(--border);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.se-title-group {
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .se-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .se-title-row h1 {
   font-family: var(--font-heading);
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   margin: 0;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .se-run-meta {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .se-top-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.se-top-actions .se-btn,
+.se-top-actions .se-chip-btn {
+  padding: 2px 7px;
+  min-height: 25px;
+  height: 25px;
+  font-size: 11.5px;
+}
+.se-top-actions .pas-kbd-btn,
+.se-top-actions .pas-prefs-btn {
+  width: 26px;
+  height: 25px;
+  padding: 0;
+  justify-content: center;
+}
+.top-actions .pas-kbd-btn,
+.top-actions .pas-prefs-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+}
+.pas-wall-clock { display: none; }
+body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
+@media (max-width: 1520px) {
+  .se-title-row .se-run-meta {
+    display: none;
+  }
 }
 
 /* 胶囊状态标签 */
@@ -3250,7 +3292,7 @@ body.se-splitting-h {
   animation: pasLivePulse 2.2s ease-in-out infinite;
 }
 .pas-wall-clock {
-  display: inline-flex;
+  display: none;
   align-items: center;
   height: 26px;
   padding: 0 8px;
@@ -3261,6 +3303,9 @@ body.se-splitting-h {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.04em;
+}
+body.pas-wall-mode .pas-wall-clock {
+  display: inline-flex;
 }
 .pas-sk-flow {
   stroke-dasharray: 5 11;
@@ -4441,6 +4486,279 @@ body.pas-wall-mode .pas-w-extra {
 .pas-w-coupling-bar strong {
   color: var(--accent);
 }
+/* ==================== 现代多级可折叠侧栏树形导航（.pas-tree，全量 14 主题自洽） ==================== */
+[data-theme] .sidebar nav.pas-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 2px 6px 0;
+}
+.pas-tree-sep {
+  height: 1px;
+  background: var(--sidebar-border, rgba(148, 163, 184, 0.2));
+  margin: 6px 6px;
+  flex-shrink: 0;
+}
+.pas-tree-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.pas-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+  transition: background 0.14s ease;
+}
+.pas-tree-row:hover {
+  background: var(--sidebar-active-bg, rgba(148, 163, 184, 0.12));
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-link,
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sidebar-ink, #cbd5e1);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-link {
+  flex: 1;
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf {
+  flex: 0 0 auto;
+  width: 100%;
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-row .pas-tree-link:hover {
+  background: transparent;
+  color: var(--sidebar-active-ink, var(--accent));
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf:hover {
+  background: var(--sidebar-active-bg, rgba(148, 163, 184, 0.14));
+  color: var(--sidebar-active-ink, var(--accent));
+}
+.pas-tree-branch.has-active > .pas-tree-row > .pas-tree-link {
+  color: var(--sidebar-active-ink, var(--accent));
+  font-weight: 600;
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf.active {
+  background: var(--sidebar-active-bg, rgba(56, 189, 248, 0.16));
+  color: var(--sidebar-active-ink, var(--accent));
+  font-weight: 600;
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 2.5px;
+  border-radius: 999px;
+  background: var(--sidebar-active-ink, var(--accent));
+}
+.pas-tree-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.pas-tree-lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pas-tree-chevron {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--sidebar-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.16s ease, color 0.14s ease, background 0.14s ease;
+}
+.pas-tree-chevron:hover {
+  color: var(--sidebar-active-ink, var(--accent));
+}
+.pas-tree-branch.is-open > .pas-tree-row > .pas-tree-chevron {
+  transform: rotate(90deg);
+  color: var(--sidebar-ink, #cbd5e1);
+}
+.pas-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 3px 15px;
+  padding-left: 8px;
+  border-left: 1px solid var(--sidebar-border, rgba(148, 163, 184, 0.22));
+}
+.pas-tree-children[hidden] {
+  display: none;
+}
+/* 2 级与 3 级节点紧凑字号与缩进 */
+[data-theme] .sidebar nav.pas-tree .depth-2.pas-tree-leaf,
+[data-theme] .sidebar nav.pas-tree .depth-2 > .pas-tree-row > .pas-tree-link {
+  padding: 4.5px 8px;
+  font-size: 12.5px;
+}
+[data-theme] .sidebar nav.pas-tree .depth-3.pas-tree-leaf {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.pas-tree-branch.depth-2 > .pas-tree-children {
+  margin-left: 10px;
+  padding-left: 8px;
+}
+
+/* ==================== 顶栏「外观与语言」紧凑整合弹出面板 ==================== */
+.pas-prefs-btn {
+  position: relative;
+  flex-shrink: 0;
+}
+.pas-prefs-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.pas-prefs-dot {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--bg-subtle);
+  pointer-events: none;
+}
+.pas-prefs-popover {
+  position: fixed;
+  z-index: 9500;
+  width: 228px;
+  padding: 10px;
+  border-radius: var(--radius-card);
+  border: var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pas-prefs-popover[hidden] {
+  display: none;
+}
+.pas-prefs-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pas-prefs-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+.pas-prefs-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 2px;
+  border-radius: var(--radius-btn);
+  background: var(--bg-subtle);
+  border: var(--border);
+}
+.pas-prefs-seg-btn {
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: calc(var(--radius-btn) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.pas-prefs-seg-btn:hover {
+  color: var(--text-primary);
+}
+.pas-prefs-seg-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+[data-theme="precision-dark"] .pas-prefs-seg-btn.active,
+[data-theme="ocean-slate"] .pas-prefs-seg-btn.active,
+[data-theme="nord-dark"] .pas-prefs-seg-btn.active,
+[data-theme="industrial-amber"] .pas-prefs-seg-btn.active,
+[data-theme="glassmorphism"] .pas-prefs-seg-btn.active,
+[data-theme="sci-fi-cyan"] .pas-prefs-seg-btn.active,
+[data-theme="sci-fi-purple"] .pas-prefs-seg-btn.active,
+[data-theme="sci-fi-matrix"] .pas-prefs-seg-btn.active {
+  color: #07111F;
+}
+.pas-prefs-theme-slot .pas-prefs-select {
+  width: 100%;
+  max-width: none;
+  height: 28px;
+  font-size: 12px;
+}
+.pas-prefs-swatches {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 2px;
+}
+.pas-prefs-swatch {
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(135deg, var(--sw-bg) 52%, var(--sw-fg) 52%);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pas-prefs-swatch:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+.pas-prefs-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.pas-prefs-hidden-slot {
+  display: none !important;
+}
+
 @media (max-width: 720px) {
   .pas-w-presets,
   .pas-w-form {

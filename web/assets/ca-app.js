@@ -22,7 +22,7 @@
       'theme.editorial': '编辑杂志', 'theme.cyan': '科幻 · 电光青', 'theme.purple': '科幻 · 赛博紫', 'theme.matrix': '科幻 · 矩阵绿',
       'title.ca_main': '静态安全 CA', 'title.ca_risks': '安全风险与故障图谱',
       'title.ca_contingencies': '预想故障集管理', 'title.ca_config': 'CA 参数与安全限值', 'title.ca_logs': 'CA 运行日志与调度',
-      'action.run_ca': '立即执行 CA', 'action.scan_now': '立即扫描当前故障集', 'action.refresh': '刷新',
+      'action.run_ca': '执行 CA', 'action.scan_now': '立即扫描当前故障集', 'action.refresh': '刷新',
       'action.export_csv': '导出 CSV', 'action.more': '全部 →', 'action.cancel': '取消', 'action.confirm': '确认',
       'action.save': '保存', 'action.edit': '编辑', 'action.delete': '删除', 'action.enable': '启用', 'action.disable': '停用',
       'action.add_cont': '+ 新增故障', 'action.sync_n1': '从模型生成 N-1', 'action.enable_filtered': '全部启用',
@@ -32,9 +32,9 @@
       'action.save_sched': '保存调度', 'action.purge_now': '立即按策略清理', 'action.replay': '回放',
       'home.security_overview': '电网健康评估', 'home.health_radar': '五维健康画像', 'home.defense_lines': 'N-0 / N-1 / N-k 安全防线',
       'home.risk_dist': '风险分级构成', 'home.scan_extremes': '故障扫描与极值', 'home.scan_matrix': '预想故障全景矩阵',
-      'home.device_heat': '脆弱设备风险频次 Top', 'home.recent_runs': '近期 CA 运行', 'home.trend_title': '电网健康与风险趋势',
+      'home.device_heat': '脆弱设备风险频次 Top', 'home.recent_runs': '近期 CA 运行', 'home.trend_title': '健康趋势',
       'home.top_risks': '高危风险排行', 'home.top_contingencies': '严重预想故障 Top', 'home.view_source_lf': '源 LF',
-      'metric.score': '健康评分', 'metric.health_hist': '健康历史', 'metric.total_risks': '风险总数', 'metric.max_loading': '最大负载 %', 'metric.risk_cat': '风险分类',
+      'metric.score': '评分', 'metric.health_hist': '历史', 'metric.total_risks': '风险', 'metric.max_loading': '负载%', 'metric.risk_cat': '分类',
       'tab.risks': '风险明细表', 'tab.cont_results': '故障扫描总览', 'tab.risk_map': '接线图风险分布',
       'tab.ca_params': '扫描与越限参数', 'tab.ca_limits': '设备安全限值',
       'tab.log_list': '日志明细', 'tab.run_sched': '运行与调度', 'tab.log_policy': '清理策略',
@@ -583,7 +583,8 @@
     const pill = $('#ca-level-pill');
     const meta = $('#ca-run-meta');
     if (pill) {
-      pill.textContent = hScore != null ? `${hGrade ? `${hGrade}级 · ` : ''}${hLabel} · ${num(hScore, 1)} 分` : '—';
+      pill.textContent = hScore != null ? `${hGrade ? `${hGrade}·` : ''}${num(hScore, 1)}分` : '—';
+      pill.title = hScore != null ? `${hGrade ? `${hGrade}级 · ` : ''}${hLabel} · ${num(hScore, 1)} 分` : '';
       pill.className = `se-pill ${hCls}`;
     }
     if (meta) {
@@ -693,7 +694,7 @@
     ];
     const safeCnt = matrix.filter((c) => c.converged && c.risk_count === 0).length;
     const wMatrixCnt = matrix.filter((c) => c.category === 'Weather').length;
-    if ($('#ca-matrix-meta')) $('#ca-matrix-meta').textContent = matrix.length ? `${safeCnt}/${matrix.length} 通过${wMatrixCnt ? ` · 含气象 ${wMatrixCnt}` : ''}` : '—';
+    if ($('#ca-matrix-meta')) $('#ca-matrix-meta').textContent = matrix.length ? `${safeCnt}/${matrix.length}${wMatrixCnt ? ` · 气${wMatrixCnt}` : ''}` : '—';
     if (window.PAS_KIT?.renderHeatMatrix) {
       window.PAS_KIT.renderHeatMatrix($('#ca-heat-matrix'), {
         cells: matrix,

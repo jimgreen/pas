@@ -16,8 +16,8 @@
       'service.checking': '服务检查中', 'service.daemon': '周期调度运行中', 'service.online': 'Web 在线 · 周期停止', 'service.offline': '服务暂不可用',
       'theme.light': '极简明亮', 'theme.dark': '精密暗黑', 'theme.bento': '便当盒网格', 'theme.glass': '毛玻璃拟态',
       'theme.editorial': '编辑杂志', 'theme.cyan': '科幻 · 电光青', 'theme.purple': '科幻 · 赛博紫', 'theme.matrix': '科幻 · 矩阵绿',
-      'title.overview': 'SE → LF → CA 全平台联动态势',
-      'action.run_chain': '串联执行 SE→LF→CA', 'action.refresh': '刷新', 'action.exec': '执行',
+      'title.overview': '联动态势',
+      'action.run_chain': '串联执行', 'action.refresh': '刷新', 'action.exec': '执行',
       'action.enter': '进入 SE →', 'action.enter_lf': '进入 LF →', 'action.enter_ca': '进入 CA →', 'action.more': '全部 →',
       'ov.alerts': '跨模块重点告警', 'ov.recent_runs': '三模块联合运行动态',
       'col.module': '模块', 'col.severity': '等级', 'col.target': '对象', 'col.detail': '详情',
@@ -256,13 +256,13 @@
       });
     }
 
-    // Chain banner
+    // Chain banner 合并至顶栏 meta 提示，不再占用独立一行
     const ch = d.chain;
     const banner = $('#ov-chain-banner');
-    if (banner && ch?.last_chain?.steps?.length) {
-      const stepsTxt = ch.last_chain.steps.map((s) => `${s.task.toUpperCase()} #${s.run_id ?? '—'} (${s.ok ? '✓' : '✗'} ${s.elapsed_seconds}s)`).join(' → ');
-      banner.innerHTML = `<strong>最近串联执行：</strong> ${esc(stepsTxt)}`;
-      banner.hidden = false;
+    if (banner) banner.hidden = true;
+    if (ch?.last_chain?.steps?.length && $('#ov-scenario-meta')) {
+      const stepsTxt = ch.last_chain.steps.map((s) => `${s.task.toUpperCase()}#${s.run_id ?? '—'}`).join('→');
+      $('#ov-scenario-meta').title = `${ws.runtime || 'realtime'} / ${ws.scenario || '—'} · 最近串联：${stepsTxt}`;
     }
 
     // Diagnostics Strip: 基态滞后（Stale）提醒 + 质量码一键排障 + 链路耗时分解

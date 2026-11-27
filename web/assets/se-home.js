@@ -4,7 +4,7 @@
 
   const I18N = {
     'zh-CN': {
-      'title.home': '状态估计主画面',
+      'title.home': '状态估计 SE',
       'sec.meas_flow': '量测清洗与构成',
       'sec.health_radar': '估计质量画像',
       'sec.top_residuals': '最大残差 Top 测点',
@@ -15,9 +15,9 @@
       'sub.radar': 'SE 五维健康雷达',
       'sub.by_type': '分类型量测合格率',
       'sub.run_cfg': '当前基态与调度',
-      'btn.start_calc': '启动计算',
-      'btn.pause_calc': '暂停周期',
-      'btn.resume_calc': '启动周期',
+      'btn.start_calc': '执行 SE',
+      'btn.pause_calc': '停周期',
+      'btn.resume_calc': '启周期',
       'btn.open_flow': '潮流图 →',
       'r.cur_pass': '当前合格率',
       'r.today_avg': '今日平均',
@@ -42,8 +42,8 @@
       'lg.bad': '今日坏数据点数',
       'msg.daemon_on': '周期调度已启动',
       'msg.daemon_off': '周期调度已暂停',
-      'action.auto_on': '自动刷新: 开',
-      'action.auto_off': '自动刷新: 关',
+      'action.auto_on': '自刷:开',
+      'action.auto_off': '自刷:关',
       'chart.click_log': '点击查看日志',
       'chart.bad_cnt': '坏数据',
       'hero.pass_rate': '量测合格率',

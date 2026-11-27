@@ -1452,9 +1452,9 @@
 
   function wallBtnText(isWall) {
     const lang = getLang();
-    if (lang === 'en-US') return isWall ? 'Exit Wall' : 'Big Screen';
+    if (lang === 'en-US') return isWall ? 'Exit' : 'Wall';
     if (lang === 'ru-RU') return isWall ? 'Выход' : 'Экран';
-    return isWall ? '退出大屏' : '大屏投放';
+    return isWall ? '退出' : '大屏';
   }
 
   function setWallMode(enable, { syncFullscreen = true } = {}) {
@@ -1555,6 +1555,191 @@
     }
   }
 
+  /* ==================== 7.2 全站统一多级可折叠树形导航目录（无分析功能/运行管理冗余层级） ==================== */
+  const NAV_TREE_KEY = 'pas_nav_tree_open';
+  const NAV_ICONS = {
+    overview: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+    se: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 20 9 4 6 12 2 12"/></svg>',
+    lf: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    ca: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    runs: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>',
+    settings: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    folder: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+    chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  };
+
+  const NAV_TREE_SPEC = [
+    { id: 'overview', icon: 'overview', href: '/overview.html', label: { 'zh-CN': '总览', 'en-US': 'Overview', 'ru-RU': 'Обзор' } },
+    {
+      id: 'se',
+      icon: 'se',
+      href: '/se-main.html',
+      label: { 'zh-CN': '状态估计 SE', 'en-US': 'State Estimation SE', 'ru-RU': 'Оценка сост. SE' },
+      children: [
+        { id: 'se-main', href: '/se-main.html', label: { 'zh-CN': '主画面', 'en-US': 'Dashboard', 'ru-RU': 'Главная' } },
+        { id: 'se-flow', href: '/se-flow.html', label: { 'zh-CN': '潮流图', 'en-US': 'Topology', 'ru-RU': 'Схема' } },
+        { id: 'se-curves', href: '/se-curves.html', label: { 'zh-CN': '历史曲线', 'en-US': 'Curves', 'ru-RU': 'Графики' } },
+        {
+          id: 'se-meas-group',
+          icon: 'folder',
+          label: { 'zh-CN': '量测管理', 'en-US': 'Measurements', 'ru-RU': 'Измерения' },
+          children: [
+            { id: 'se-measurements', href: '/se-measurements.html', label: { 'zh-CN': '全量测分析', 'en-US': 'All Measurements', 'ru-RU': 'Все измерения' } },
+            { id: 'se-prefilter', href: '/se-prefilter.html', label: { 'zh-CN': '预过滤量测', 'en-US': 'Pre-filter', 'ru-RU': 'Фильтрация' } },
+            { id: 'se-pseudo', href: '/se-pseudo.html', label: { 'zh-CN': '伪量测', 'en-US': 'Pseudo Meas', 'ru-RU': 'Псевдоизм.' } },
+            { id: 'se-bad', href: '/se-bad.html', label: { 'zh-CN': '坏量测', 'en-US': 'Bad Data', 'ru-RU': 'Плохие данные' } },
+          ],
+        },
+        { id: 'se-params', href: '/se-params.html', label: { 'zh-CN': '算法参数', 'en-US': 'Parameters', 'ru-RU': 'Параметры' } },
+        { id: 'se-logs', href: '/se-logs.html', label: { 'zh-CN': '运行日志', 'en-US': 'Logs', 'ru-RU': 'Журнал' } },
+      ],
+    },
+    {
+      id: 'lf',
+      icon: 'lf',
+      href: '/lf-main.html',
+      label: { 'zh-CN': '潮流分析 LF', 'en-US': 'Load Flow LF', 'ru-RU': 'Потоки LF' },
+      children: [
+        { id: 'lf-main', href: '/lf-main.html', label: { 'zh-CN': '主画面', 'en-US': 'Dashboard', 'ru-RU': 'Главная' } },
+        { id: 'lf-flow', href: '/lf-flow.html', label: { 'zh-CN': '潮流图', 'en-US': 'Flow Map', 'ru-RU': 'Схема потоков' } },
+        { id: 'lf-results', href: '/lf-results.html', label: { 'zh-CN': '潮流明细', 'en-US': 'Results', 'ru-RU': 'Результаты' } },
+        { id: 'lf-params', href: '/lf-params.html', label: { 'zh-CN': '参数与方式', 'en-US': 'Params & Study', 'ru-RU': 'Параметры' } },
+        { id: 'lf-logs', href: '/lf-logs.html', label: { 'zh-CN': '运行日志', 'en-US': 'Logs', 'ru-RU': 'Журнал' } },
+      ],
+    },
+    {
+      id: 'ca',
+      icon: 'ca',
+      href: '/ca-main.html',
+      label: { 'zh-CN': '静态安全 CA', 'en-US': 'Security CA', 'ru-RU': 'Надежность CA' },
+      children: [
+        { id: 'ca-main', href: '/ca-main.html', label: { 'zh-CN': '主画面', 'en-US': 'Dashboard', 'ru-RU': 'Главная' } },
+        { id: 'ca-risks', href: '/ca-risks.html', label: { 'zh-CN': '风险与图谱', 'en-US': 'Risks & Map', 'ru-RU': 'Риски и схема' } },
+        { id: 'ca-contingencies', href: '/ca-contingencies.html', label: { 'zh-CN': '预想故障集', 'en-US': 'Contingencies', 'ru-RU': 'Сценарии N-1' } },
+        { id: 'ca-config', href: '/ca-config.html', label: { 'zh-CN': '参数与限值', 'en-US': 'Params & Limits', 'ru-RU': 'Параметры' } },
+        { id: 'ca-logs', href: '/ca-logs.html', label: { 'zh-CN': '运行日志', 'en-US': 'Logs', 'ru-RU': 'Журнал' } },
+      ],
+    },
+    { sep: true },
+    { id: 'runs', icon: 'runs', href: '/runs.html', label: { 'zh-CN': '运行历史', 'en-US': 'Run History', 'ru-RU': 'История' } },
+    {
+      id: 'settings',
+      icon: 'settings',
+      href: '/settings.html',
+      label: { 'zh-CN': '系统设置', 'en-US': 'Settings', 'ru-RU': 'Настройки' },
+      children: [
+        { id: 'settings-schedule', href: '/settings.html?tab=schedule', label: { 'zh-CN': '调度参数', 'en-US': 'Schedules', 'ru-RU': 'Расписание' } },
+        { id: 'settings-datasource', href: '/settings.html?tab=datasource', label: { 'zh-CN': '数据源与目录', 'en-US': 'Data Sources', 'ru-RU': 'Источники' } },
+        { id: 'settings-database', href: '/settings.html?tab=database', label: { 'zh-CN': '数据库状态', 'en-US': 'Database', 'ru-RU': 'База данных' } },
+        { id: 'settings-logs', href: '/settings.html?tab=logs', label: { 'zh-CN': '系统日志', 'en-US': 'System Logs', 'ru-RU': 'Сист. журнал' } },
+      ],
+    },
+  ];
+
+  function loadNavOpenMap() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(NAV_TREE_KEY) || '{}');
+      return (raw && typeof raw === 'object') ? raw : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveNavOpenMap(map) {
+    try { localStorage.setItem(NAV_TREE_KEY, JSON.stringify(map)); } catch { /* ignore */ }
+  }
+
+  function matchNavHref(href) {
+    if (!href) return false;
+    const curPath = window.location.pathname || '/overview.html';
+    const curTab = new URLSearchParams(window.location.search).get('tab') || '';
+    const [hPath, hQuery] = href.split('?');
+    if (hPath === '/overview.html' && (curPath === '/' || curPath === '/index.html')) return true;
+    if (curPath !== hPath) return false;
+    if (hQuery) {
+      const targetTab = new URLSearchParams(hQuery).get('tab') || '';
+      return curTab ? curTab === targetTab : targetTab === 'schedule';
+    }
+    return true;
+  }
+
+  function renderSidebarTree() {
+    const nav = document.querySelector('.sidebar > nav');
+    if (!nav) return;
+    const lang = getLang();
+    const openMap = loadNavOpenMap();
+    const tLbl = (node) => (node.label && (node.label[lang] || node.label['zh-CN'])) || '';
+
+    const hasActiveDesc = (node) => {
+      if (!node.children) return matchNavHref(node.href);
+      return node.children.some((ch) => hasActiveDesc(ch));
+    };
+
+    // 确保当前所在页面的所有祖先分支自动处于展开状态
+    const ensureOpenForActive = (nodes) => {
+      nodes.forEach((n) => {
+        if (n.children) {
+          const activeInside = hasActiveDesc(n);
+          if (activeInside && openMap[n.id] !== true) openMap[n.id] = true;
+          ensureOpenForActive(n.children);
+        }
+      });
+    };
+    ensureOpenForActive(NAV_TREE_SPEC);
+
+    const buildNodes = (nodes, depth) => nodes.map((node) => {
+      if (node.sep) return '<div class="pas-tree-sep" role="separator"></div>';
+      const hasKids = Array.isArray(node.children) && node.children.length > 0;
+      const isOpen = hasKids ? Boolean(openMap[node.id]) : false;
+      const isActiveLeaf = !hasKids && matchNavHref(node.href);
+      const isAncestor = hasKids && hasActiveDesc(node);
+      const icoHtml = node.icon && NAV_ICONS[node.icon] ? `<span class="pas-tree-ico">${NAV_ICONS[node.icon]}</span>` : '';
+
+      if (hasKids) {
+        const labelEl = node.href
+          ? `<a class="pas-tree-link" href="${esc(node.href)}">${icoHtml}<span class="pas-tree-lbl">${esc(tLbl(node))}</span></a>`
+          : `<button type="button" class="pas-tree-link pas-tree-folder-btn" data-tree-toggle="${esc(node.id)}">${icoHtml}<span class="pas-tree-lbl">${esc(tLbl(node))}</span></button>`;
+        return `<div class="pas-tree-branch depth-${depth}${isOpen ? ' is-open' : ''}${isAncestor ? ' has-active' : ''}" data-tree-id="${esc(node.id)}">
+          <div class="pas-tree-row">
+            ${labelEl}
+            <button type="button" class="pas-tree-chevron" data-tree-toggle="${esc(node.id)}" aria-expanded="${isOpen ? 'true' : 'false'}" aria-label="展开/折叠">${NAV_ICONS.chevron}</button>
+          </div>
+          <div class="pas-tree-children"${isOpen ? '' : ' hidden'}>${buildNodes(node.children, depth + 1)}</div>
+        </div>`;
+      }
+      return `<a class="pas-tree-leaf depth-${depth}${isActiveLeaf ? ' active' : ''}" href="${esc(node.href)}">${icoHtml}<span class="pas-tree-lbl">${esc(tLbl(node))}</span></a>`;
+    }).join('');
+
+    nav.className = 'pas-tree';
+    nav.innerHTML = buildNodes(NAV_TREE_SPEC, 1);
+
+    nav.querySelectorAll('[data-tree-toggle]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = btn.dataset.treeToggle;
+        const branch = nav.querySelector(`.pas-tree-branch[data-tree-id="${CSS.escape(id)}"]`);
+        if (!branch) return;
+        const nextOpen = !branch.classList.contains('is-open');
+        branch.classList.toggle('is-open', nextOpen);
+        const kids = branch.querySelector(':scope > .pas-tree-children');
+        if (kids) kids.hidden = !nextOpen;
+        const chev = branch.querySelector(':scope > .pas-tree-row > .pas-tree-chevron');
+        if (chev) chev.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+        const map = loadNavOpenMap();
+        map[id] = nextOpen;
+        saveNavOpenMap(map);
+      });
+    });
+
+    // 语言切换时同步刷新目录树文案
+    const langSel = document.getElementById('lang-select');
+    if (langSel && !langSel.dataset.pasTreeLangBound) {
+      langSel.dataset.pasTreeLangBound = '1';
+      langSel.addEventListener('change', () => setTimeout(renderSidebarTree, 0));
+    }
+  }
+
   /* ==================== 7.5 南极极地气象与环境工况胶囊条 + 快捷输入弹窗 ==================== */
   let _cachedWeather = null;
   let _weatherFetchInFlight = null;
@@ -1606,11 +1791,13 @@
     btn.title = tip;
     btn.innerHTML = `<span class="pas-w-dot ${tone}"></span>` +
       `<span class="pas-w-ico">${icon}</span>` +
-      `<span class="pas-w-vals tabular">${Math.round(Number(w.irradiance_wm2 || 0))}W/m² · ${Number(w.wind_speed_ms || 0).toFixed(1)}m/s · ${Number(w.ambient_temp_c ?? -18.5).toFixed(1)}℃</span>` +
+      `<span class="pas-w-vals tabular">${Math.round(Number(w.irradiance_wm2 || 0))}W·${Number(w.wind_speed_ms || 0).toFixed(1)}m/s·${Number(w.ambient_temp_c ?? -18.5).toFixed(0)}℃</span>` +
       `<span class="pas-w-extra tabular">风${Number(c.wind_avail_kw || 0).toFixed(0)}kW · 光${Number(c.pv_avail_kw || 0).toFixed(0)}kW</span>`;
   }
 
   function mountWeatherBadge() {
+    // 若页面已有专属南极环境气象耦合条（如 overview.html 的 #ov-weather-strip），顶栏不再重复挂载
+    if (document.getElementById('ov-weather-strip')) return;
     const topActions = document.querySelector('.se-top-actions');
     if (!topActions || document.getElementById('pas-weather-pill')) return;
     const btn = document.createElement('button');
@@ -1795,6 +1982,191 @@
     });
   }
 
+  /* ==================== 7.6 顶栏「外观与语言」紧凑整合弹出面板（全站 26 页统一生效） ==================== */
+  const PREFS_SWATCHES = [
+    { id: 'minimalist-light', bg: '#f8fafc', fg: '#2563eb', zh: '极简明亮', en: 'Minimalist Light', ru: 'Светлый минимализм' },
+    { id: 'warm-paper', bg: '#f5efe6', fg: '#b45309', zh: '护眼暖纸', en: 'Warm Paper', ru: 'Теплая бумага' },
+    { id: 'precision-dark', bg: '#0f172a', fg: '#38bdf8', zh: '精密暗黑', en: 'Precision Dark', ru: 'Точный темный' },
+    { id: 'ocean-slate', bg: '#0b192c', fg: '#60a5fa', zh: '深海工业蓝', en: 'Ocean Slate', ru: 'Глубокий океан' },
+    { id: 'sci-fi-cyan', bg: '#04121d', fg: '#06b6d4', zh: '科幻 · 电光青', en: 'Sci-Fi Cyan', ru: 'Неон циан' },
+    { id: 'sci-fi-matrix', bg: '#04140a', fg: '#22c55e', zh: '科幻 · 矩阵绿', en: 'Sci-Fi Matrix', ru: 'Матрица зеленый' },
+  ];
+
+  const PREFS_I18N = {
+    'zh-CN': { title: '外观与语言', lang: '语言', theme: '主题' },
+    'en-US': { title: 'Appearance & Language', lang: 'Language', theme: 'Theme' },
+    'ru-RU': { title: 'Тема и язык', lang: 'Язык', theme: 'Тема' },
+  };
+
+  let _prefsPopoverEl = null;
+  let _prefsTriggerEl = null;
+
+  function closePrefsPopover() {
+    if (!_prefsPopoverEl) return;
+    _prefsPopoverEl.hidden = true;
+    if (_prefsTriggerEl) {
+      _prefsTriggerEl.classList.remove('active');
+      _prefsTriggerEl.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function positionPrefsPopover() {
+    if (!_prefsPopoverEl || !_prefsTriggerEl || _prefsPopoverEl.hidden) return;
+    const rect = _prefsTriggerEl.getBoundingClientRect();
+    const popW = _prefsPopoverEl.offsetWidth || 228;
+    const rightGap = Math.max(8, window.innerWidth - rect.right);
+    const maxRight = Math.max(8, window.innerWidth - popW - 8);
+    _prefsPopoverEl.style.top = `${Math.round(rect.bottom + 6)}px`;
+    _prefsPopoverEl.style.right = `${Math.min(rightGap, maxRight)}px`;
+  }
+
+  function mountPrefsPopover() {
+    const topActions = document.querySelector('.se-top-actions, .top-actions');
+    if (!topActions || document.getElementById('pas-prefs-trigger')) return;
+
+    const themeSel = document.getElementById('theme-select');
+    const langSel = document.getElementById('lang-select');
+    if (!themeSel && !langSel) return;
+
+    // 1. 顶栏紧凑图标按钮（26x25 / 28x28，统一置尾）
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'pas-prefs-trigger';
+    btn.className = 'pas-kbd-btn pas-prefs-btn';
+    btn.setAttribute('aria-haspopup', 'true');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.innerHTML =
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/><path d="M12 3a14 14 0 0 0 0 18M12 3a14 14 0 0 1 0 18"/>' +
+      '</svg><span class="pas-prefs-dot" aria-hidden="true"></span>';
+    topActions.appendChild(btn);
+
+    // 2. 挂在 body 下的轻量定锚浮层，防止任何顶栏 overflow 裁切
+    const pop = document.createElement('div');
+    pop.id = 'pas-prefs-popover';
+    pop.className = 'pas-prefs-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.hidden = true;
+    pop.innerHTML = `
+      <div class="pas-prefs-sec" data-prefs-lang-sec>
+        <span class="pas-prefs-lbl" data-prefs-lbl="lang">语言</span>
+        <div class="pas-prefs-seg" role="radiogroup">
+          <button type="button" class="pas-prefs-seg-btn" data-lang-val="zh-CN">中文</button>
+          <button type="button" class="pas-prefs-seg-btn" data-lang-val="en-US">EN</button>
+          <button type="button" class="pas-prefs-seg-btn" data-lang-val="ru-RU">RU</button>
+        </div>
+      </div>
+      <div class="pas-prefs-sec" data-prefs-theme-sec>
+        <span class="pas-prefs-lbl" data-prefs-lbl="theme">主题</span>
+        <div class="pas-prefs-theme-slot"></div>
+        <div class="pas-prefs-swatches">
+          ${PREFS_SWATCHES.map((s) => `<button type="button" class="pas-prefs-swatch" data-theme-val="${s.id}" style="--sw-bg:${s.bg};--sw-fg:${s.fg}" title="${esc(s.zh)}"></button>`).join('')}
+        </div>
+      </div>
+      <div class="pas-prefs-hidden-slot" hidden></div>
+    `;
+    document.body.appendChild(pop);
+    _prefsPopoverEl = pop;
+    _prefsTriggerEl = btn;
+
+    // 迁入原 DOM 节点，完整保留全站各页面已绑定的 change 监听器
+    if (themeSel) {
+      themeSel.classList.add('pas-prefs-select');
+      pop.querySelector('.pas-prefs-theme-slot').appendChild(themeSel);
+    } else {
+      pop.querySelector('[data-prefs-theme-sec]').hidden = true;
+    }
+    if (langSel) {
+      pop.querySelector('.pas-prefs-hidden-slot').appendChild(langSel);
+    } else {
+      pop.querySelector('[data-prefs-lang-sec]').hidden = true;
+    }
+
+    const syncUI = () => {
+      const curLang = (langSel && langSel.value) || getLang();
+      const curTheme = document.documentElement.getAttribute('data-theme') || (themeSel && themeSel.value) || 'minimalist-light';
+      const dict = PREFS_I18N[curLang] || PREFS_I18N['zh-CN'];
+      pop.setAttribute('aria-label', dict.title);
+      const lblLang = pop.querySelector('[data-prefs-lbl="lang"]');
+      const lblTheme = pop.querySelector('[data-prefs-lbl="theme"]');
+      if (lblLang) lblLang.textContent = dict.lang;
+      if (lblTheme) lblTheme.textContent = dict.theme;
+
+      pop.querySelectorAll('.pas-prefs-seg-btn').forEach((b) => {
+        const active = b.dataset.langVal === curLang;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-checked', active ? 'true' : 'false');
+      });
+
+      const lk = curLang === 'en-US' ? 'en' : (curLang === 'ru-RU' ? 'ru' : 'zh');
+      pop.querySelectorAll('.pas-prefs-swatch').forEach((b) => {
+        const sw = PREFS_SWATCHES.find((x) => x.id === b.dataset.themeVal);
+        if (sw) b.title = sw[lk] || sw.zh;
+        b.classList.toggle('active', b.dataset.themeVal === curTheme);
+      });
+
+      const themeText = (themeSel && themeSel.selectedOptions && themeSel.selectedOptions[0])
+        ? themeSel.selectedOptions[0].textContent.trim()
+        : curTheme;
+      const langText = curLang === 'en-US' ? 'EN' : (curLang === 'ru-RU' ? 'RU' : '中文');
+      btn.title = `${dict.title} · ${themeText} / ${langText}`;
+      btn.setAttribute('aria-label', btn.title);
+    };
+
+    pop.querySelectorAll('.pas-prefs-seg-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        const next = b.dataset.langVal;
+        if (!langSel || langSel.value === next) return;
+        langSel.value = next;
+        langSel.dispatchEvent(new Event('change', { bubbles: true }));
+        setTimeout(syncUI, 0);
+      });
+    });
+
+    pop.querySelectorAll('.pas-prefs-swatch').forEach((b) => {
+      b.addEventListener('click', () => {
+        const next = b.dataset.themeVal;
+        if (window.PAS_APPLY_THEME) {
+          window.PAS_APPLY_THEME(next);
+        }
+        if (themeSel && themeSel.value !== next) {
+          themeSel.value = next;
+          themeSel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncUI();
+      });
+    });
+
+    if (themeSel) themeSel.addEventListener('change', () => setTimeout(syncUI, 0));
+    if (langSel) langSel.addEventListener('change', () => setTimeout(syncUI, 0));
+    window.addEventListener('pas:theme-change', syncUI);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = pop.hidden;
+      if (willOpen) {
+        syncUI();
+        pop.hidden = false;
+        btn.classList.add('active');
+        btn.setAttribute('aria-expanded', 'true');
+        positionPrefsPopover();
+      } else {
+        closePrefsPopover();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (pop.hidden) return;
+      if (pop.contains(e.target) || btn.contains(e.target)) return;
+      closePrefsPopover();
+    });
+    window.addEventListener('resize', positionPrefsPopover);
+
+    // 等待 theme-registry.js / 各页脚本完成初始填充后再刷新一次 tooltip
+    syncUI();
+    setTimeout(syncUI, 0);
+  }
+
   function mountTopbarEnhancements() {
     // 1. 若旧运行管理页缺少 #lang-select，自动补充三语下拉
     const topActions = document.querySelector('.top-actions, .se-top-actions');
@@ -1804,7 +2176,8 @@
       btn.id = 'pas-cmd-trigger';
       btn.className = 'pas-kbd-btn';
       btn.title = '全站快速搜索 / 设备档案 / 切换风格 (Ctrl+K)';
-      btn.innerHTML = '<span>搜索</span><kbd>Ctrl+K</kbd>';
+      btn.setAttribute('aria-label', '搜索 Ctrl+K');
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>';
       btn.addEventListener('click', openCommandPalette);
       topActions.insertBefore(btn, topActions.firstChild);
     }
@@ -1833,7 +2206,9 @@
         topActions.appendChild(sel);
       }
     }
+    mountPrefsPopover();
     initSidebarController();
+    renderSidebarTree();
     initWallMode();
     mountWeatherBadge();
     applyLegacyI18n(getLang());
@@ -1853,13 +2228,21 @@
     const editing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
+      closePrefsPopover();
       openCommandPalette();
       return;
     }
-    if (e.key === 'Escape' && _activeOverlay) {
-      e.preventDefault();
-      closeOverlay();
-      return;
+    if (e.key === 'Escape') {
+      if (_prefsPopoverEl && !_prefsPopoverEl.hidden) {
+        e.preventDefault();
+        closePrefsPopover();
+        return;
+      }
+      if (_activeOverlay) {
+        e.preventDefault();
+        closeOverlay();
+        return;
+      }
     }
     if (!editing && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'r') {
       const refreshBtn = document.querySelector('#btn-refresh, [data-action="refresh"]');
