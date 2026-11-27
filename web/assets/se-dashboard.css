@@ -128,21 +128,22 @@
 
 [data-theme="precision-dark"] {
   --bg-canvas: #0B0F19;
-  --bg-surface: #111827;
-  --bg-subtle: #1E293B;
-  --table-stripe: #162032;
-  --table-hover: #1E293B;
+  --bg-surface: rgba(17, 24, 39, 0.82);
+  --bg-subtle: rgba(30, 41, 59, 0.72);
+  --table-stripe: rgba(22, 32, 50, 0.55);
+  --table-hover: rgba(56, 189, 248, 0.10);
   --text-primary: #F8FAFC;
   --text-secondary: #94A3B8;
   --accent: #38BDF8;
-  --accent-hover: #0EA5E9;
+  --accent-2: #818CF8;
+  --accent-hover: #7DD3FC;
   --accent-soft: rgba(56, 189, 248, 0.14);
-  --border-color: rgba(255, 255, 255, 0.09);
-  --border: 1px solid rgba(255, 255, 255, 0.09);
-  --radius-card: 6px;
-  --radius-btn: 5px;
-  --shadow-card: none;
-  --backdrop-blur: none;
+  --border-color: rgba(148, 163, 184, 0.14);
+  --border: 1px solid rgba(148, 163, 184, 0.14);
+  --radius-card: 11px;
+  --radius-btn: 8px;
+  --shadow-card: 0 6px 22px rgba(2, 6, 23, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --backdrop-blur: blur(12px);
   --font-heading: inherit;
 
   --sem-ok: #34D399;
@@ -167,21 +168,22 @@
 
 [data-theme="bento-grid"] {
   --bg-canvas: #F5F5F7;
-  --bg-surface: #FFFFFF;
+  --bg-surface: rgba(255, 255, 255, 0.90);
   --bg-subtle: #EBEBF0;
   --table-stripe: #F7F7FA;
   --table-hover: #ECEEF5;
   --text-primary: #1D1D1F;
   --text-secondary: #6E6E73;
   --accent: #0071E3;
+  --accent-2: #5856D6;
   --accent-hover: #0077ED;
   --accent-soft: rgba(0, 113, 227, 0.10);
   --border-color: rgba(0, 0, 0, 0.06);
   --border: 1px solid rgba(0, 0, 0, 0.06);
   --radius-card: 14px;
   --radius-btn: 9999px;
-  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.04);
-  --backdrop-blur: none;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.05);
+  --backdrop-blur: blur(10px);
   --font-heading: inherit;
 
   --sem-ok: #0D9488;
@@ -213,13 +215,14 @@
   --text-primary: #F8FAFC;
   --text-secondary: #CBD5E1;
   --accent: #60A5FA;
+  --accent-2: #A78BFA;
   --accent-hover: #3B82F6;
   --accent-soft: rgba(96, 165, 250, 0.16);
   --border-color: rgba(255, 255, 255, 0.14);
   --border: 1px solid rgba(255, 255, 255, 0.14);
-  --radius-card: 12px;
-  --radius-btn: 8px;
-  --shadow-card: 0 6px 24px rgba(0, 0, 0, 0.28);
+  --radius-card: 13px;
+  --radius-btn: 9px;
+  --shadow-card: 0 8px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --backdrop-blur: blur(14px) saturate(140%);
   --font-heading: inherit;
 
@@ -245,21 +248,22 @@
 
 [data-theme="editorial"] {
   --bg-canvas: #FAF9F6;
-  --bg-surface: #FFFFFF;
+  --bg-surface: rgba(255, 255, 255, 0.92);
   --bg-subtle: #F4F3EE;
   --table-stripe: #FAF9F6;
   --table-hover: #F1EFE8;
   --text-primary: #18181B;
   --text-secondary: #52525B;
   --accent: #9F1239;
+  --accent-2: #C0265B;
   --accent-hover: #881337;
   --accent-soft: rgba(159, 18, 57, 0.09);
   --border-color: #E4E4E7;
   --border: 1px solid #E4E4E7;
-  --radius-card: 2px;
-  --radius-btn: 2px;
-  --shadow-card: none;
-  --backdrop-blur: none;
+  --radius-card: 8px;
+  --radius-btn: 6px;
+  --shadow-card: 0 2px 10px rgba(24, 24, 27, 0.04);
+  --backdrop-blur: blur(8px);
   --font-heading: "Georgia", "Noto Serif SC", "Songti SC", serif;
 
   --sem-ok: #0F766E;
@@ -404,21 +408,22 @@
 
 [data-theme="arctic-frost"] {
   --bg-canvas: #F0F6FB;
-  --bg-surface: #FFFFFF;
-  --bg-subtle: #E6F0F8;
+  --bg-surface: rgba(255, 255, 255, 0.86);
+  --bg-subtle: rgba(230, 240, 248, 0.84);
   --table-stripe: #F5FAFD;
   --table-hover: #E0F2FE;
   --text-primary: #0C2233;
   --text-secondary: #4B6A82;
   --accent: #0284C7;
+  --accent-2: #6366F1;
   --accent-hover: #0369A1;
   --accent-soft: rgba(2, 132, 199, 0.12);
-  --border-color: #D4E4F1;
-  --border: 1px solid #D4E4F1;
-  --radius-card: 10px;
-  --radius-btn: 7px;
-  --shadow-card: 0 2px 8px rgba(12, 34, 51, 0.05);
-  --backdrop-blur: none;
+  --border-color: rgba(180, 208, 232, 0.72);
+  --border: 1px solid rgba(180, 208, 232, 0.72);
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --shadow-card: 0 4px 16px rgba(12, 34, 51, 0.06);
+  --backdrop-blur: blur(12px);
   --font-heading: inherit;
 
   --sem-ok: #0D9488;
@@ -443,21 +448,22 @@
 
 [data-theme="warm-paper"] {
   --bg-canvas: #F6F2E9;
-  --bg-surface: #FFFDF8;
+  --bg-surface: rgba(255, 253, 248, 0.90);
   --bg-subtle: #EFE9DC;
   --table-stripe: #F9F6EE;
   --table-hover: #EDF6EF;
   --text-primary: #231F1A;
   --text-secondary: #6B6255;
   --accent: #15803D;
+  --accent-2: #0D9488;
   --accent-hover: #166534;
   --accent-soft: rgba(21, 128, 61, 0.12);
   --border-color: #E2DACB;
   --border: 1px solid #E2DACB;
-  --radius-card: 8px;
-  --radius-btn: 6px;
-  --shadow-card: 0 1px 3px rgba(35, 31, 26, 0.05);
-  --backdrop-blur: none;
+  --radius-card: 11px;
+  --radius-btn: 8px;
+  --shadow-card: 0 3px 12px rgba(35, 31, 26, 0.05);
+  --backdrop-blur: blur(8px);
   --font-heading: inherit;
 
   --sem-ok: #15803D;
@@ -482,21 +488,22 @@
 
 [data-theme="slate-daylight"] {
   --bg-canvas: #EDF1F5;
-  --bg-surface: #FAFBFD;
+  --bg-surface: rgba(250, 251, 253, 0.90);
   --bg-subtle: #E2E8F0;
   --table-stripe: #F2F5F9;
   --table-hover: #E6EFFC;
   --text-primary: #111827;
   --text-secondary: #475569;
-  --accent: #1D4ED8;
-  --accent-hover: #1E40AF;
-  --accent-soft: rgba(29, 78, 216, 0.11);
-  --border-color: #CBD5E1;
-  --border: 1px solid #CBD5E1;
-  --radius-card: 6px;
-  --radius-btn: 4px;
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --backdrop-blur: none;
+  --accent: #2563EB;
+  --accent-2: #4F46E5;
+  --accent-hover: #1D4ED8;
+  --accent-soft: rgba(37, 99, 235, 0.11);
+  --border-color: rgba(203, 213, 225, 0.85);
+  --border: 1px solid rgba(203, 213, 225, 0.85);
+  --radius-card: 11px;
+  --radius-btn: 8px;
+  --shadow-card: 0 3px 12px rgba(15, 23, 42, 0.05);
+  --backdrop-blur: blur(10px);
   --font-heading: inherit;
 
   --sem-ok: #047857;
@@ -509,7 +516,7 @@
   --warning: #B45309;
   --grid-line: #CBD5E1;
 
-  --chart-se: #1D4ED8;
+  --chart-se: #2563EB;
   --chart-meas: #B45309;
   --chart-ok: #047857;
   --chart-bad: #DC2626;
@@ -521,21 +528,22 @@
 
 [data-theme="ocean-slate"] {
   --bg-canvas: #071422;
-  --bg-surface: #0D2036;
-  --bg-subtle: #142C48;
-  --table-stripe: #10263F;
-  --table-hover: #183657;
+  --bg-surface: rgba(13, 32, 54, 0.76);
+  --bg-subtle: rgba(20, 44, 72, 0.68);
+  --table-stripe: rgba(16, 38, 63, 0.52);
+  --table-hover: rgba(56, 189, 248, 0.12);
   --text-primary: #EAF4FC;
   --text-secondary: #8EB2CE;
   --accent: #38BDF8;
-  --accent-hover: #0EA5E9;
+  --accent-2: #2DD4BF;
+  --accent-hover: #7DD3FC;
   --accent-soft: rgba(56, 189, 248, 0.16);
   --border-color: rgba(56, 189, 248, 0.16);
   --border: 1px solid rgba(56, 189, 248, 0.16);
-  --radius-card: 8px;
-  --radius-btn: 6px;
-  --shadow-card: 0 4px 18px rgba(2, 10, 20, 0.36);
-  --backdrop-blur: none;
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --shadow-card: 0 6px 22px rgba(2, 10, 20, 0.38), inset 0 1px 0 rgba(186, 230, 253, 0.06);
+  --backdrop-blur: blur(12px);
   --font-heading: inherit;
 
   --sem-ok: #34D399;
@@ -560,21 +568,22 @@
 
 [data-theme="nord-dark"] {
   --bg-canvas: #242933;
-  --bg-surface: #2E3440;
-  --bg-subtle: #3B4252;
-  --table-stripe: #333A47;
+  --bg-surface: rgba(46, 52, 64, 0.84);
+  --bg-subtle: rgba(59, 66, 82, 0.74);
+  --table-stripe: rgba(51, 58, 71, 0.56);
   --table-hover: #434C5E;
   --text-primary: #ECEFF4;
   --text-secondary: #A5B1C6;
   --accent: #88C0D0;
+  --accent-2: #81A1C1;
   --accent-hover: #8FBCBB;
   --accent-soft: rgba(136, 192, 208, 0.18);
   --border-color: rgba(216, 222, 233, 0.12);
   --border: 1px solid rgba(216, 222, 233, 0.12);
-  --radius-card: 8px;
-  --radius-btn: 6px;
-  --shadow-card: 0 4px 16px rgba(15, 19, 26, 0.28);
-  --backdrop-blur: none;
+  --radius-card: 11px;
+  --radius-btn: 8px;
+  --shadow-card: 0 6px 20px rgba(15, 19, 26, 0.28), inset 0 1px 0 rgba(236, 239, 244, 0.05);
+  --backdrop-blur: blur(10px);
   --font-heading: inherit;
 
   --sem-ok: #A3BE8C;
@@ -599,21 +608,22 @@
 
 [data-theme="industrial-amber"] {
   --bg-canvas: #121110;
-  --bg-surface: #1C1A18;
-  --bg-subtle: #272420;
-  --table-stripe: #211E1B;
+  --bg-surface: rgba(28, 26, 24, 0.84);
+  --bg-subtle: rgba(39, 36, 32, 0.74);
+  --table-stripe: rgba(33, 30, 27, 0.56);
   --table-hover: #2E2922;
   --text-primary: #FAF5ED;
   --text-secondary: #B5AA9A;
   --accent: #F59E0B;
+  --accent-2: #FB923C;
   --accent-hover: #FBBF24;
   --accent-soft: rgba(245, 158, 11, 0.16);
   --border-color: rgba(245, 158, 11, 0.18);
   --border: 1px solid rgba(245, 158, 11, 0.18);
-  --radius-card: 6px;
-  --radius-btn: 4px;
-  --shadow-card: 0 4px 18px rgba(0, 0, 0, 0.38);
-  --backdrop-blur: none;
+  --radius-card: 11px;
+  --radius-btn: 8px;
+  --shadow-card: 0 6px 22px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(254, 243, 199, 0.05);
+  --backdrop-blur: blur(10px);
   --font-heading: inherit;
 
   --sem-ok: #34D399;
@@ -1457,7 +1467,7 @@ body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
   width: 100%;
   border-collapse: collapse;
   table-layout: auto;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .se-data-table thead th {
@@ -1467,18 +1477,20 @@ body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
   background: var(--bg-subtle);
   color: var(--text-secondary);
   font-weight: 600;
-  padding: 8px 10px;
+  padding: 4px 8px;
   border-bottom: var(--border);
   white-space: nowrap;
-  height: 36px;
+  height: 28px;
+  vertical-align: middle;
 }
 
 .se-data-table td {
-  padding: 7px 10px;
+  padding: 4px 8px;
   border-bottom: var(--border);
   color: var(--text-primary);
   white-space: nowrap;
-  height: 36px;
+  height: 28px;
+  vertical-align: middle;
 }
 
 .se-data-table th.num, .se-data-table td.num { text-align: right; }
@@ -1537,11 +1549,10 @@ body.pas-wall-mode .pas-wall-clock { display: inline-flex; }
   min-height: 26px;
   padding: 3px 8px;
   border: var(--border);
-  font-size: 12px;
   border-radius: var(--radius-btn);
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* ==================== 6. 运行与调度 ==================== */
@@ -3165,7 +3176,7 @@ body.se-splitting-h {
 }
 .pas-timing-se { background: #38bdf8; }
 .pas-timing-lf { background: #22c55e; }
-.pas-timing-ca { background: #f59e0b; }
+.pas-timing-ca { background: var(--sem-warn); }
 
 .pas-flow-legend {
   display: inline-flex;
@@ -5450,6 +5461,138 @@ body.pas-wall-mode .pas-crest-title {
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+/* ==================== 全站 26 页字体阶梯 / 顶栏尺寸 / 工作区留白 / 表格内嵌控件统一校准层 ==================== */
+/* 1. 统一字号阶梯（严格单调递减，彻底消除主次倒挂）：
+      系统总标题 14.5px > 模块页标题 h1 14px > 面板/卡片标题 h2 13px > 正文与一级导航 12.5px > 表格与控件 12px > 辅助元信息 11-11.5px */
+[data-theme] body {
+  font-family: "Inter", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+[data-theme] .pas-crest-title {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+[data-theme] .se-title-row h1,
+[data-theme] .topbar h1 {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+[data-theme] .se-home-panel-head h2,
+[data-theme] .se-home-card-head h2,
+[data-theme] .se-side-head h2,
+[data-theme] .se-toolbar h2,
+[data-theme] .card h2,
+[data-theme] .content .section-head h2,
+[data-theme] .pas-viz-head h3 {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--text-primary);
+}
+[data-theme] .sidebar nav.pas-tree .pas-tree-link,
+[data-theme] .sidebar nav.pas-tree .pas-tree-leaf {
+  font-size: 12.5px;
+}
+[data-theme] .sidebar nav.pas-tree .depth-2.pas-tree-leaf,
+[data-theme] .sidebar nav.pas-tree .depth-2 > .pas-tree-row > .pas-tree-link {
+  font-size: 12px;
+}
+[data-theme] .sidebar nav.pas-tree .depth-3.pas-tree-leaf {
+  font-size: 11.5px;
+}
+
+/* 2. 全站 26 页顶栏与外框留白像素级对齐（新 .se-topbar 与旧 .topbar 统一 38px 单行、25px 操作按钮） */
+[data-theme] .se-topbar,
+[data-theme] .topbar {
+  min-height: 38px;
+  height: 38px;
+  padding: 4px 10px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  align-items: center;
+}
+[data-theme] .top-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+[data-theme] .top-actions .primary,
+[data-theme] .top-actions .ghost,
+[data-theme] .top-actions .mini {
+  height: 25px;
+  min-height: 25px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+[data-theme] .top-actions .pas-kbd-btn,
+[data-theme] .top-actions .pas-prefs-btn,
+[data-theme] .top-actions .pas-icon-only {
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 25px !important;
+  min-height: 25px !important;
+  padding: 0 !important;
+}
+[data-theme] .se-workspace,
+[data-theme] .content {
+  padding: 8px 10px;
+}
+
+/* 3. 全站数据表格统一规范：垂直居中 + 紧凑 28px 行高 + 单元格内嵌子控件无独立边框无缝铺满 */
+[data-theme] table th,
+[data-theme] table td {
+  vertical-align: middle;
+  font-size: 12px;
+}
+[data-theme] table td:has(> input:not([type="checkbox"]):not([type="radio"])),
+[data-theme] table td:has(> select),
+[data-theme] table td:has(> textarea) {
+  padding: 0;
+}
+[data-theme] table td > input:not([type="checkbox"]):not([type="radio"]),
+[data-theme] table td > select,
+[data-theme] table td > textarea {
+  width: 100%;
+  min-height: 27px;
+  padding: 3px 7px;
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
+}
+[data-theme] table td > input:not([type="checkbox"]):not([type="radio"]):hover,
+[data-theme] table td > select:hover,
+[data-theme] table td > textarea:hover {
+  background: var(--table-hover) !important;
+}
+[data-theme] table td > input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-theme] table td > select:focus,
+[data-theme] table td > textarea:focus {
+  background: var(--bg-subtle) !important;
+  box-shadow: inset 0 0 0 1.5px var(--accent) !important;
+}
+[data-theme] table td > input:invalid,
+[data-theme] table td > select:invalid {
+  background: var(--sem-danger-bg) !important;
+  box-shadow: inset 0 0 0 1.5px var(--sem-danger) !important;
 }
 
 @media (max-width: 720px) {

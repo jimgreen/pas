@@ -63,19 +63,19 @@ function serviceControls() {
 const TREND_METRICS={runs:'执行次数',succeeded:'成功次数',failed:'失败次数',avg_elapsed_seconds:'平均耗时（秒）'};
 function trendChart(points) {
   const width=Math.max(290,document.querySelector('#app').clientWidth-60), height=220,left=42,right=14,top=20,bottom=34;
-  const colors={se:'#1769e0',lf:'#14966b',ca:'#bb710a'},field=state.trend.metric;
+  const colors={se:'var(--chart-se, #38bdf8)',lf:'var(--chart-ok, #5eead4)',ca:'var(--chart-meas, #fcd34d)'},field=state.trend.metric;
   const series=TASKS.map(name=>points.map(p=>p.tasks?.[name]?.[field]??(field==='avg_elapsed_seconds'?null:0)));
   const max=Math.max(1,...series.flat().filter(v=>v!==null));
   const x=i=>left+(width-left-right)*i/Math.max(1,points.length-1);
   const y=v=>top+(height-top-bottom)*(1-v/max);
-  const grid=[0,max/2,max].map(v=>`<line x1="${left}" x2="${width-right}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e9f2"/><text x="${left-6}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#6d7890">${v===0?0:Number(v.toPrecision(3))}</text>`).join('');
+  const grid=[0,max/2,max].map(v=>`<line x1="${left}" x2="${width-right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--chart-grid)"/><text x="${left-6}" y="${y(v)+4}" text-anchor="end" font-size="11.5" fill="var(--text-secondary)">${v===0?0:Number(v.toPrecision(3))}</text>`).join('');
   const lines=TASKS.map((name,n)=>{
     let path='';let gap=true;
     series[n].forEach((value,i)=>{if(value===null){gap=true;return;}path+=`${gap?'M':'L'}${x(i)},${y(value)} `;gap=false;});
     const marks=series[n].map((v,i)=>v===null?'':`<circle cx="${x(i)}" cy="${y(v)}" r="${n===2?2:3}" fill="${colors[name]}"><title>${esc(points[i].bucket)} UTC · ${name.toUpperCase()} ${Number(v.toPrecision(5))}</title></circle>`).join('');
     return `<path d="${path}" stroke="${colors[name]}" stroke-width="2" ${n===1?'stroke-dasharray="5 3"':''} fill="none"/>${marks}`;
   }).join('');
-  return `<div class="trend-legend">${TASKS.map(n=>`<span><i style="background:${colors[n]}"></i>${n.toUpperCase()}</span>`).join('')}<span>${TREND_METRICS[field]}</span></div><svg class="trend-chart" style="height:220px" role="img" aria-label="按 UTC 小时统计的${TREND_METRICS[field]}" viewBox="0 0 ${width} ${height}"><title>完整小时窗口统计，当前小时尚未结束</title>${grid}${lines}<text x="${left}" y="${height-8}" font-size="12" fill="#6d7890">${esc(points[0]?.bucket.slice(5).replace('T',' '))}</text><text x="${width-right}" y="${height-8}" font-size="12" text-anchor="end" fill="#6d7890">${esc(points.at(-1)?.bucket.slice(5).replace('T',' '))} UTC</text></svg>`;
+  return `<div class="trend-legend">${TASKS.map(n=>`<span><i style="background:${colors[n]}"></i>${n.toUpperCase()}</span>`).join('')}<span>${TREND_METRICS[field]}</span></div><svg class="trend-chart" style="height:220px" role="img" aria-label="按 UTC 小时统计的${TREND_METRICS[field]}" viewBox="0 0 ${width} ${height}"><title>完整小时窗口统计，当前小时尚未结束</title>${grid}${lines}<text x="${left}" y="${height-8}" font-size="11.5" fill="var(--text-secondary)">${esc(points[0]?.bucket.slice(5).replace('T',' '))}</text><text x="${width-right}" y="${height-8}" font-size="11.5" text-anchor="end" fill="var(--text-secondary)">${esc(points.at(-1)?.bucket.slice(5).replace('T',' '))} UTC</text></svg>`;
 }
 async function trends() {
   const token=state.token,cfg={...state.trend},points=(await api(`/api/metrics/trend?limit=${cfg.hours}`)).data;
