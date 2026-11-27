@@ -2002,9 +2002,9 @@
   ];
 
   const PREFS_I18N = {
-    'zh-CN': { title: '外观与语言', lang: '语言', theme: '主题' },
-    'en-US': { title: 'Appearance & Language', lang: 'Language', theme: 'Theme' },
-    'ru-RU': { title: 'Тема и язык', lang: 'Язык', theme: 'Тема' },
+    'zh-CN': { title: '外观与语言', lang: '语言', theme: '主题', brand: '顶栏标题' },
+    'en-US': { title: 'Appearance & Language', lang: 'Language', theme: 'Theme', brand: 'Banner Title' },
+    'ru-RU': { title: 'Тема и язык', lang: 'Язык', theme: 'Тема', brand: 'Заголовок' },
   };
 
   let _prefsPopoverEl = null;
@@ -2072,11 +2072,21 @@
           ${PREFS_SWATCHES.map((s) => `<button type="button" class="pas-prefs-swatch" data-theme-val="${s.id}" style="--sw-bg:${s.bg};--sw-fg:${s.fg}" title="${esc(s.zh)}"></button>`).join('')}
         </div>
       </div>
+      <div class="pas-prefs-foot">
+        <button type="button" class="pas-prefs-brand-btn" id="pas-prefs-brand-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <span data-prefs-lbl="brand">顶栏标题</span>
+        </button>
+      </div>
       <div class="pas-prefs-hidden-slot" hidden></div>
     `;
     document.body.appendChild(pop);
     _prefsPopoverEl = pop;
     _prefsTriggerEl = btn;
+    pop.querySelector('#pas-prefs-brand-btn')?.addEventListener('click', () => {
+      closePrefsPopover();
+      openBrandingModal();
+    });
 
     // 迁入原 DOM 节点，完整保留全站各页面已绑定的 change 监听器
     if (themeSel) {
@@ -2098,8 +2108,10 @@
       pop.setAttribute('aria-label', dict.title);
       const lblLang = pop.querySelector('[data-prefs-lbl="lang"]');
       const lblTheme = pop.querySelector('[data-prefs-lbl="theme"]');
+      const lblBrand = pop.querySelector('[data-prefs-lbl="brand"]');
       if (lblLang) lblLang.textContent = dict.lang;
       if (lblTheme) lblTheme.textContent = dict.theme;
+      if (lblBrand) lblBrand.textContent = dict.brand;
 
       pop.querySelectorAll('.pas-prefs-seg-btn').forEach((b) => {
         const active = b.dataset.langVal === curLang;
@@ -2364,6 +2376,262 @@
     });
   }
 
+  /* ==================== 7.8 顶栏中央仙气科幻光翼主标题徽牌（可定制 + 持久化 + 智能防碰撞） ==================== */
+  const BRANDING_STORE_KEY = 'pas_ui_branding';
+  const DEFAULT_BRANDING = {
+    title: '南极秦岭站综合能量管理系统',
+    badge: '秦岭站',
+    enabled: true,
+    presets: [
+      { title: '南极秦岭站综合能量管理系统', badge: '秦岭站' },
+      { title: '极地微电网在线分析主控台', badge: 'PAS' },
+      { title: '交直流混合微电网能量管理系统', badge: 'EMS' },
+    ],
+  };
+
+  let _brandingState = null;
+
+  function loadLocalBranding() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(BRANDING_STORE_KEY) || 'null');
+      if (raw && typeof raw === 'object') {
+        return {
+          ...DEFAULT_BRANDING,
+          title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : DEFAULT_BRANDING.title,
+          badge: typeof raw.badge === 'string' ? raw.badge.trim() : DEFAULT_BRANDING.badge,
+          enabled: raw.enabled !== false,
+        };
+      }
+    } catch { /* ignore */ }
+    return { ...DEFAULT_BRANDING };
+  }
+
+  function saveLocalBranding(cfg) {
+    try {
+      localStorage.setItem(BRANDING_STORE_KEY, JSON.stringify({
+        title: cfg.title,
+        badge: cfg.badge,
+        enabled: cfg.enabled !== false,
+      }));
+    } catch { /* ignore */ }
+  }
+
+  function applyBrandingToDOM(cfg) {
+    _brandingState = { ...DEFAULT_BRANDING, ...(cfg || {}) };
+    const crest = document.getElementById('pas-center-crest');
+    if (!crest) return;
+    const enabled = _brandingState.enabled !== false && Boolean(_brandingState.title);
+    crest.hidden = !enabled;
+    if (!enabled) return;
+    const titleEl = crest.querySelector('.pas-crest-title');
+    const badgeEl = crest.querySelector('.pas-crest-badge');
+    if (titleEl) titleEl.textContent = _brandingState.title;
+    if (badgeEl) {
+      const bText = (_brandingState.badge || '').trim();
+      badgeEl.textContent = bText;
+      badgeEl.hidden = !bText;
+    }
+    crest.title = `${_brandingState.title}${_brandingState.badge ? ` · ${_brandingState.badge}` : ''}（点击定制）`;
+    if (typeof crest._relayout === 'function') crest._relayout();
+  }
+
+  function mountCenterCrest() {
+    const bar = document.querySelector('.se-topbar, .topbar');
+    if (!bar || document.getElementById('pas-center-crest')) return;
+
+    const crest = document.createElement('button');
+    crest.type = 'button';
+    crest.id = 'pas-center-crest';
+    crest.className = 'pas-center-crest';
+    crest.setAttribute('aria-label', '定制顶栏主标题');
+    crest.innerHTML = `
+      <svg class="pas-crest-frame" viewBox="0 0 420 34" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="pas-crest-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.10"/>
+            <stop offset="100%" stop-color="var(--accent-2, var(--accent))" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="pas-crest-stroke" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0"/>
+            <stop offset="14%" stop-color="var(--accent)" stop-opacity="0.48"/>
+            <stop offset="50%" stop-color="var(--accent-2, var(--accent))" stop-opacity="0.68"/>
+            <stop offset="86%" stop-color="var(--accent)" stop-opacity="0.48"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="pas-crest-glow" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0"/>
+            <stop offset="50%" stop-color="var(--accent)" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M 8 0 L 412 0 L 392 27 Q 388 32 380 32 L 40 32 Q 32 32 28 27 Z" fill="url(#pas-crest-fill)"/>
+        <path d="M 1 1 L 12 1 L 29 27 Q 33 32 41 32 L 379 32 Q 387 32 391 27 L 408 1 L 419 1" fill="none" stroke="url(#pas-crest-stroke)" stroke-width="1.25"/>
+        <line x1="128" y1="32" x2="292" y2="32" stroke="url(#pas-crest-glow)" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="pas-crest-inner">
+        <span class="pas-crest-wing" aria-hidden="true"></span>
+        <span class="pas-crest-title"></span>
+        <span class="pas-crest-badge"></span>
+        <span class="pas-crest-wing" aria-hidden="true"></span>
+        <span class="pas-crest-edit-ico" aria-hidden="true">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </span>
+      </span>
+    `;
+    crest.addEventListener('click', () => openBrandingModal());
+    bar.appendChild(crest);
+
+    const relayout = () => {
+      if (crest.hidden) return;
+      const barRect = bar.getBoundingClientRect();
+      if (!barRect.width) return;
+      const leftEl = bar.querySelector('.se-title-group') || bar.firstElementChild;
+      const rightEl = bar.querySelector('.se-top-actions, .top-actions');
+      const lRight = (leftEl && leftEl !== crest) ? (leftEl.getBoundingClientRect().right - barRect.left) : 0;
+      const rLeft = (rightEl && rightEl !== crest) ? (rightEl.getBoundingClientRect().left - barRect.left) : barRect.width;
+      const gapSpace = Math.floor(rLeft - lRight - 18);
+      if (gapSpace < 140) {
+        crest.dataset.crowded = '1';
+        return;
+      }
+      crest.dataset.crowded = '0';
+      const mid = barRect.width / 2;
+      const symSpace = Math.floor(Math.min(mid - lRight, rLeft - mid) * 2 - 18);
+      let avail = symSpace;
+      if (symSpace >= 250) {
+        crest.style.left = '50%';
+      } else {
+        // 两侧按钮略不对称时平滑对齐于实际空档中点，保证视觉平衡且零重叠
+        crest.style.left = `${Math.round((lRight + rLeft) / 2)}px`;
+        avail = gapSpace;
+      }
+      crest.style.maxWidth = `${Math.max(140, Math.min(avail, 520))}px`;
+      crest.dataset.compact = avail < 290 ? '1' : '0';
+    };
+    crest._relayout = relayout;
+
+    // 首屏立即可见（使用本地缓存或默认值，零闪烁），随后静默同步后端持久化配置
+    applyBrandingToDOM(loadLocalBranding());
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => requestAnimationFrame(relayout));
+      ro.observe(bar);
+      const leftEl = bar.querySelector('.se-title-group') || bar.firstElementChild;
+      const rightEl = bar.querySelector('.se-top-actions, .top-actions');
+      if (leftEl && leftEl !== crest) ro.observe(leftEl);
+      if (rightEl && rightEl !== crest) ro.observe(rightEl);
+    }
+    window.addEventListener('resize', relayout);
+    setTimeout(relayout, 80);
+    setTimeout(relayout, 360);
+
+    fetch('/api/ui/branding')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j && j.ok && j.data) {
+          saveLocalBranding(j.data);
+          applyBrandingToDOM(j.data);
+        }
+      })
+      .catch(() => { /* fallback to local cache */ });
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === BRANDING_STORE_KEY) applyBrandingToDOM(loadLocalBranding());
+    });
+  }
+
+  function openBrandingModal() {
+    closeOverlay();
+    const cur = _brandingState || loadLocalBranding();
+    const presets = (cur.presets && cur.presets.length) ? cur.presets : DEFAULT_BRANDING.presets;
+    const wrap = document.createElement('div');
+    wrap.className = 'pas-cmd-backdrop';
+    wrap.style.paddingTop = '10vh';
+    wrap.innerHTML = `
+      <div class="pas-diff-modal pas-brand-modal" role="dialog" aria-label="定制顶栏主标题">
+        <div class="pas-drawer-head">
+          <h3><span>顶栏主标题定制</span></h3>
+          <button type="button" class="se-btn compact" id="pb-close">✕</button>
+        </div>
+        <div class="pas-brand-presets">
+          ${presets.map((p, i) => `
+            <button type="button" class="pas-brand-preset-btn${p.title === cur.title ? ' active' : ''}" data-idx="${i}">
+              <strong>${esc(p.title)}</strong>
+              ${p.badge ? `<span>${esc(p.badge)}</span>` : ''}
+            </button>`).join('')}
+        </div>
+        <form id="pb-form" class="pas-brand-form">
+          <label class="se-field">
+            <span>主标题</span>
+            <input id="pb-title" type="text" maxlength="40" required value="${esc(cur.title || DEFAULT_BRANDING.title)}" placeholder="如：南极秦岭站综合能量管理系统">
+          </label>
+          <label class="se-field">
+            <span>副徽标（可选）</span>
+            <input id="pb-badge" type="text" maxlength="16" value="${esc(cur.badge || '')}" placeholder="如：秦岭站 / PAS">
+          </label>
+          <label class="pas-brand-toggle">
+            <input id="pb-enabled" type="checkbox" ${cur.enabled !== false ? 'checked' : ''}>
+            <span>在顶栏居中显示主标题徽牌</span>
+          </label>
+          <div class="se-modal-actions">
+            <button type="button" class="se-btn ghost" id="pb-reset" style="margin-right:auto">恢复默认</button>
+            <button type="button" class="se-btn ghost" id="pb-cancel">取消</button>
+            <button type="submit" class="se-btn primary">保存生效</button>
+          </div>
+        </form>
+      </div>`;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) closeOverlay(); });
+    wrap.querySelector('#pb-close').addEventListener('click', closeOverlay);
+    wrap.querySelector('#pb-cancel').addEventListener('click', closeOverlay);
+    document.body.appendChild(wrap);
+    _activeOverlay = wrap;
+
+    const titleInput = wrap.querySelector('#pb-title');
+    const badgeInput = wrap.querySelector('#pb-badge');
+    const enabledInput = wrap.querySelector('#pb-enabled');
+
+    wrap.querySelectorAll('.pas-brand-preset-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        const p = presets[Number(b.dataset.idx)];
+        if (!p) return;
+        titleInput.value = p.title;
+        badgeInput.value = p.badge || '';
+        enabledInput.checked = true;
+        wrap.querySelectorAll('.pas-brand-preset-btn').forEach((x) => x.classList.toggle('active', x === b));
+      });
+    });
+
+    const persist = async (payload) => {
+      const nextLocal = payload.reset
+        ? { ...DEFAULT_BRANDING }
+        : { ...DEFAULT_BRANDING, title: payload.title, badge: payload.badge, enabled: payload.enabled };
+      saveLocalBranding(nextLocal);
+      applyBrandingToDOM(nextLocal);
+      try {
+        const resp = await fetch('/api/ui/branding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const j = await resp.json();
+        if (resp.ok && j && j.ok && j.data) {
+          saveLocalBranding(j.data);
+          applyBrandingToDOM(j.data);
+        }
+      } catch { /* keep local */ }
+      closeOverlay();
+    };
+
+    wrap.querySelector('#pb-reset').addEventListener('click', () => persist({ reset: true }));
+    wrap.querySelector('#pb-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = titleInput.value.trim();
+      if (!title) return;
+      persist({ title, badge: badgeInput.value.trim(), enabled: enabledInput.checked });
+    });
+    titleInput.focus();
+    titleInput.select();
+  }
+
   function mountTopbarEnhancements() {
     // 1. 若旧运行管理页缺少 #lang-select，自动补充三语下拉
     const topActions = document.querySelector('.top-actions, .se-top-actions');
@@ -2409,6 +2677,7 @@
     initWallMode();
     mountWeatherBadge();
     enhanceVisualIcons();
+    mountCenterCrest();
     applyLegacyI18n(getLang());
   }
 
@@ -2470,6 +2739,7 @@
     openDeviceDrawer,
     openDiffModal,
     openWeatherModal,
+    openBrandingModal,
     getWeather: () => fetchWeatherState(false),
     refreshWeather: () => fetchWeatherState(true),
     renderTrendChart,

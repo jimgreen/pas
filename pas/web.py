@@ -138,6 +138,60 @@ class PasWebApp:
         except (ValueError, OSError, input_store.sqlite3.Error):
             return None
 
+    @staticmethod
+    def _default_ui_branding() -> dict[str, Any]:
+        """返回顶栏中央主标题徽牌默认配置与预设列表。"""
+        return {
+            "title": "南极秦岭站综合能量管理系统",
+            "badge": "秦岭站",
+            "enabled": True,
+            "presets": [
+                {"title": "南极秦岭站综合能量管理系统", "badge": "秦岭站"},
+                {"title": "极地微电网在线分析主控台", "badge": "PAS"},
+                {"title": "交直流混合微电网能量管理系统", "badge": "EMS"},
+            ],
+        }
+
+    def _get_ui_branding(self) -> dict[str, Any]:
+        """从 pas_config 读取持久化的顶栏中央主标题配置。"""
+        base = self._default_ui_branding()
+        saved: Any = None
+        if callable(getattr(self.repository, "get_config", None)):
+            try:
+                saved = self.repository.get_config("ui.branding", None)
+            except (ValueError, OSError, input_store.sqlite3.Error):
+                saved = None
+        if isinstance(saved, dict):
+            if isinstance(saved.get("title"), str) and saved["title"].strip():
+                base["title"] = saved["title"].strip()[:40]
+            if isinstance(saved.get("badge"), str):
+                base["badge"] = saved["badge"].strip()[:16]
+            if "enabled" in saved:
+                base["enabled"] = bool(saved["enabled"])
+        return base
+
+    def _save_ui_branding(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """校验并持久化顶栏中央主标题配置至 pas_config。"""
+        if not isinstance(payload, dict):
+            raise ValueError("配置内容必须为 JSON 对象")
+        defaults = self._default_ui_branding()
+        if payload.get("reset"):
+            stored = {
+                "title": defaults["title"],
+                "badge": defaults["badge"],
+                "enabled": True,
+            }
+        else:
+            title = str(payload.get("title", defaults["title"])).strip()[:40]
+            if not title:
+                raise ValueError("主标题不能为空")
+            badge = str(payload.get("badge", "")).strip()[:16]
+            enabled = bool(payload.get("enabled", True))
+            stored = {"title": title, "badge": badge, "enabled": enabled}
+        if callable(getattr(self.repository, "set_config", None)):
+            self.repository.set_config("ui.branding", stored)
+        return {**defaults, **stored}
+
     def _weather_summary(
         self,
         *,
@@ -1519,6 +1573,9 @@ class PasWebApp:
                 return {"ok": True, "data": self._weather_summary(include_presets=True)}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
+        # --- 顶栏中央主标题徽牌定制配置（持久化至 pas_config） ---
+        if parsed.path == "/api/ui/branding":
+            return {"ok": True, "data": self._get_ui_branding()}
         if parsed.path == "/api/weather/history":
             try:
                 query = parse_qs(parsed.query)
@@ -2101,6 +2158,11 @@ class PasWebApp:
                 if bool(payload.get("trigger_ca", False)) and callable(getattr(self.scheduler, "trigger_task_async", None)):
                     ca_job = self.scheduler.trigger_task_async("ca")
                 return {"ok": True, "data": {**summary, "ca_job": ca_job}}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
+        if path == "/api/ui/branding":
+            try:
+                return {"ok": True, "data": self._save_ui_branding(payload)}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
         if path.startswith('/api/inputs/'):

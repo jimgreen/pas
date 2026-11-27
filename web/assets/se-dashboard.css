@@ -5132,6 +5132,199 @@ body.pas-wall-mode .pas-w-extra {
 .pas-wx-ico-wind { color: var(--accent); }
 .pas-wx-ico-temp { color: var(--accent-2, #A78BFA); }
 
+/* ==================== 顶栏中央仙气科幻光翼主标题徽牌 ==================== */
+.se-topbar,
+.topbar {
+  position: relative;
+}
+.pas-center-crest {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 34px;
+  padding: 0 34px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  max-width: 500px;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+.pas-center-crest:hover {
+  filter: drop-shadow(0 0 10px var(--accent-soft));
+}
+.pas-center-crest[data-crowded="1"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.pas-crest-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.pas-crest-inner {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.pas-crest-wing {
+  width: 14px;
+  height: 1px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, transparent, var(--accent));
+  opacity: 0.72;
+}
+.pas-crest-wing:last-of-type {
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+.pas-crest-title {
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-shadow: 0 0 14px var(--accent-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pas-crest-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.pas-crest-edit-ico {
+  position: absolute;
+  right: -18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.pas-center-crest:hover .pas-crest-edit-ico {
+  opacity: 0.85;
+}
+.pas-center-crest[data-compact="1"] {
+  padding: 0 22px 2px;
+}
+.pas-center-crest[data-compact="1"] .pas-crest-wing,
+.pas-center-crest[data-compact="1"] .pas-crest-badge {
+  display: none;
+}
+body.pas-wall-mode .pas-center-crest {
+  height: 38px;
+  padding: 0 42px 2px;
+}
+body.pas-wall-mode .pas-crest-title {
+  font-size: 15px;
+  letter-spacing: 0.10em;
+}
+
+/* 外观浮层底部「顶栏标题」快捷入口 */
+.pas-prefs-foot {
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+.pas-prefs-brand-btn {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-btn);
+  border: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+.pas-prefs-brand-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 顶栏主标题定制弹窗 */
+.pas-brand-modal {
+  width: min(460px, 92vw);
+}
+.pas-brand-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 4px;
+}
+.pas-brand-preset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-btn);
+  border: var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pas-brand-preset-btn:hover,
+.pas-brand-preset-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pas-brand-preset-btn strong {
+  font-weight: 600;
+}
+.pas-brand-preset-btn span {
+  font-size: 10.5px;
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: var(--border);
+  flex-shrink: 0;
+}
+.pas-brand-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+}
+.pas-brand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 @media (max-width: 720px) {
   .pas-w-presets,
   .pas-w-form {
