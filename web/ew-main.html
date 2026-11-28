@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="ethereal-aurora">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>安全预警主画面 · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+  <script src="/assets/theme-registry.js"></script>
+  <script src="/assets/pas-kit.js"></script>
+  <script src="/assets/se-common.js"></script>
+</head>
+<body data-page="/ew-main" data-ew-view="home" data-wall-ready="1" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">P</span>
+        <div>
+          <strong>PAS</strong>
+          <small data-i18n="brand.sub">在线分析平台</small>
+        </div>
+      </div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se_root">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf-root" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" data-i18n="nav.ca">静态安全 CA</a>
+          <a href="/ew-main.html" data-route="ew-root" class="nav-parent-active" data-i18n="nav.ew">安全预警 EW</a>
+          <div class="nav-sub">
+            <a href="/ew-main.html" data-route="ew-main" class="active" data-i18n="nav.ew_main">主画面</a>
+            <a href="/ew-scenario.html" data-route="ew-scenario" data-i18n="nav.ew_scenario">态势推演</a>
+            <a href="/ew-risks.html" data-route="ew-risks" data-i18n="nav.ew_risks">风险预警</a>
+            <a href="/ew-green.html" data-route="ew-green" data-i18n="nav.ew_green">绿电维生</a>
+            <a href="/ew-logs.html" data-route="ew-logs" data-i18n="nav.ew_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot" id="service-dot"></span>
+        <span id="service-state" data-i18n="service.checking">服务检查中</span>
+      </div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ew_main">安全预警 EW</h1>
+            <span id="ew-level-pill" class="se-pill neutral">—</span>
+            <span id="ew-run-meta" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-ew" data-i18n="action.run_ew">执行 EW</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme"></select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option>
+            <option value="en-US">EN</option>
+            <option value="ru-RU">RU</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <div class="pas-screen-shell">
+          <!-- 顶部 5 格大屏态势英雄指标带（含核心绿电维生时长 KPI） -->
+          <section class="pas-hero-strip" id="ew-hero-strip" aria-label="EW Key Metrics"></section>
+
+          <!-- 核心三栏态势画布 -->
+          <div class="se-home-grid" aria-label="EW Dashboard">
+            <!-- 左栏：绿电维生时长仪表盘 + 维生多口径指标 + 储能实时 SOC + 演变剧本快捷切换 -->
+            <section class="se-home-panel accent-ctrl">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="ew.green_title">绿电维生能力</h2>
+                <span class="se-pill ok tabular" id="ew-green-badge">—</span>
+              </div>
+              <div class="se-home-panel-body">
+                <div id="ew-green-gauge"></div>
+                <div class="pas-chip-grid" id="ew-green-chips"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="ew.storage_units">储能单元实时 SOC</span>
+                  <span class="se-muted tabular" id="ew-storage-meta">—</span>
+                </div>
+                <div id="ew-storage-bars"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="ew.scenario">预测演变剧本</span>
+                  <span class="se-muted tabular" id="ew-src-tag">—</span>
+                </div>
+                <div class="ew-scenario-row">
+                  <select id="ew-scenario-select" class="se-select compact" aria-label="Forecast Scenario"></select>
+                  <button type="button" class="se-btn mini primary" id="btn-ew-apply-scenario" data-i18n="ew.recalc">重算</button>
+                </div>
+                <div class="se-home-actions" style="margin-top:auto;padding-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+                  <a class="se-btn mini primary" href="/ew-scenario.html" data-i18n="nav.ew_scenario">态势推演</a>
+                  <a class="se-btn mini" href="/ew-risks.html" data-i18n="nav.ew_risks">风险预警</a>
+                  <a class="se-btn mini" href="/ew-green.html" data-i18n="nav.ew_green">绿电维生</a>
+                </div>
+              </div>
+            </section>
+
+            <div class="se-splitter is-v" data-split="v1" role="separator"></div>
+
+            <!-- 中栏：未来 24 小时 96 点风险热力矩阵墙 + 高频风险事件 Top -->
+            <section class="se-home-panel accent-meas">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="ew.matrix_title">未来 24h 96点预警矩阵</h2>
+                <a class="se-more-link" style="margin:0" href="/ew-risks.html" data-i18n="action.more">全部 →</a>
+              </div>
+              <div class="se-home-panel-body">
+                <div class="pas-sub-hd">
+                  <div class="pas-heat-legend">
+                    <span><i style="background:var(--sem-ok)"></i>安</span>
+                    <span><i style="background:var(--sem-warn)"></i>中</span>
+                    <span><i style="background:#f97316"></i>高</span>
+                    <span><i style="background:var(--sem-danger)"></i>危</span>
+                  </div>
+                  <span class="se-muted tabular" id="ew-matrix-meta">—</span>
+                </div>
+                <div id="ew-heat-matrix" class="ew-heat-matrix"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span data-i18n="ew.top_events">高频风险源 / 扰动 Top</span>
+                  <span class="se-muted tabular" id="ew-events-meta">—</span>
+                </div>
+                <div id="ew-events-bars"></div>
+              </div>
+            </section>
+
+            <div class="se-splitter is-v" data-split="v2" role="separator"></div>
+
+            <!-- 右栏：上方 96 点四视角交互趋势图 + 下方潜在风险提示与选中时段明细双卡 -->
+            <div class="se-home-right">
+              <section class="se-home-panel accent-stat">
+                <div class="se-home-panel-head">
+                  <h2 data-i18n="ew.curve_title">未来 96 点绿电维生与安全轨迹</h2>
+                  <div class="se-tool-group" style="gap:4px">
+                    <button type="button" class="se-chip-btn seg active" data-ew-chart="green" data-i18n="ew.tab_green">绿电维生</button>
+                    <button type="button" class="se-chip-btn seg" data-ew-chart="renewable" data-i18n="ew.tab_ren">风光预测</button>
+                    <button type="button" class="se-chip-btn seg" data-ew-chart="loading" data-i18n="ew.tab_load">N-1负载</button>
+                    <button type="button" class="se-chip-btn seg" data-ew-chart="score" data-i18n="ew.tab_score">电压/评分</button>
+                  </div>
+                </div>
+                <div class="se-home-panel-body" id="ew-home-trend"></div>
+              </section>
+
+              <div class="se-splitter is-h" data-split="h1" role="separator"></div>
+
+              <div class="se-home-bottom-cards">
+                <section class="se-home-panel accent-meas">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="ew.top_risks">潜在风险提示 Top</h2>
+                    <a class="se-more-link" style="margin:0" href="/ew-risks.html" data-i18n="action.more">全部 →</a>
+                  </div>
+                  <div class="se-home-panel-body">
+                    <div class="se-table-wrap">
+                      <table class="se-table compact">
+                        <colgroup>
+                          <col style="width:44px">
+                          <col style="width:48px">
+                          <col style="width:36%">
+                          <col>
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th data-i18n="col.severity">等级</th>
+                            <th data-i18n="col.time">时刻</th>
+                            <th data-i18n="col.event">扰动/风险</th>
+                            <th data-i18n="col.advice">处置提示</th>
+                          </tr>
+                        </thead>
+                        <tbody id="ew-home-top-risks"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="se-splitter is-v" data-split="v3" role="separator"></div>
+
+                <section class="se-home-panel accent-ctrl">
+                  <div class="se-home-panel-head">
+                    <h2 data-i18n="ew.slot_inspect">重点时段断面详情</h2>
+                    <span class="se-pill neutral tabular" id="ew-slot-pill">—</span>
+                  </div>
+                  <div class="se-home-panel-body" id="ew-slot-inspector"></div>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部通栏：最新 EW 运行日志 -->
+          <a class="se-home-footer" id="ew-home-footer-log" href="/ew-logs.html">
+            <span class="tag" id="ew-log-tag">INFO</span>
+            <span class="se-muted tabular" id="ew-log-time">—</span>
+            <span class="msg" id="ew-log-msg">—</span>
+          </a>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/assets/ew-app.js"></script>
+</body>
+</html>

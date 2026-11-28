@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="ethereal-aurora">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>绿电维生 · EW · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+  <script src="/assets/theme-registry.js"></script>
+  <script src="/assets/pas-kit.js"></script>
+  <script src="/assets/se-common.js"></script>
+</head>
+<body data-page="/ew-green" data-ew-view="green" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><div><strong>PAS</strong><small data-i18n="brand.sub">在线分析平台</small></div></div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se_root">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf-root" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" data-i18n="nav.ca">静态安全 CA</a>
+          <a href="/ew-main.html" data-route="ew-root" class="nav-parent-active" data-i18n="nav.ew">安全预警 EW</a>
+          <div class="nav-sub">
+            <a href="/ew-main.html" data-route="ew-main" data-i18n="nav.ew_main">主画面</a>
+            <a href="/ew-scenario.html" data-route="ew-scenario" data-i18n="nav.ew_scenario">态势推演</a>
+            <a href="/ew-risks.html" data-route="ew-risks" data-i18n="nav.ew_risks">风险预警</a>
+            <a href="/ew-green.html" data-route="ew-green" class="active" data-i18n="nav.ew_green">绿电维生</a>
+            <a href="/ew-logs.html" data-route="ew-logs" data-i18n="nav.ew_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot" id="service-dot"></span><span id="service-state" data-i18n="service.checking">服务检查中</span></div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ew_green">绿电维生</h1>
+            <span id="ew-gr-pill" class="se-pill ok tabular">—</span>
+            <span id="ew-gr-meta" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-run-ew" data-i18n="action.run_ew">执行 EW</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme"></select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option><option value="en-US">EN</option><option value="ru-RU">RU</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <div class="pas-screen-shell">
+          <!-- 顶部 5 格绿电维生核心 KPI 带 -->
+          <section class="pas-hero-strip" id="ew-gr-hero" aria-label="Green Autonomy Metrics"></section>
+
+          <div class="ew-green-grid">
+            <!-- 左栏：维生仪表盘 + 极端工况一键试算 + 储能边界参数调节 -->
+            <section class="se-home-panel accent-ctrl">
+              <div class="se-home-panel-head">
+                <h2 data-i18n="ew.green_title">绿电维生能力</h2>
+                <span id="ew-gr-badge" class="se-pill ok tabular">—</span>
+              </div>
+              <div class="se-home-panel-body">
+                <div id="ew-gr-gauge"></div>
+                <div class="pas-chip-grid" id="ew-gr-chips"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span>极端工况一键试算</span>
+                  <span id="ew-gr-cur-sc" class="se-muted">—</span>
+                </div>
+                <div class="ew-quick-scenarios" id="ew-gr-sc-btns"></div>
+                <div class="se-kv-divider"></div>
+                <div class="pas-sub-hd">
+                  <span>储能维生边界参数</span>
+                  <button type="button" class="se-btn mini primary" id="btn-ew-gr-apply">应用重算</button>
+                </div>
+                <form id="ew-gr-param-form" class="ew-gr-param-grid">
+                  <label class="se-field"><span>SOC下限</span><input type="number" name="storage_min_soc" min="0.02" max="0.6" step="0.01"></label>
+                  <label class="se-field"><span>SOC上限</span><input type="number" name="storage_max_soc" min="0.5" max="1.0" step="0.01"></label>
+                  <label class="se-field"><span>综合效率</span><input type="number" name="storage_eff" min="0.5" max="1.0" step="0.01"></label>
+                  <label class="se-field"><span>含储氢</span>
+                    <select name="include_hydrogen"><option value="0">纯电化学</option><option value="1">含储氢</option></select>
+                  </label>
+                </form>
+              </div>
+            </section>
+
+            <!-- 右区：上 全站储能/储氢实时台账 + 下 分页标签（96点绿电曲线 / 96点收支表） -->
+            <div class="ew-green-right">
+              <section class="se-home-panel accent-meas ew-green-units-card">
+                <div class="se-home-panel-head">
+                  <h2>全站储能与储氢实时能量台账</h2>
+                  <span id="ew-gr-units-meta" class="se-muted tabular">—</span>
+                </div>
+                <div class="se-home-panel-body" style="padding:0">
+                  <div class="se-table-scroll" style="flex:1;min-height:0">
+                    <table class="se-table compact">
+                      <thead>
+                        <tr>
+                          <th>储能单元</th><th>域</th><th>额定容量(kWh)</th><th>最大放电(kW)</th>
+                          <th>实时 SOC</th><th>当前可用(kWh)</th><th>数据来源</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ew-gr-units-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+
+              <section class="se-home-panel accent-stat ew-green-bottom-card">
+                <div class="se-home-panel-head">
+                  <div class="se-tab-strip" role="tablist">
+                    <button type="button" class="se-tab active" role="tab" aria-selected="true" data-ew-gr-tab="curve">96 点绿电供需与 SOC 轨迹</button>
+                    <button type="button" class="se-tab" role="tab" aria-selected="false" data-ew-gr-tab="table">96 点绿电收支明细</button>
+                  </div>
+                  <span id="ew-gr-exhaust-tag" class="se-pill ok tabular">—</span>
+                </div>
+                <div id="ew-gr-panel-curve" class="se-home-panel-body" style="flex:1;min-height:0"></div>
+                <div id="ew-gr-panel-table" class="se-table-scroll" style="flex:1;min-height:0" hidden>
+                  <table class="se-table compact">
+                    <thead>
+                      <tr>
+                        <th>#</th><th>时刻</th><th>气温(℃)</th><th>风电(kW)</th><th>光伏(kW)</th>
+                        <th>绿电合计(kW)</th><th>负荷(kW)</th><th>净负荷(kW)</th>
+                        <th>储能充放(kW)</th><th>储能SOC%</th><th>绿电缺口(kW)</th><th>维生状态</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ew-gr-points-tbody"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/assets/ew-app.js"></script>
+</body>
+</html>

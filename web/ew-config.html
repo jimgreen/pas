@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="ethereal-aurora">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>预测与参数配置 · EW · PAS</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/se-dashboard.css">
+  <link rel="icon" href="data:,">
+  <script src="/assets/theme-registry.js"></script>
+  <script src="/assets/pas-kit.js"></script>
+  <script src="/assets/se-common.js"></script>
+</head>
+<body data-page="/ew-config" data-ew-view="config" class="se-main-body">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><div><strong>PAS</strong><small data-i18n="brand.sub">在线分析平台</small></div></div>
+      <nav>
+        <a href="/overview.html" data-route="overview" data-i18n="nav.overview">总览</a>
+        <div class="nav-group">
+          <span data-i18n="nav.analysis">分析功能</span>
+          <a href="/se-main.html" data-route="se-root" data-i18n="nav.se_root">状态估计 SE</a>
+          <a href="/lf-main.html" data-route="lf-root" data-i18n="nav.lf">潮流分析 LF</a>
+          <a href="/ca-main.html" data-route="ca-root" data-i18n="nav.ca">静态安全 CA</a>
+          <a href="/ew-main.html" data-route="ew-root" class="nav-parent-active" data-i18n="nav.ew">安全预警 EW</a>
+          <div class="nav-sub">
+            <a href="/ew-main.html" data-route="ew-main" data-i18n="nav.ew_main">主画面</a>
+            <a href="/ew-scenario.html" data-route="ew-scenario" data-i18n="nav.ew_scenario">态势推演</a>
+            <a href="/ew-risks.html" data-route="ew-risks" data-i18n="nav.ew_risks">风险预警</a>
+            <a href="/ew-green.html" data-route="ew-green" data-i18n="nav.ew_green">绿电维生</a>
+            <a href="/ew-logs.html" data-route="ew-logs" data-i18n="nav.ew_logs">运行日志</a>
+          </div>
+        </div>
+        <div class="nav-group">
+          <span data-i18n="nav.management">运行管理</span>
+          <a href="/runs.html" data-route="runs" data-i18n="nav.runs">运行历史</a>
+          <a href="/settings.html" data-route="settings" data-i18n="nav.settings">系统设置</a>
+        </div>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot" id="service-dot"></span><span id="service-state" data-i18n="service.checking">服务检查中</span></div>
+    </aside>
+
+    <main class="main se-main">
+      <header class="se-topbar">
+        <div class="se-title-group">
+          <div class="se-title-row">
+            <h1 data-i18n="title.ew_config">预测与参数配置</h1>
+            <span id="ew-cfg-meta" class="se-run-meta tabular">—</span>
+          </div>
+        </div>
+        <div class="se-top-actions">
+          <button type="button" class="se-btn primary" id="btn-ew-save-run" data-i18n="ew.save_run">保存并重算 EW</button>
+          <button type="button" class="se-btn ghost" id="btn-ew-reset-params" data-i18n="action.reset">恢复默认</button>
+          <button type="button" class="se-btn ghost" id="btn-refresh" data-i18n="action.refresh">刷新</button>
+          <select id="theme-select" class="se-select compact" aria-label="Theme"></select>
+          <select id="lang-select" class="se-select compact" aria-label="Language">
+            <option value="zh-CN">中文</option><option value="en-US">EN</option><option value="ru-RU">RU</option>
+          </select>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <div class="se-workspace">
+        <div class="pas-stack-layout">
+          <!-- 上方：EW 预警与绿电维生参数 + 三大预测数据库路径与状态 -->
+          <section class="pas-compact-param-card">
+            <div class="se-toolbar" style="margin-bottom:6px">
+              <h2>预警参数与预测数据源</h2>
+              <div id="ew-ds-badges" class="se-tool-group" style="margin-left:auto;gap:6px"></div>
+            </div>
+            <form id="ew-params-form" class="se-params-form" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+              <label class="se-field"><span>预测演变剧本</span>
+                <select id="p-scenario" name="forecast_scenario"></select>
+              </label>
+              <label class="se-field"><span>未来点数 (15min)</span><input type="number" name="horizon_points" min="4" max="96" step="1"></label>
+              <label class="se-field"><span>N-1 设备上限</span><input type="number" name="max_n1_devices" min="1" max="60" step="1"></label>
+              <label class="se-field"><span>储能保护 SOC 下限</span><input type="number" name="storage_min_soc" min="0.02" max="0.6" step="0.01"></label>
+              <label class="se-field"><span>储能充电 SOC 上限</span><input type="number" name="storage_max_soc" min="0.5" max="1.0" step="0.01"></label>
+              <label class="se-field"><span>充放电综合效率</span><input type="number" name="storage_eff" min="0.5" max="1.0" step="0.01"></label>
+              <label class="se-field"><span>电压下限 (pu)</span><input type="number" name="v_min_pu" min="0.5" max="1.05" step="0.01"></label>
+              <label class="se-field"><span>电压上限 (pu)</span><input type="number" name="v_max_pu" min="0.95" max="1.5" step="0.01"></label>
+              <label class="se-field"><span>重载预警 (%)</span><input type="number" name="overload_warn_pct" min="10" max="200" step="1"></label>
+              <label class="se-field"><span>过载限值 (%)</span><input type="number" name="overload_limit_pct" min="20" max="300" step="1"></label>
+              <label class="se-field"><span>N-1 扫描</span>
+                <select name="scan_n1"><option value="1">启用</option><option value="0">停用</option></select>
+              </label>
+              <label class="se-field"><span>气象扰动扫描</span>
+                <select name="scan_weather"><option value="1">启用</option><option value="0">停用</option></select>
+              </label>
+              <label class="se-field" style="grid-column:span 2"><span>新能源预测库 (renewgen.db)</span><input type="text" name="renewgen_db_path"></label>
+              <label class="se-field" style="grid-column:span 2"><span>负荷预测库 (load.db)</span><input type="text" name="load_db_path"></label>
+              <label class="se-field" style="grid-column:span 2"><span>气象预测库 (weather.db)</span><input type="text" name="weather_db_path"></label>
+            </form>
+          </section>
+
+          <!-- 下方：单时段预测覆写表 + 新增覆写 -->
+          <section class="pas-table-fill-card">
+            <div class="se-toolbar">
+              <h2>未来 96 点预测覆写（手工情景演练）</h2>
+              <form id="ew-ovr-form" class="se-tool-group" style="margin-left:auto;gap:5px;flex-wrap:wrap">
+                <input id="ovr-slot" class="se-input compact tabular" type="number" min="0" max="95" placeholder="时段 0-95" style="width:82px" required>
+                <input id="ovr-irr" class="se-input compact tabular" type="number" min="0" max="1400" step="any" placeholder="辐照W/m²" style="width:86px">
+                <input id="ovr-wind" class="se-input compact tabular" type="number" min="0" max="65" step="any" placeholder="风速m/s" style="width:78px">
+                <input id="ovr-temp" class="se-input compact tabular" type="number" min="-85" max="30" step="any" placeholder="气温℃" style="width:74px">
+                <input id="ovr-wkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="风电kW" style="width:78px">
+                <input id="ovr-pkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="光伏kW" style="width:78px">
+                <input id="ovr-lkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="负荷kW" style="width:78px">
+                <button type="submit" class="se-btn mini primary">写入覆写</button>
+                <button type="button" class="se-btn mini danger-ghost" id="btn-ew-ovr-clear">清空</button>
+              </form>
+            </div>
+            <div class="se-table-scroll">
+              <table class="se-table">
+                <thead>
+                  <tr>
+                    <th>时段 #</th><th>辐照(W/m²)</th><th>风速(m/s)</th><th>气温(℃)</th>
+                    <th>风电(kW)</th><th>光伏(kW)</th><th>负荷(kW)</th><th>更新时间</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="ew-ovr-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+  <dialog id="confirm-dialog" class="se-modal" aria-labelledby="confirm-title">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-desc" style="margin:8px 0 14px;color:var(--text-secondary);font-size:13px"></p>
+    <div class="se-modal-actions">
+      <button type="button" class="se-btn ghost" id="btn-confirm-cancel" data-i18n="action.cancel">取消</button>
+      <button type="button" class="se-btn danger" id="btn-confirm-ok" data-i18n="action.confirm">确认</button>
+    </div>
+  </dialog>
+  <script src="/assets/ew-app.js"></script>
+</body>
+</html>

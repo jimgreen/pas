@@ -26,6 +26,11 @@
     { path: '/ca-contingencies.html', title: '静态安全 CA · 预想故障集', en: 'CA Contingencies', ru: 'CA Возмущения', cat: '页面' },
     { path: '/ca-config.html', title: '静态安全 CA · 参数与限值', en: 'CA Config', ru: 'CA Настройки', cat: '页面' },
     { path: '/ca-logs.html', title: '静态安全 CA · 运行日志', en: 'CA Logs', ru: 'CA Журнал', cat: '页面' },
+    { path: '/ew-main.html', title: '安全预警 EW · 主画面', en: 'EW Dashboard', ru: 'EW Главная', cat: '页面' },
+    { path: '/ew-scenario.html', title: '安全预警 EW · 态势推演', en: 'EW Scenario Evolution', ru: 'EW Эволюция режимов', cat: '页面' },
+    { path: '/ew-risks.html', title: '安全预警 EW · 风险预警', en: 'EW Risk Alerts', ru: 'EW Риски', cat: '页面' },
+    { path: '/ew-green.html', title: '安全预警 EW · 绿电维生', en: 'EW Green Autonomy', ru: 'EW Зелёная автономность', cat: '页面' },
+    { path: '/ew-logs.html', title: '安全预警 EW · 运行日志', en: 'EW Logs & History', ru: 'EW Журнал и история', cat: '页面' },
     { path: '/runs.html', title: '运行管理 · 运行历史', en: 'Run History', ru: 'История запусков', cat: '运行管理' },
     { path: '/settings.html', title: '运行管理 · 系统设置（调度 / 数据源与目录 / 数据库 / 日志）', en: 'System Settings', ru: 'Настройки системы', cat: '运行管理' },
     { path: '/settings.html?tab=datasource', title: '系统设置 · 数据源健康体检与工作目录', en: 'Datasources & Workspace', ru: 'Источники данных', cat: '运行管理' },
@@ -1548,7 +1553,7 @@
 
   function isWallCapablePage() {
     const page = document.body?.dataset?.page || '';
-    return ['/se-main', '/lf-main', '/ca-main'].includes(page) || document.body?.dataset?.wallReady === '1';
+    return ['/se-main', '/lf-main', '/ca-main', '/ew-main', '/ew-scenario'].includes(page) || document.body?.dataset?.wallReady === '1';
   }
 
   function syncFullscreenBtnUI(active) {
@@ -1673,6 +1678,7 @@
     se: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 20 9 4 6 12 2 12"/></svg>',
     lf: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     ca: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    ew: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M19.07 4.93l-2.83 2.83"/><path d="M12 18a6 6 0 0 0 6-6h-6V6a6 6 0 1 0 0 12z"/></svg>',
     runs: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>',
     settings: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
     folder: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
@@ -1729,6 +1735,19 @@
         { id: 'ca-contingencies', href: '/ca-contingencies.html', label: { 'zh-CN': '预想故障集', 'en-US': 'Contingencies', 'ru-RU': 'Сценарии N-1' } },
         { id: 'ca-config', href: '/ca-config.html', label: { 'zh-CN': '参数与限值', 'en-US': 'Params & Limits', 'ru-RU': 'Параметры' } },
         { id: 'ca-logs', href: '/ca-logs.html', label: { 'zh-CN': '运行日志', 'en-US': 'Logs', 'ru-RU': 'Журнал' } },
+      ],
+    },
+    {
+      id: 'ew',
+      icon: 'ew',
+      href: '/ew-main.html',
+      label: { 'zh-CN': '安全预警 EW', 'en-US': 'Early Warning EW', 'ru-RU': 'Прогноз EW' },
+      children: [
+        { id: 'ew-main', href: '/ew-main.html', label: { 'zh-CN': '主画面', 'en-US': 'Dashboard', 'ru-RU': 'Главная' } },
+        { id: 'ew-scenario', href: '/ew-scenario.html', label: { 'zh-CN': '态势推演', 'en-US': 'Scenario Sim', 'ru-RU': 'Моделирование' } },
+        { id: 'ew-risks', href: '/ew-risks.html', label: { 'zh-CN': '风险预警', 'en-US': 'Risk Alerts', 'ru-RU': 'Риски' } },
+        { id: 'ew-green', href: '/ew-green.html', label: { 'zh-CN': '绿电维生', 'en-US': 'Green Autonomy', 'ru-RU': 'Автономность' } },
+        { id: 'ew-logs', href: '/ew-logs.html', label: { 'zh-CN': '运行日志', 'en-US': 'Logs', 'ru-RU': 'Журнал' } },
       ],
     },
     { sep: true },
@@ -2432,9 +2451,11 @@
     if (diffBtn) convertToIconButton(diffBtn, UI_ICONS.diff);
     const exportBtn = document.getElementById('btn-export');
     if (exportBtn) convertToIconButton(exportBtn, UI_ICONS.download);
+    const ewExportBtn = document.getElementById('btn-export-risks');
+    if (ewExportBtn) convertToIconButton(ewExportBtn, UI_ICONS.download);
 
     // 2. 主执行按钮前置柔光闪电图标
-    document.querySelectorAll('#btn-home-start, #btn-run-lf, #btn-run-ca, #btn-run-chain, [data-action="run-all"]').forEach(enhancePrimaryCtaIcon);
+    document.querySelectorAll('#btn-home-start, #btn-run-lf, #btn-run-ca, #btn-run-ew, #btn-run-chain, [data-action="run-all"]').forEach(enhancePrimaryCtaIcon);
 
     // 3. 分栏面板标题前置柔光语义图标（同级包裹，不破坏 data-i18n）
     document.querySelectorAll('.se-home-panel-head h2').forEach((h2) => {

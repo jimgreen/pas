@@ -2451,3 +2451,178 @@ CREATE TABLE IF NOT EXISTS pas_weather_history (
     note TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_pas_weather_history_time ON pas_weather_history(recorded_at DESC);
+
+-- ============================================================================
+-- 未来 24 小时 96 点安全预警与绿电维生分析（EW: Early Warning）表组
+-- ============================================================================
+
+-- EW 预警参数与绿电储能自治约束配置表（单行 id=1）
+CREATE TABLE IF NOT EXISTS ew_para (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    horizon_points INTEGER NOT NULL DEFAULT 96,
+    step_minutes INTEGER NOT NULL DEFAULT 15,
+    scan_n1 INTEGER NOT NULL DEFAULT 1,
+    scan_weather INTEGER NOT NULL DEFAULT 1,
+    max_n1_devices INTEGER NOT NULL DEFAULT 12,
+    v_min_pu REAL NOT NULL DEFAULT 0.93,
+    v_max_pu REAL NOT NULL DEFAULT 1.07,
+    overload_warn_pct REAL NOT NULL DEFAULT 80.0,
+    overload_limit_pct REAL NOT NULL DEFAULT 100.0,
+    storage_min_soc REAL NOT NULL DEFAULT 0.15,
+    storage_max_soc REAL NOT NULL DEFAULT 0.95,
+    storage_eff REAL NOT NULL DEFAULT 0.92,
+    include_hydrogen INTEGER NOT NULL DEFAULT 0,
+    forecast_scenario TEXT NOT NULL DEFAULT 'auto',
+    renewgen_db_path TEXT NOT NULL DEFAULT 'sqldb/forecast/renewgen.db',
+    load_db_path TEXT NOT NULL DEFAULT 'sqldb/forecast/load.db',
+    weather_db_path TEXT NOT NULL DEFAULT 'sqldb/forecast/weather.db',
+    do_cycle INTEGER NOT NULL DEFAULT 300,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- EW 每次运行的汇总与绿电维生指标记录表
+CREATE TABLE IF NOT EXISTS ew_run (
+    ew_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    calc_time TEXT NOT NULL,
+    source_lf_run_id INTEGER,
+    source_ca_run_id INTEGER,
+    forecast_source TEXT NOT NULL DEFAULT 'polar_synthesis',
+    forecast_scenario TEXT NOT NULL DEFAULT 'auto',
+    scenario_label TEXT NOT NULL DEFAULT '常规南极风光互补',
+    horizon_points INTEGER NOT NULL DEFAULT 96,
+    step_minutes INTEGER NOT NULL DEFAULT 15,
+    risk_level TEXT NOT NULL DEFAULT '安全',
+    security_score REAL NOT NULL DEFAULT 100.0,
+    health_grade TEXT NOT NULL DEFAULT 'A',
+    health_label TEXT NOT NULL DEFAULT '优秀',
+    risk_slots_count INTEGER NOT NULL DEFAULT 0,
+    critical_count INTEGER NOT NULL DEFAULT 0,
+    high_count INTEGER NOT NULL DEFAULT 0,
+    medium_count INTEGER NOT NULL DEFAULT 0,
+    low_count INTEGER NOT NULL DEFAULT 0,
+    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+    green_risk_count INTEGER NOT NULL DEFAULT 0,
+    max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    max_loading_slot INTEGER,
+    max_loading_time TEXT NOT NULL DEFAULT '',
+    max_loading_dev TEXT NOT NULL DEFAULT '',
+    min_v_pu REAL,
+    min_v_slot INTEGER,
+    min_v_time TEXT NOT NULL DEFAULT '',
+    max_v_pu REAL,
+    worst_slot INTEGER,
+    worst_time TEXT NOT NULL DEFAULT '',
+    worst_event TEXT NOT NULL DEFAULT '',
+    green_survival_hours REAL NOT NULL DEFAULT 24.0,
+    green_survival_minutes INTEGER NOT NULL DEFAULT 1440,
+    green_survival_capped INTEGER NOT NULL DEFAULT 1,
+    green_survival_extrap_hours REAL NOT NULL DEFAULT 24.0,
+    green_survival_no_ren_hours REAL NOT NULL DEFAULT 0.0,
+    green_survival_with_h2_hours REAL NOT NULL DEFAULT 24.0,
+    green_exhaust_slot INTEGER,
+    green_exhaust_time TEXT NOT NULL DEFAULT '',
+    green_renewable_share_pct REAL NOT NULL DEFAULT 100.0,
+    storage_init_soc_pct REAL NOT NULL DEFAULT 75.0,
+    storage_min_soc_24h_pct REAL NOT NULL DEFAULT 75.0,
+    storage_total_kwh REAL NOT NULL DEFAULT 660.0,
+    storage_usable_kwh REAL NOT NULL DEFAULT 396.0,
+    storage_max_discharge_kw REAL NOT NULL DEFAULT 560.0,
+    storage_cold_factor REAL NOT NULL DEFAULT 1.0,
+    deficit_total_kwh REAL NOT NULL DEFAULT 0.0,
+    max_deficit_kw REAL NOT NULL DEFAULT 0.0,
+    forecast_load_peak_kw REAL NOT NULL DEFAULT 0.0,
+    forecast_ren_peak_kw REAL NOT NULL DEFAULT 0.0,
+    elapsed_seconds REAL NOT NULL DEFAULT 0.0,
+    weather_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    storage_units_json TEXT NOT NULL DEFAULT '[]',
+    summary_text TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ew_run_time ON ew_run(calc_time DESC);
+
+-- EW 未来 1 天 96 点逐点预测、N-1 评估与绿电维生轨迹表
+CREATE TABLE IF NOT EXISTS ew_forecast_point (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ew_run_id INTEGER NOT NULL REFERENCES ew_run(ew_run_id) ON DELETE CASCADE,
+    slot_idx INTEGER NOT NULL,
+    time_label TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    irradiance_wm2 REAL NOT NULL DEFAULT 0.0,
+    wind_speed_ms REAL NOT NULL DEFAULT 0.0,
+    ambient_temp_c REAL NOT NULL DEFAULT -18.5,
+    snow_icing_level INTEGER NOT NULL DEFAULT 0,
+    wind_kw REAL NOT NULL DEFAULT 0.0,
+    pv_kw REAL NOT NULL DEFAULT 0.0,
+    renewable_kw REAL NOT NULL DEFAULT 0.0,
+    load_kw REAL NOT NULL DEFAULT 0.0,
+    net_load_kw REAL NOT NULL DEFAULT 0.0,
+    storage_soc_pct REAL NOT NULL DEFAULT 75.0,
+    storage_power_kw REAL NOT NULL DEFAULT 0.0,
+    storage_usable_kwh REAL NOT NULL DEFAULT 0.0,
+    green_deficit_kw REAL NOT NULL DEFAULT 0.0,
+    green_alive INTEGER NOT NULL DEFAULT 1,
+    n0_max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    n0_min_v_pu REAL,
+    n0_max_v_pu REAL,
+    n1_max_loading_pct REAL NOT NULL DEFAULT 0.0,
+    n1_min_v_pu REAL,
+    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+    risk_count INTEGER NOT NULL DEFAULT 0,
+    risk_level TEXT NOT NULL DEFAULT 'normal',
+    security_score REAL NOT NULL DEFAULT 100.0,
+    worst_event TEXT NOT NULL DEFAULT '',
+    ac_verified INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ew_point_run ON ew_forecast_point(ew_run_id, slot_idx);
+
+-- EW 潜在风险预警清单表（按时段、类别、严重度结构化存储）
+CREATE TABLE IF NOT EXISTS ew_risk_detail (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ew_run_id INTEGER NOT NULL REFERENCES ew_run(ew_run_id) ON DELETE CASCADE,
+    slot_idx INTEGER NOT NULL,
+    time_label TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'N-1',
+    risk_category TEXT NOT NULL DEFAULT 'overload',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    contingency_name TEXT NOT NULL DEFAULT '',
+    device_type TEXT NOT NULL DEFAULT '',
+    device_name TEXT NOT NULL DEFAULT '',
+    metric TEXT NOT NULL DEFAULT '',
+    actual_value REAL,
+    limit_value REAL,
+    violation_pct REAL NOT NULL DEFAULT 0.0,
+    unit TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    advice TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ew_risk_run ON ew_risk_detail(ew_run_id, severity, slot_idx);
+
+-- EW 未来 96 点预测手工覆写表（按时段覆写气象/风光/负荷预测值）
+CREATE TABLE IF NOT EXISTS ew_forecast_override (
+    slot_idx INTEGER PRIMARY KEY CHECK (slot_idx >= 0 AND slot_idx < 96),
+    irradiance_wm2 REAL,
+    wind_speed_ms REAL,
+    ambient_temp_c REAL,
+    snow_icing_level INTEGER,
+    wind_kw REAL,
+    pv_kw REAL,
+    load_kw REAL,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- EW 运行与配置审计日志表
+CREATE TABLE IF NOT EXISTS ew_run_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ew_run_id INTEGER,
+    calc_time TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'INFO',
+    stage TEXT NOT NULL DEFAULT 'system',
+    source TEXT NOT NULL DEFAULT 'system',
+    elapsed_ms REAL,
+    message TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_ew_run_log_time ON ew_run_log(calc_time DESC);

@@ -116,6 +116,66 @@ class PasWebApp:
             return self.repository
         return self._ca_repo()
 
+    def _ew_repo(self) -> Any:
+        ctrl = getattr(self.repository, "control", None)
+        if ctrl is not None and callable(getattr(ctrl, "ew_home_summary", None)):
+            return ctrl
+        if callable(getattr(self.repository, "ew_home_summary", None)):
+            return self.repository
+        return self._ca_repo()
+
+    def _execute_ew_run(
+        self,
+        *,
+        source: str = "manual",
+        scenario_override: str | None = None,
+    ) -> dict[str, Any]:
+        """执行一次未来 24h 96 点 EW 安全预警与绿电维生时长计算并持久化。"""
+        from .ew_online import run_ew_analysis
+
+        ew_repo = self._ew_repo()
+        params = ew_repo.ew_params_get()
+        if scenario_override:
+            params = ew_repo.ew_params_save({"forecast_scenario": scenario_override})
+
+        lf_snap = None
+        ca_snap = None
+        contingencies: list[dict[str, Any]] = []
+        try:
+            lf_snap = self._lf_repo().lf_snapshot()
+        except Exception:
+            lf_snap = None
+        try:
+            ca_repo = self._ca_repo()
+            ca_snap = ca_repo.ca_snapshot()
+            contingencies = ca_repo.ca_contingencies_list(enabled_only=True)
+        except Exception:
+            ca_snap = None
+            contingencies = []
+
+        weather_state = self._weather_repo().weather_state_get()
+        model_tables = self._weather_model_tables()
+        tasks = getattr(self.config, "tasks", {}) or {}
+        se_task = tasks.get("se")
+        scada_db = getattr(se_task, "measurement_file", None) if se_task else None
+        ws_dir = getattr(self.config, "workspace_directory", None)
+        overrides = ew_repo.ew_overrides_list()
+
+        result = run_ew_analysis(
+            params=params,
+            weather_state=weather_state,
+            lf_snap=lf_snap,
+            ca_snap=ca_snap,
+            contingencies=contingencies,
+            model_tables=model_tables,
+            scada_db_path=Path(scada_db) if scada_db else None,
+            workspace_dir=Path(ws_dir) if ws_dir else None,
+            overrides=overrides,
+        )
+        ew_run_id = ew_repo.ew_persist_run(result, source=source)
+        result["ew_run_id"] = ew_run_id
+        return result
+
     def _weather_model_tables(self) -> dict[str, dict[str, Any]] | None:
         ca_task = getattr(self.config, "tasks", {}).get("ca") or getattr(self.config, "tasks", {}).get("lf")
         model_file = getattr(ca_task, "model_file", None)
@@ -1567,6 +1627,57 @@ class PasWebApp:
                     return {"ok": True, "data": lf_repo.lf_logs_policy_get()}
             except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
                 return {"ok": False, "error": str(exc)}
+        # --- 未来 24h 96 点安全预警与绿电维生分析（EW）只读 API ---
+        if parsed.path.startswith("/api/ew/"):
+            ew_repo = self._ew_repo()
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/ew/home":
+                    summary = ew_repo.ew_home_summary()
+                    if summary.get("latest") is None:
+                        self._execute_ew_run(source="auto_init")
+                        summary = ew_repo.ew_home_summary()
+                    return {"ok": True, "data": summary}
+                if parsed.path == "/api/ew/points":
+                    rid_raw = query.get("ew_run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    snap = ew_repo.ew_snapshot(ew_run_id=rid_val)
+                    return {"ok": True, "data": snap}
+                if parsed.path == "/api/ew/risks":
+                    rid_raw = query.get("ew_run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    slot_raw = query.get("slot_idx", [""])[0].strip()
+                    slot_val = _int_path(slot_raw) if slot_raw else None
+                    return {
+                        "ok": True,
+                        "data": ew_repo.ew_risks_browse(
+                            ew_run_id=rid_val,
+                            category=query.get("category", ["all"])[0],
+                            severity=query.get("severity", ["all"])[0],
+                            slot_idx=slot_val,
+                            q=query.get("q", [""])[0],
+                            limit=_int_query(query, "limit", 100, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+                if parsed.path == "/api/ew/history":
+                    return {"ok": True, "data": ew_repo.ew_history_list(_int_query(query, "limit", 60, 1, 300))}
+                if parsed.path == "/api/ew/params":
+                    return {"ok": True, "data": ew_repo.ew_params_get()}
+                if parsed.path == "/api/ew/overrides":
+                    return {"ok": True, "data": ew_repo.ew_overrides_list()}
+                if parsed.path == "/api/ew/logs":
+                    return {
+                        "ok": True,
+                        "data": ew_repo.ew_logs_list(
+                            level=query.get("level", ["all"])[0],
+                            q=query.get("q", [""])[0],
+                            limit=_int_query(query, "limit", 100, 1, 500),
+                            offset=_int_query(query, "offset", 0, 0, 1_000_000),
+                        ),
+                    }
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
         # --- 南极气象条件与环境工况耦合只读 API ---
         if parsed.path == "/api/weather/current":
             try:
@@ -2087,6 +2198,34 @@ class PasWebApp:
                 return {"ok": False, "error": "chain_not_supported"}
             res = runner(tasks)
             return {"ok": bool(res.get("ok")), "error": None if res.get("ok") else "链路执行中断", "data": res}
+        # --- 未来 24h 96 点安全预警与绿电维生分析（EW）写接口 ---
+        if path.startswith("/api/ew/"):
+            ew_repo = self._ew_repo()
+            parts = path.strip("/").split("/")
+            try:
+                if path == "/api/ew/run":
+                    sc = str(payload.get("scenario") or "").strip() or None
+                    src = str(payload.get("source") or "manual").strip() or "manual"
+                    res = self._execute_ew_run(source=src, scenario_override=sc)
+                    return {"ok": True, "data": ew_repo.ew_home_summary(), "ew_run_id": res.get("ew_run_id")}
+                if path == "/api/ew/params":
+                    saved = ew_repo.ew_params_save(payload)
+                    if bool(payload.get("trigger_run", False)):
+                        self._execute_ew_run(source="param_change")
+                    return {"ok": True, "data": saved}
+                if path == "/api/ew/params/reset":
+                    return {"ok": True, "data": ew_repo.ew_params_reset()}
+                if path == "/api/ew/overrides":
+                    return {"ok": True, "data": ew_repo.ew_override_save(payload)}
+                if path == "/api/ew/overrides/clear":
+                    return {"ok": True, "data": {"deleted": ew_repo.ew_overrides_clear()}}
+                if len(parts) == 5 and parts[:3] == ["api", "ew", "overrides"] and parts[4] == "delete":
+                    slot_val = _int_path(parts[3])
+                    if slot_val is None:
+                        return {"ok": False, "error": "invalid_slot_idx"}
+                    return {"ok": True, "data": {"deleted": ew_repo.ew_override_delete(slot_val)}}
+            except (ValueError, TypeError, OSError, input_store.sqlite3.Error) as exc:
+                return {"ok": False, "error": str(exc)}
         # --- 在线静态安全分析（CA）写接口 ---
         if path.startswith("/api/ca/"):
             ca_repo = self._ca_repo()
@@ -2545,6 +2684,27 @@ class PasWebApp:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/csv; charset=utf-8")
                     self.send_header("Content-Disposition", 'attachment; filename="lf-run-logs.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed_get.path == "/api/ew/risks/export":
+                    query = parse_qs(parsed_get.query)
+                    rid_raw = query.get("ew_run_id", [""])[0].strip()
+                    rid_val = _int_path(rid_raw) if rid_raw else None
+                    slot_raw = query.get("slot_idx", [""])[0].strip()
+                    slot_val = _int_path(slot_raw) if slot_raw else None
+                    body = app._ew_repo().ew_risks_export_csv(
+                        ew_run_id=rid_val,
+                        category=query.get("category", ["all"])[0],
+                        severity=query.get("severity", ["all"])[0],
+                        slot_idx=slot_val,
+                        q=query.get("q", [""])[0],
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="ew-risks.csv"')
                     self.send_header("Content-Length", str(len(body)))
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()

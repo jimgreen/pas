@@ -5595,6 +5595,272 @@ body.pas-wall-mode .pas-crest-title {
   box-shadow: inset 0 0 0 1.5px var(--sem-danger) !important;
 }
 
+/* ==================== EW 未来 24h 96 点预警热力矩阵与绿电维生专属样式 ==================== */
+.ew-heat-matrix {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 3px;
+}
+.ew-slot-cell {
+  position: relative;
+  height: 20px;
+  padding: 0 2px;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  font: 600 9.5px/1 "JetBrains Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+.ew-slot-cell:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  z-index: 2;
+}
+.ew-slot-cell.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  z-index: 3;
+}
+.ew-slot-cell.lv-ok { background: var(--sem-ok-bg); color: var(--sem-ok); }
+.ew-slot-cell.lv-warn { background: var(--sem-warn-bg); color: var(--sem-warn); }
+.ew-slot-cell.lv-high { background: rgba(249, 115, 22, 0.18); color: #fb923c; border-color: rgba(249, 115, 22, 0.35); }
+.ew-slot-cell.lv-bad { background: var(--sem-danger-bg); color: var(--sem-danger); border-color: rgba(251, 113, 133, 0.45); }
+.ew-slot-cell.is-depleted::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sem-danger);
+}
+.ew-scenario-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ew-scenario-row .se-select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.ew-slot-event {
+  padding: 7px 10px;
+  border-radius: var(--radius-btn);
+  border: var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ew-slot-event strong {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.ew-slot-event span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ew-slot-event.has-risk {
+  background: var(--sem-danger-bg);
+  border-color: rgba(251, 113, 133, 0.32);
+}
+.ew-slot-event.has-risk strong {
+  color: var(--sem-danger);
+}
+.ew-gauge-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 6px;
+  gap: 3px;
+}
+.ew-gauge-fallback strong {
+  font-size: 24px;
+  color: var(--sem-ok);
+}
+
+/* 修复储能名称与柱条单行紧凑省略防折行 */
+.pas-bar-row {
+  grid-template-columns: minmax(76px, 118px) minmax(0, 1fr) auto;
+}
+.pas-bar-row .lbl {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 态势推演：上区 SVG 潮流系统图 + 右侧断面监视器，下区 96 点预测演化曲线 */
+.ew-sim-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+.ew-sim-top {
+  flex: 1 1 64%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 8px;
+}
+.ew-sim-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ew-sim-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ew-sim-slider-wrap {
+  flex: 1 1 160px;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+}
+.ew-sim-slider-wrap input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+}
+.ew-svg-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ew-sim-hud {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  max-width: calc(100% - 20px);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  font-size: 11.5px;
+  pointer-events: none;
+}
+.ew-sim-hud .hud-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+.ew-sim-hud .hud-item small {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+.ew-sim-hud .hud-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.ew-sim-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.ew-sim-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 6px 8px;
+}
+.ew-sim-alerts-card {
+  flex: 1 1 0;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+}
+.ew-sim-dev-card {
+  flex: 0 0 auto;
+  max-height: 170px;
+  display: flex;
+  flex-direction: column;
+}
+.ew-sim-curve-panel {
+  flex: 0 0 34%;
+  min-height: 196px;
+  max-height: 270px;
+  display: flex;
+  flex-direction: column;
+}
+.ew-sim-curve-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 8px 6px;
+  position: relative;
+  cursor: crosshair;
+}
+.ew-cfg-dialog {
+  width: min(980px, 94vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+/* 绿电维生专属页 */
+.ew-green-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 8px;
+}
+.ew-green-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.ew-green-units-card {
+  flex: 0 0 44%;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+}
+.ew-green-bottom-card {
+  flex: 1 1 56%;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+}
+.ew-quick-scenarios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.ew-gr-param-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 1120px) {
+  .ew-sim-top,
+  .ew-green-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .pas-w-presets,
   .pas-w-form {

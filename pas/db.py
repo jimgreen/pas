@@ -3647,6 +3647,223 @@ class Repository:
             w.writerow([r.get(c) for c in cols])
         return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
+    # ==================== EW 未来 24h 96 点预警与绿电维生仓储方法 ====================
+
+    @synchronized
+    def ew_params_get(self, *, do_cycle: int | float = 300) -> dict[str, Any]:
+        from .ew_online import ensure_ew_params
+        conn = self._connection()
+        res = ensure_ew_params(conn, do_cycle=do_cycle)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ew_params_save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from .ew_online import save_ew_params
+        conn = self._connection()
+        res = save_ew_params(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ew_params_reset(self) -> dict[str, Any]:
+        from .ew_online import reset_ew_params
+        conn = self._connection()
+        res = reset_ew_params(conn)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ew_overrides_list(self) -> list[dict[str, Any]]:
+        from .ew_online import list_ew_overrides
+        return list_ew_overrides(self._connection())
+
+    @synchronized
+    def ew_override_save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from .ew_online import save_ew_override
+        conn = self._connection()
+        res = save_ew_override(conn, payload)
+        conn.commit()
+        return res
+
+    @synchronized
+    def ew_override_delete(self, slot_idx: int) -> bool:
+        from .ew_online import delete_ew_override
+        conn = self._connection()
+        ok = delete_ew_override(conn, slot_idx)
+        conn.commit()
+        return ok
+
+    @synchronized
+    def ew_overrides_clear(self) -> int:
+        from .ew_online import clear_ew_overrides
+        conn = self._connection()
+        n = clear_ew_overrides(conn)
+        conn.commit()
+        return n
+
+    @synchronized
+    def ew_persist_run(self, result: dict[str, Any], *, source: str = "manual") -> int:
+        from .ew_online import persist_ew_run
+        conn = self._connection()
+        rid = persist_ew_run(conn, result, source=source)
+        conn.commit()
+        return rid
+
+    @synchronized
+    def ew_snapshot(self, ew_run_id: int | None = None) -> dict[str, Any]:
+        conn = self._connection()
+        if ew_run_id is not None:
+            row = conn.execute("SELECT * FROM ew_run WHERE ew_run_id = ?", (int(ew_run_id),)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM ew_run ORDER BY ew_run_id DESC LIMIT 1").fetchone()
+        if row is None:
+            return {"ew_run_id": None, "latest": None, "points": [], "risks": []}
+        latest = dict(row)
+        rid = int(latest["ew_run_id"])
+        for jcol, target_k, fallback in (
+            ("weather_snapshot_json", "weather_snapshot", {}),
+            ("storage_units_json", "storage_units", []),
+        ):
+            try:
+                latest[target_k] = json.loads(latest.get(jcol) or "{}")
+            except (TypeError, json.JSONDecodeError):
+                latest[target_k] = fallback
+        pts = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM ew_forecast_point WHERE ew_run_id = ? ORDER BY slot_idx ASC", (rid,)
+            ).fetchall()
+        ]
+        rks = [
+            dict(r)
+            for r in conn.execute(
+                """SELECT * FROM ew_risk_detail WHERE ew_run_id = ?
+                   ORDER BY CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
+                            slot_idx ASC, violation_pct DESC""",
+                (rid,),
+            ).fetchall()
+        ]
+        return {"ew_run_id": rid, "latest": latest, "points": pts, "risks": rks}
+
+    @synchronized
+    def ew_history_list(self, limit: int = 60) -> list[dict[str, Any]]:
+        rows = self._connection().execute(
+            """SELECT ew_run_id, calc_time, forecast_source, forecast_scenario, scenario_label,
+                      risk_level, security_score, health_grade, health_label,
+                      risk_slots_count, critical_count, high_count, medium_count, low_count,
+                      green_survival_hours, green_survival_capped, green_survival_extrap_hours,
+                      green_survival_no_ren_hours, green_survival_with_h2_hours,
+                      green_renewable_share_pct, storage_init_soc_pct, storage_min_soc_24h_pct,
+                      max_loading_pct, min_v_pu, elapsed_seconds, summary_text
+               FROM ew_run ORDER BY ew_run_id DESC LIMIT ?""",
+            (max(1, min(300, int(limit))),),
+        ).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    @synchronized
+    def ew_home_summary(self, *, do_cycle: int | float = 300) -> dict[str, Any]:
+        from .ew_online import EW_FORECAST_SCENARIOS, ensure_ew_params
+        conn = self._connection()
+        params = ensure_ew_params(conn, do_cycle=do_cycle)
+        conn.commit()
+        snap = self.ew_snapshot()
+        latest = snap["latest"]
+        pts = snap["points"]
+        rks = snap["risks"]
+        # 汇总脆弱设备/扰动频次 Top
+        freq: dict[str, dict[str, Any]] = {}
+        for r in rks:
+            key = str(r.get("contingency_name") or r.get("device_name") or "其他")
+            cur = freq.setdefault(key, {
+                "name": key, "category": r.get("category") or "N-1",
+                "count": 0, "max_sev": "low", "max_val": 0.0, "first_time": r.get("time_label") or "",
+            })
+            cur["count"] += 1
+            sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+            if sev_order.get(str(r.get("severity")), 0) > sev_order.get(cur["max_sev"], 0):
+                cur["max_sev"] = str(r.get("severity") or "low")
+            cur["max_val"] = max(cur["max_val"], float(r.get("violation_pct") or 0.0))
+        top_events = sorted(freq.values(), key=lambda x: (-x["count"], -x["max_val"]))[:8]
+
+        history = self.ew_history_list(limit=40)
+        latest_log = conn.execute("SELECT * FROM ew_run_log ORDER BY log_id DESC LIMIT 1").fetchone()
+        return {
+            "latest": latest,
+            "points": pts,
+            "top_risks": rks[:16],
+            "top_events": top_events,
+            "history": history,
+            "params": params,
+            "overrides_count": conn.execute("SELECT COUNT(*) FROM ew_forecast_override").fetchone()[0],
+            "scenarios": list(EW_FORECAST_SCENARIOS.values()),
+            "latest_log": dict(latest_log) if latest_log else None,
+        }
+
+    @synchronized
+    def ew_risks_browse(
+        self,
+        *,
+        ew_run_id: int | None = None,
+        category: str = "all",
+        severity: str = "all",
+        slot_idx: int | None = None,
+        q: str = "",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        snap = self.ew_snapshot(ew_run_id=ew_run_id)
+        rows = snap["risks"]
+        search = str(q or "").strip().casefold()
+        filtered = []
+        for r in rows:
+            if category and category != "all" and str(r.get("category") or "") != category:
+                continue
+            if severity and severity != "all" and str(r.get("severity") or "") != severity:
+                continue
+            if slot_idx is not None and int(r.get("slot_idx", -1)) != int(slot_idx):
+                continue
+            if search:
+                hay = f"{r.get('time_label','')} {r.get('contingency_name','')} {r.get('device_name','')} {r.get('detail','')} {r.get('advice','')}".casefold()
+                if search not in hay:
+                    continue
+            filtered.append(r)
+        return {
+            "ew_run_id": snap["ew_run_id"],
+            "latest": snap["latest"],
+            "rows": filtered[offset : offset + limit],
+            "meta": {"total": len(filtered), "limit": limit, "offset": offset, "ew_run_id": snap["ew_run_id"]},
+        }
+
+    @synchronized
+    def ew_risks_export_csv(self, **kwargs) -> bytes:
+        from .ew_online import export_ew_risks_csv
+        page = self.ew_risks_browse(**{**kwargs, "limit": 10000, "offset": 0})
+        return export_ew_risks_csv(page["rows"])
+
+    @synchronized
+    def ew_logs_list(self, *, level: str = "all", q: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        conn = self._connection()
+        where = []
+        params: list[Any] = []
+        if level and level != "all":
+            where.append("level = ?")
+            params.append(level.upper())
+        if q and q.strip():
+            where.append("(message LIKE ? OR stage LIKE ?)")
+            like = f"%{q.strip()}%"
+            params.extend([like, like])
+        wsql = f"WHERE {' AND '.join(where)}" if where else ""
+        total = conn.execute(f"SELECT COUNT(*) FROM ew_run_log {wsql}", params).fetchone()[0]
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                f"SELECT * FROM ew_run_log {wsql} ORDER BY log_id DESC LIMIT ? OFFSET ?",
+                (*params, max(1, min(500, int(limit))), max(0, int(offset))),
+            ).fetchall()
+        ]
+        return {"rows": rows, "meta": {"total": total, "limit": limit, "offset": offset}}
+
     @synchronized
     def upsert_dbdef_row(self, table_name: str, row: dict[str, Any]) -> None:
         """Upsert a row after validating it against the generated catalog."""
@@ -4082,6 +4299,52 @@ class RepositoryHub:
 
     def ca_risks_export_csv(self, **kwargs):
         return self.for_task("ca").ca_risks_export_csv(**kwargs)
+
+    # --- EW 未来 24h 96 点预警与绿电维生代理方法 ---
+    def _ew_target(self):
+        return self.control if self.control is not None else self.for_task("ca")
+
+    def ew_params_get(self, *, do_cycle=300):
+        return self._ew_target().ew_params_get(do_cycle=do_cycle)
+
+    def ew_params_save(self, payload):
+        return self._ew_target().ew_params_save(payload)
+
+    def ew_params_reset(self):
+        return self._ew_target().ew_params_reset()
+
+    def ew_overrides_list(self):
+        return self._ew_target().ew_overrides_list()
+
+    def ew_override_save(self, payload):
+        return self._ew_target().ew_override_save(payload)
+
+    def ew_override_delete(self, slot_idx):
+        return self._ew_target().ew_override_delete(slot_idx)
+
+    def ew_overrides_clear(self):
+        return self._ew_target().ew_overrides_clear()
+
+    def ew_persist_run(self, result, *, source="manual"):
+        return self._ew_target().ew_persist_run(result, source=source)
+
+    def ew_snapshot(self, ew_run_id=None):
+        return self._ew_target().ew_snapshot(ew_run_id=ew_run_id)
+
+    def ew_history_list(self, limit=60):
+        return self._ew_target().ew_history_list(limit=limit)
+
+    def ew_home_summary(self, *, do_cycle=300):
+        return self._ew_target().ew_home_summary(do_cycle=do_cycle)
+
+    def ew_risks_browse(self, **kwargs):
+        return self._ew_target().ew_risks_browse(**kwargs)
+
+    def ew_risks_export_csv(self, **kwargs):
+        return self._ew_target().ew_risks_export_csv(**kwargs)
+
+    def ew_logs_list(self, **kwargs):
+        return self._ew_target().ew_logs_list(**kwargs)
 
     def close(self) -> None:
         if self.control is not None:
