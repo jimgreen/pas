@@ -175,21 +175,24 @@
       <label class="se-field"><span>过载限值(%)</span><input type="number" name="overload_limit_pct" min="20" max="300" step="1"></label>
       <label class="se-field"><span>N-1 扫描</span><select name="scan_n1"><option value="1">启用</option><option value="0">停用</option></select></label>
       <label class="se-field"><span>气象扰动</span><select name="scan_weather"><option value="1">启用</option><option value="0">停用</option></select></label>
-      <label class="se-field" style="grid-column:span 2"><span>新能源预测库 (renewgen.db)</span><input type="text" name="renewgen_db_path"></label>
-      <label class="se-field" style="grid-column:span 2"><span>负荷预测库 (load.db)</span><input type="text" name="load_db_path"></label>
-      <label class="se-field" style="grid-column:span 2"><span>气象预测库 (weather.db)</span><input type="text" name="weather_db_path"></label>
+      <label class="se-field" style="grid-column:span 2"><span>新能源预测库 (renewgen.db)</span><input type="text" name="renewgen_db_path" list="ew-forecast-db-list" placeholder="选择或输入 sqldb/forecast/renewgen.db"></label>
+      <label class="se-field" style="grid-column:span 2"><span>负荷预测库 (load.db)</span><input type="text" name="load_db_path" list="ew-forecast-db-list" placeholder="选择或输入 sqldb/forecast/load.db"></label>
+      <label class="se-field" style="grid-column:span 2"><span>气象预测库 (weather.db)</span><input type="text" name="weather_db_path" list="ew-forecast-db-list" placeholder="选择或输入 sqldb/forecast/weather.db"></label>
+      <datalist id="ew-forecast-db-list"></datalist>
     </form>
 
     <div class="se-toolbar" style="margin-bottom:6px">
-      <strong style="font-size:12.5px">单时段手工覆写（情景演练）</strong>
+      <strong style="font-size:12.5px">时段覆写录入（单点/区间批量 · 单元格直改）</strong>
       <form id="ew-ovr-form" class="se-tool-group" style="margin-left:auto;gap:4px;flex-wrap:wrap">
-        <input id="ovr-slot" class="se-input compact tabular" type="number" min="0" max="95" placeholder="时段 0-95" style="width:76px" required>
-        <input id="ovr-irr" class="se-input compact tabular" type="number" min="0" max="1400" step="any" placeholder="辐照" style="width:66px">
-        <input id="ovr-wind" class="se-input compact tabular" type="number" min="0" max="65" step="any" placeholder="风速" style="width:64px">
-        <input id="ovr-temp" class="se-input compact tabular" type="number" min="-85" max="30" step="any" placeholder="气温" style="width:64px">
-        <input id="ovr-wkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="风电kW" style="width:70px">
-        <input id="ovr-pkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="光伏kW" style="width:70px">
-        <input id="ovr-lkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="负荷kW" style="width:70px">
+        <select id="ovr-slot-from" class="se-select compact tabular" aria-label="起始时段" style="width:98px"></select>
+        <span class="se-muted">→</span>
+        <select id="ovr-slot-to" class="se-select compact tabular" aria-label="结束时段" style="width:98px"></select>
+        <input id="ovr-irr" class="se-input compact tabular" type="number" min="0" max="1400" step="any" placeholder="辐照" style="width:62px">
+        <input id="ovr-wind" class="se-input compact tabular" type="number" min="0" max="65" step="any" placeholder="风速" style="width:60px">
+        <input id="ovr-temp" class="se-input compact tabular" type="number" min="-85" max="30" step="any" placeholder="气温" style="width:60px">
+        <input id="ovr-wkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="风电kW" style="width:66px">
+        <input id="ovr-pkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="光伏kW" style="width:66px">
+        <input id="ovr-lkw" class="se-input compact tabular" type="number" min="0" step="any" placeholder="负荷kW" style="width:66px">
         <button type="submit" class="se-btn mini primary">写入</button>
         <button type="button" class="se-btn mini danger-ghost" id="btn-ew-ovr-clear">清空</button>
       </form>

@@ -196,10 +196,19 @@ def test_ew_web_api_and_static_pages(tmp_path: Path):
     assert r_run["data"]["latest"]["forecast_scenario"] == "blizzard_transit"
     assert r_run["data"]["latest"]["risk_slots_count"] > 0
 
-    # 覆写单点并验证查询
-    r_ovr = app.api_post("/api/ew/overrides", {"slot_idx": 10, "load_kw": 320.0, "wind_kw": 0.0, "pv_kw": 0.0})
+    # 验证扫描真实预测库文件列表接口
+    r_files = app.api_get("/api/ew/forecast-files")
+    assert r_files["ok"] is True
+    paths = [x["path"] for x in r_files["data"]]
+    assert "sqldb/forecast/renewgen.db" in paths
+    assert "sqldb/forecast/load.db" in paths
+    assert "sqldb/forecast/weather.db" in paths
+
+    # 覆写区间批量录入（#10..#12 共 3 点）并验证查询
+    r_ovr = app.api_post("/api/ew/overrides", {"slot_from": 10, "slot_to": 12, "load_kw": 320.0, "wind_kw": 0.0, "pv_kw": 0.0})
     assert r_ovr["ok"] is True
-    assert len(app.api_get("/api/ew/overrides")["data"]) == 1
+    assert r_ovr["data"]["count"] == 3
+    assert len(app.api_get("/api/ew/overrides")["data"]) == 3
 
     # 确认 EW 5 个主页面存在且脚本引用完备
     for fn in ("ew-main.html", "ew-scenario.html", "ew-risks.html", "ew-green.html", "ew-logs.html"):

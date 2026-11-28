@@ -1666,6 +1666,10 @@ class PasWebApp:
                     return {"ok": True, "data": ew_repo.ew_params_get()}
                 if parsed.path == "/api/ew/overrides":
                     return {"ok": True, "data": ew_repo.ew_overrides_list()}
+                if parsed.path == "/api/ew/forecast-files":
+                    from .ew_online import scan_forecast_db_files
+                    ws_dir = getattr(self.config, "workspace_directory", None)
+                    return {"ok": True, "data": scan_forecast_db_files(Path(ws_dir) if ws_dir else None)}
                 if parsed.path == "/api/ew/logs":
                     return {
                         "ok": True,

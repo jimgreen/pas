@@ -382,10 +382,21 @@ def list_ew_overrides(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def save_ew_override(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, Any]:
-    """保存单时段预测覆写。"""
-    slot = int(payload.get("slot_idx"))
-    if not (0 <= slot < 96):
-        raise ValueError("slot_idx 必须在 0..95 范围内")
+    """保存单时段或连续区间（slot_from..slot_to）预测覆写至 pas.db。"""
+    if payload.get("slot_from") not in (None, ""):
+        s_from = int(payload["slot_from"])
+        s_to = int(payload["slot_to"]) if payload.get("slot_to") not in (None, "") else s_from
+        if s_from > s_to:
+            s_from, s_to = s_to, s_from
+        if not (0 <= s_from < 96 and 0 <= s_to < 96):
+            raise ValueError("时段区间必须在 0..95 范围内")
+        slots = list(range(s_from, s_to + 1))
+    else:
+        slot = int(payload.get("slot_idx"))
+        if not (0 <= slot < 96):
+            raise ValueError("slot_idx 必须在 0..95 范围内")
+        slots = [slot]
+
     now = utc_now()
 
     def _opt_float(k: str) -> float | None:
@@ -396,25 +407,68 @@ def save_ew_override(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[
         v = payload.get(k)
         return None if v in (None, "") else int(float(v))
 
-    conn.execute(
-        """INSERT OR REPLACE INTO ew_forecast_override(
-               slot_idx, irradiance_wm2, wind_speed_ms, ambient_temp_c,
-               snow_icing_level, wind_kw, pv_kw, load_kw, note, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            slot,
-            _opt_float("irradiance_wm2"),
-            _opt_float("wind_speed_ms"),
-            _opt_float("ambient_temp_c"),
-            _opt_int("snow_icing_level"),
-            _opt_float("wind_kw"),
-            _opt_float("pv_kw"),
-            _opt_float("load_kw"),
-            str(payload.get("note") or "")[:200],
-            now,
-        ),
-    )
-    return dict(conn.execute("SELECT * FROM ew_forecast_override WHERE slot_idx = ?", (slot,)).fetchone())
+    irr = _opt_float("irradiance_wm2")
+    ws = _opt_float("wind_speed_ms")
+    temp = _opt_float("ambient_temp_c")
+    icing = _opt_int("snow_icing_level")
+    wkw = _opt_float("wind_kw")
+    pkw = _opt_float("pv_kw")
+    lkw = _opt_float("load_kw")
+    if all(x is None for x in (irr, ws, temp, icing, wkw, pkw, lkw)):
+        raise ValueError("至少录入一项气象或功率覆写值")
+    note = str(payload.get("note") or "")[:200]
+
+    for slot in slots:
+        conn.execute(
+            """INSERT OR REPLACE INTO ew_forecast_override(
+                   slot_idx, irradiance_wm2, wind_speed_ms, ambient_temp_c,
+                   snow_icing_level, wind_kw, pv_kw, load_kw, note, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (slot, irr, ws, temp, icing, wkw, pkw, lkw, note, now),
+        )
+    if len(slots) == 1:
+        return dict(conn.execute("SELECT * FROM ew_forecast_override WHERE slot_idx = ?", (slots[0],)).fetchone())
+    rows = [
+        dict(r)
+        for r in conn.execute(
+            f"SELECT * FROM ew_forecast_override WHERE slot_idx BETWEEN ? AND ? ORDER BY slot_idx",
+            (slots[0], slots[-1]),
+        ).fetchall()
+    ]
+    return {"count": len(rows), "slot_from": slots[0], "slot_to": slots[-1], "rows": rows}
+
+
+def scan_forecast_db_files(workspace_dir: Path | None) -> list[dict[str, Any]]:
+    """扫描工作目录下真实存在的预测数据库文件，供前端下拉选择（零伪造）。"""
+    if workspace_dir is None:
+        return []
+    ws = Path(workspace_dir)
+    if not ws.is_dir():
+        return []
+    seen: set[str] = set()
+    items: list[dict[str, Any]] = []
+    # 优先扫描 sqldb/forecast，其次扫描 sqldb 下其他一级子目录
+    search_roots = [ws / "sqldb" / "forecast", ws / "sqldb"]
+    for root in search_roots:
+        if not root.is_dir():
+            continue
+        pattern = "*.db" if root == ws / "sqldb" / "forecast" else "*/*.db"
+        for p in sorted(root.glob(pattern)):
+            if not p.is_file():
+                continue
+            try:
+                rel = p.relative_to(ws).as_posix()
+            except ValueError:
+                rel = p.as_posix()
+            if rel in seen:
+                continue
+            seen.add(rel)
+            try:
+                size_kb = round(p.stat().st_size / 1024.0, 1)
+            except OSError:
+                size_kb = 0.0
+            items.append({"path": rel, "name": p.name, "size_kb": size_kb})
+    return items
 
 
 def delete_ew_override(conn: sqlite3.Connection, slot_idx: int) -> bool:

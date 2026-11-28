@@ -213,48 +213,62 @@
   function renderHeroStrip(latest) {
     const strip = document.getElementById('ew-hero-strip');
     if (!strip || !latest) return;
-    const h = Number(latest.green_survival_hours || 0);
+    const hasSurv = latest.green_survival_hours != null && Number.isFinite(Number(latest.green_survival_hours));
+    const h = hasSurv ? Number(latest.green_survival_hours) : null;
     const capped = Number(latest.green_survival_capped) === 1;
-    const gTone = survTone(h, capped);
-    const gValHtml = capped
-      ? `≥${h.toFixed(1)}<small>h</small>`
-      : `${h.toFixed(2)}<small>h</small>`;
-    const gBadge = capped ? `外推 ${fmt(latest.green_survival_extrap_hours, 1)}h` : `${latest.green_exhaust_time || '—'} 触底`;
-    const gSub = `纯储保底 ${fmt(latest.green_survival_no_ren_hours, 1)}h · 含氢 ${fmt(latest.green_survival_with_h2_hours, 1)}h`;
+    const gTone = hasSurv ? survTone(h, capped) : 'neutral';
+    const gValHtml = !hasSurv
+      ? '—'
+      : (capped ? `≥${h.toFixed(1)}<small>h</small>` : `${h.toFixed(2)}<small>h</small>`);
+    const gBadge = !hasSurv
+      ? '无数据'
+      : (capped ? `外推 ${fmt(latest.green_survival_extrap_hours, 1)}h` : `${latest.green_exhaust_time || '—'} 触底`);
+    const h2Txt = latest.green_survival_with_h2_hours != null ? `${fmt(latest.green_survival_with_h2_hours, 1)}h` : '—';
+    const gSub = hasSurv
+      ? `纯储保底 ${latest.green_survival_no_ren_hours != null ? `${fmt(latest.green_survival_no_ren_hours, 1)}h` : '—'} · 含氢 ${h2Txt}`
+      : '缺少预测库或储能实时 SOC';
 
-    const sc = Number(latest.security_score || 0);
-    const scTone = levelTone(latest.risk_level);
+    const hasSc = latest.security_score != null && Number.isFinite(Number(latest.security_score));
+    const sc = hasSc ? Number(latest.security_score) : null;
+    const scTone = hasSc ? levelTone(latest.risk_level) : 'neutral';
     const riskSlots = Number(latest.risk_slots_count || 0);
-    const totalSlots = Number(latest.horizon_points || 96);
-    const slotTone = riskSlots === 0 ? 'ok' : (Number(latest.critical_count) > 0 ? 'bad' : 'warn');
-    const minSoc = Number(latest.storage_min_soc_24h_pct || 0);
-    const socTone = minSoc <= 16 ? 'bad' : (minSoc <= 28 ? 'warn' : 'ok');
-    const maxLd = Number(latest.max_loading_pct || 0);
-    const ldTone = maxLd >= 100 ? 'bad' : (maxLd >= 80 ? 'warn' : 'ok');
+    const totalSlots = Number(latest.horizon_points || 0);
+    const slotTone = totalSlots === 0 ? 'neutral' : (riskSlots === 0 ? 'ok' : (Number(latest.critical_count) > 0 ? 'bad' : 'warn'));
+    const hasMinSoc = latest.storage_min_soc_24h_pct != null && Number.isFinite(Number(latest.storage_min_soc_24h_pct));
+    const minSoc = hasMinSoc ? Number(latest.storage_min_soc_24h_pct) : null;
+    const socTone = !hasMinSoc ? 'neutral' : (minSoc <= 16 ? 'bad' : (minSoc <= 28 ? 'warn' : 'ok'));
+    const hasMaxLd = latest.max_loading_pct != null && Number.isFinite(Number(latest.max_loading_pct));
+    const maxLd = hasMaxLd ? Number(latest.max_loading_pct) : null;
+    const ldTone = !hasMaxLd ? 'neutral' : (maxLd >= 100 ? 'bad' : (maxLd >= 80 ? 'warn' : 'ok'));
 
     const tiles = [
       {
         tone: gTone, lbl: '绿电维生时长', badge: gBadge, badgeTone: gTone,
-        val: gValHtml, sub: gSub, pct: Math.min(100, (h / 24) * 100),
+        val: gValHtml, sub: gSub, pct: hasSurv ? Math.min(100, (h / 24) * 100) : 0,
       },
       {
-        tone: scTone, lbl: '未来 24h 预警评分', badge: `${latest.health_grade || 'A'}级 · ${latest.risk_level || '安全'}`, badgeTone: scTone,
-        val: `${sc.toFixed(1)}<small>/100</small>`, sub: `绿电占比 ${fmt(latest.green_renewable_share_pct, 1)}%`, pct: sc,
+        tone: scTone, lbl: '未来 24h 预警评分', badge: hasSc ? `${latest.health_grade || '—'}级 · ${latest.risk_level || '—'}` : '无预测数据', badgeTone: scTone,
+        val: hasSc ? `${sc.toFixed(1)}<small>/100</small>` : '—',
+        sub: latest.green_renewable_share_pct != null ? `绿电占比 ${fmt(latest.green_renewable_share_pct, 1)}%` : '待接入预测库',
+        pct: hasSc ? sc : 0,
       },
       {
-        tone: slotTone, lbl: '96 点风险时段', badge: `危 ${latest.critical_count || 0} · 高 ${latest.high_count || 0}`, badgeTone: slotTone,
-        val: `${riskSlots}<small> / ${totalSlots}</small>`, sub: `N-1:${latest.n1_risk_count || 0} · 气象:${latest.weather_risk_count || 0} · 绿电:${latest.green_risk_count || 0}`,
-        pct: Math.min(100, (riskSlots / Math.max(1, totalSlots)) * 100),
+        tone: slotTone, lbl: '风险时段统计', badge: totalSlots ? `危 ${latest.critical_count || 0} · 高 ${latest.high_count || 0}` : '0 点', badgeTone: slotTone,
+        val: totalSlots ? `${riskSlots}<small> / ${totalSlots}</small>` : '—',
+        sub: totalSlots ? `N-1:${latest.n1_risk_count || 0} · 气象:${latest.weather_risk_count || 0} · 绿电:${latest.green_risk_count || 0}` : '请配置预测库或录入覆写',
+        pct: totalSlots ? Math.min(100, (riskSlots / totalSlots) * 100) : 0,
       },
       {
-        tone: socTone, lbl: '未来 24h 最低 SOC', badge: `初 ${fmt(latest.storage_init_soc_pct, 1)}%`, badgeTone: socTone,
-        val: `${minSoc.toFixed(1)}<small>%</small>`, sub: `可用 ${fmt(latest.storage_usable_kwh, 0)} / ${fmt(latest.storage_total_kwh, 0)} kWh`,
-        pct: minSoc,
+        tone: socTone, lbl: '未来 24h 最低 SOC', badge: latest.storage_init_soc_pct != null ? `初 ${fmt(latest.storage_init_soc_pct, 1)}%` : '无SOC', badgeTone: socTone,
+        val: hasMinSoc ? `${minSoc.toFixed(1)}<small>%</small>` : '—',
+        sub: latest.storage_total_kwh ? `可用 ${fmt(latest.storage_usable_kwh, 0)} / ${fmt(latest.storage_total_kwh, 0)} kWh` : 'devices.db 无储能数据',
+        pct: hasMinSoc ? minSoc : 0,
       },
       {
-        tone: ldTone, lbl: 'N-1 峰值负载 / 最低V', badge: latest.max_loading_time || '—', badgeTone: ldTone,
-        val: `${maxLd.toFixed(1)}<small>%</small>`, sub: `最低 ${fmt(latest.min_v_pu, 3)} pu (${latest.min_v_time || '—'})`,
-        pct: Math.min(100, maxLd),
+        tone: ldTone, lbl: 'N-1 峰值负载 / 最低V', badge: latest.max_loading_time || (hasMaxLd ? '—' : '无LF断面'), badgeTone: ldTone,
+        val: hasMaxLd ? `${maxLd.toFixed(1)}<small>%</small>` : '—',
+        sub: latest.min_v_pu != null ? `最低 ${fmt(latest.min_v_pu, 3)} pu (${latest.min_v_time || '—'})` : '缺少收敛 LF 断面',
+        pct: hasMaxLd ? Math.min(100, maxLd) : 0,
       },
     ];
 
@@ -268,7 +282,7 @@
           <div class="pas-hero-val ${t.tone === 'bad' ? 'bad' : (t.tone === 'warn' ? 'warn' : (t.tone === 'ok' ? 'ok' : ''))} tabular">${t.val}</div>
           <div class="pas-hero-sub tabular" title="${esc(t.sub)}">${esc(t.sub)}</div>
         </div>
-        <div class="pas-hero-meter"><i style="width:${Math.max(4, Math.min(100, t.pct)).toFixed(1)}%"></i></div>
+        <div class="pas-hero-meter"><i style="width:${t.pct > 0 ? Math.max(4, Math.min(100, t.pct)).toFixed(1) : '0'}%"></i></div>
       </div>`).join('');
   }
 
@@ -281,47 +295,58 @@
     const srcTag = document.getElementById('ew-src-tag');
     if (!latest) return;
 
-    const h = Number(latest.green_survival_hours || 0);
+    const hasSurv = latest.green_survival_hours != null && Number.isFinite(Number(latest.green_survival_hours));
+    const h = hasSurv ? Number(latest.green_survival_hours) : null;
     const capped = Number(latest.green_survival_capped) === 1;
-    const tone = survTone(h, capped);
+    const tone = hasSurv ? survTone(h, capped) : 'neutral';
     if (badgeEl) {
       badgeEl.className = `se-pill ${tone} tabular`;
-      badgeEl.textContent = capped ? `24h+ 可持续` : `${h.toFixed(2)}h 维生`;
+      badgeEl.textContent = !hasSurv ? '无数据' : (capped ? '24h+ 可持续' : `${h.toFixed(2)}h 维生`);
     }
     if (srcTag) srcTag.textContent = srcLabel(latest.forecast_source);
 
-    if (gaugeEl && window.PAS_KIT?.renderGauge) {
-      window.PAS_KIT.renderGauge(gaugeEl, {
-        value: Math.min(24, h),
-        max: 24,
-        label: capped ? `≥24h（外推 ${fmt(latest.green_survival_extrap_hours, 1)}h）` : `纯绿电维生 · ${latest.green_exhaust_time || '—'} 触底`,
-        unit: 'h',
-        color: tone === 'ok' ? 'var(--sem-ok)' : (tone === 'bad' ? 'var(--sem-danger)' : (tone === 'warn' ? 'var(--sem-warn)' : 'var(--accent)')),
-      });
-    } else if (gaugeEl) {
-      gaugeEl.innerHTML = `<div class="ew-gauge-fallback tabular"><strong>${capped ? '≥24.0' : h.toFixed(2)} h</strong><span>绿电占比 ${fmt(latest.green_renewable_share_pct, 1)}%</span></div>`;
+    if (gaugeEl) {
+      if (!hasSurv) {
+        gaugeEl.innerHTML = '<div class="ew-gauge-fallback tabular"><strong style="color:var(--text-muted)">—</strong><span>缺少预测库或储能实时 SOC</span></div>';
+      } else if (window.PAS_KIT?.renderGauge) {
+        window.PAS_KIT.renderGauge(gaugeEl, {
+          value: Math.min(24, h),
+          max: 24,
+          label: capped ? `≥24h（外推 ${fmt(latest.green_survival_extrap_hours, 1)}h）` : `纯绿电维生 · ${latest.green_exhaust_time || '—'} 触底`,
+          unit: 'h',
+          color: tone === 'ok' ? 'var(--sem-ok)' : (tone === 'bad' ? 'var(--sem-danger)' : (tone === 'warn' ? 'var(--sem-warn)' : 'var(--accent)')),
+        });
+      } else {
+        gaugeEl.innerHTML = `<div class="ew-gauge-fallback tabular"><strong>${capped ? '≥24.0' : h.toFixed(2)} h</strong><span>绿电占比 ${fmt(latest.green_renewable_share_pct, 1)}%</span></div>`;
+      }
     }
 
     if (chipsEl) {
+      const noRenTxt = latest.green_survival_no_ren_hours != null ? `${fmt(latest.green_survival_no_ren_hours, 2)} h` : '—';
+      const h2Txt = latest.green_survival_with_h2_hours != null ? `${fmt(latest.green_survival_with_h2_hours, 1)} h` : '—';
+      const coldTxt = latest.storage_cold_factor != null ? `${fmt(Number(latest.storage_cold_factor) * 100, 1)}%` : '—';
+      const defTxt = latest.deficit_total_kwh != null ? `${fmt(latest.deficit_total_kwh, 1)} kWh` : '—';
+      const defCol = latest.deficit_total_kwh == null ? 'var(--text-muted)' : (Number(latest.deficit_total_kwh) > 0 ? 'var(--sem-danger)' : 'var(--sem-ok)');
       chipsEl.innerHTML = `
-        <div class="pas-stat-chip"><span>无风光保底</span><strong class="tabular">${fmt(latest.green_survival_no_ren_hours, 2)} h</strong></div>
-        <div class="pas-stat-chip"><span>含储氢维生</span><strong class="tabular">${fmt(latest.green_survival_with_h2_hours, 1)} h</strong></div>
-        <div class="pas-stat-chip"><span>极寒电池折减</span><strong class="tabular">${fmt(Number(latest.storage_cold_factor || 1) * 100, 1)}%</strong></div>
-        <div class="pas-stat-chip"><span>24h 绿电缺口</span><strong class="tabular" style="color:${Number(latest.deficit_total_kwh) > 0 ? 'var(--sem-danger)' : 'var(--sem-ok)'}">${fmt(latest.deficit_total_kwh, 1)} kWh</strong></div>`;
+        <div class="pas-stat-chip"><span>无风光保底</span><strong class="tabular">${noRenTxt}</strong></div>
+        <div class="pas-stat-chip" title="${latest.green_survival_with_h2_hours == null ? 'devices.db HydroStorage 未定义电容量' : ''}"><span>含储氢维生</span><strong class="tabular">${h2Txt}</strong></div>
+        <div class="pas-stat-chip"><span>极寒电池折减</span><strong class="tabular">${coldTxt}</strong></div>
+        <div class="pas-stat-chip"><span>24h 绿电缺口</span><strong class="tabular" style="color:${defCol}">${defTxt}</strong></div>`;
     }
 
     const units = Array.isArray(latest.storage_units) ? latest.storage_units : [];
-    if (stMeta) stMeta.textContent = `${units.length} 台 · ${fmt(latest.storage_total_kwh, 0)} kWh`;
+    if (stMeta) stMeta.textContent = units.length ? `${units.length} 台 · ${fmt(latest.storage_total_kwh, 0)} kWh` : '0 台';
     if (barsEl) {
       barsEl.innerHTML = units.slice(0, 6).map((u) => {
-        const pct = Math.max(0, Math.min(100, Number(u.soc_pct || 0)));
+        const hasSoc = u.soc_pct != null && Number.isFinite(Number(u.soc_pct));
+        const pct = hasSoc ? Math.max(0, Math.min(100, Number(u.soc_pct))) : 0;
         const col = u.domain === 'H2' ? 'var(--accent-2, #a78bfa)' : (pct < 25 ? 'var(--sem-danger)' : (pct < 45 ? 'var(--sem-warn)' : 'var(--sem-ok)'));
         return `<div class="pas-bar-row">
           <span class="lbl" title="${esc(u.name)}">${esc(u.name)}</span>
-          <div class="track"><i style="width:${pct.toFixed(1)}%;background:${col}"></i></div>
-          <span class="val tabular">${pct.toFixed(0)}%</span>
+          <div class="track"><i style="width:${hasSoc ? pct.toFixed(1) : '0'}%;background:${col}"></i></div>
+          <span class="val tabular">${hasSoc ? `${pct.toFixed(0)}%` : '—'}</span>
         </div>`;
-      }).join('') || '<div class="se-empty">—</div>';
+      }).join('') || '<div class="se-empty">未检出储能单元</div>';
     }
   }
 
@@ -706,15 +731,51 @@
     }
   }
 
+  function slotOptionLabel(i, pts) {
+    const pt = Array.isArray(pts) ? pts.find((p) => Number(p.slot_idx) === i) : null;
+    if (pt && pt.time_label) return `#${i} (${pt.time_label})`;
+    const hh = String(Math.floor((i * 15) / 60)).padStart(2, '0');
+    const mm = String((i * 15) % 60).padStart(2, '0');
+    return `#${i} (${hh}:${mm})`;
+  }
+
+  function populateSlotSelects(pts) {
+    const sf = document.getElementById('ovr-slot-from');
+    const st = document.getElementById('ovr-slot-to');
+    if (!sf || !st) return;
+    const prevF = sf.value || '0';
+    const prevT = st.value || prevF;
+    const opts = Array.from({ length: 96 }, (_, i) => `<option value="${i}">${esc(slotOptionLabel(i, pts))}</option>`).join('');
+    sf.innerHTML = opts;
+    st.innerHTML = opts;
+    sf.value = prevF;
+    st.value = Number(prevT) >= Number(prevF) ? prevT : prevF;
+    if (!sf.dataset.boundSync) {
+      sf.dataset.boundSync = '1';
+      sf.addEventListener('change', () => {
+        if (Number(st.value) < Number(sf.value)) st.value = sf.value;
+      });
+    }
+  }
+
   /* ==================== 3. 预测与参数配置页 ==================== */
   async function loadConfigPage() {
-    const [home, overrides] = await Promise.all([apiGet('/api/ew/home'), apiGet('/api/ew/overrides')]);
+    const [home, overrides, dbFiles] = await Promise.all([
+      apiGet('/api/ew/home'),
+      apiGet('/api/ew/overrides'),
+      apiGet('/api/ew/forecast-files').catch(() => []),
+    ]);
     const params = home.params || {};
     const form = document.getElementById('ew-params-form');
     const scSel = document.getElementById('p-scenario');
     if (scSel && Array.isArray(home.scenarios)) {
       scSel.innerHTML = home.scenarios.map((s) => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
     }
+    const dl = document.getElementById('ew-forecast-db-list');
+    if (dl && Array.isArray(dbFiles)) {
+      dl.innerHTML = dbFiles.map((f) => `<option value="${esc(f.path)}">${esc(f.name)} (${f.size_kb} KB)</option>`).join('');
+    }
+    populateSlotSelects(home.points || []);
     if (form) {
       Object.entries(params).forEach(([k, v]) => {
         const el = form.elements.namedItem(k);
@@ -728,7 +789,8 @@
         const item = ds[k] || {};
         const ok = Boolean(item.connected);
         const label = k === 'renewgen' ? 'renewgen.db' : (k === 'load' ? 'load.db' : 'weather.db');
-        return `<span class="se-pill ${ok ? 'ok' : 'neutral'}" title="${esc(item.path || '')}">${label}: ${ok ? `${item.rows}点` : '推演兜底'}</span>`;
+        const stTxt = ok ? `${item.rows}点${item.point_id ? ` · ${item.point_id}` : ''}` : (item.exists ? '表为空' : '文件缺失');
+        return `<span class="se-pill ${ok ? 'ok' : 'bad'}" title="${esc(item.path || '')} (${esc(item.status || '')})">${label}: ${esc(stTxt)}</span>`;
       }).join('');
     }
     const meta = document.getElementById('ew-cfg-meta');
@@ -736,18 +798,37 @@
 
     const tb = document.getElementById('ew-ovr-tbody');
     if (tb) {
+      const numCell = (slot, field, val) => `<input type="number" step="any" class="tabular" data-ovr-slot="${slot}" data-ovr-field="${field}" value="${val ?? ''}" placeholder="—">`;
       tb.innerHTML = overrides.length ? overrides.map((o) => `
-        <tr>
-          <td class="tabular">#${o.slot_idx}</td>
-          <td class="tabular">${o.irradiance_wm2 ?? '—'}</td>
-          <td class="tabular">${o.wind_speed_ms ?? '—'}</td>
-          <td class="tabular">${o.ambient_temp_c ?? '—'}</td>
-          <td class="tabular">${o.wind_kw ?? '—'}</td>
-          <td class="tabular">${o.pv_kw ?? '—'}</td>
-          <td class="tabular">${o.load_kw ?? '—'}</td>
+        <tr data-ovr-row="${o.slot_idx}">
+          <td class="tabular">${esc(slotOptionLabel(o.slot_idx, home.points || []))}</td>
+          <td>${numCell(o.slot_idx, 'irradiance_wm2', o.irradiance_wm2)}</td>
+          <td>${numCell(o.slot_idx, 'wind_speed_ms', o.wind_speed_ms)}</td>
+          <td>${numCell(o.slot_idx, 'ambient_temp_c', o.ambient_temp_c)}</td>
+          <td>${numCell(o.slot_idx, 'wind_kw', o.wind_kw)}</td>
+          <td>${numCell(o.slot_idx, 'pv_kw', o.pv_kw)}</td>
+          <td>${numCell(o.slot_idx, 'load_kw', o.load_kw)}</td>
           <td class="tabular se-muted">${(o.updated_at || '').slice(0, 19).replace('T', ' ')}</td>
           <td><button type="button" class="se-btn mini danger-ghost" data-del-ovr="${o.slot_idx}">删除</button></td>
-        </tr>`).join('') : '<tr><td colspan="9" class="se-empty">当前无手工单点覆写（直接采用三大预测库或所选南极演变剧本）</td></tr>';
+        </tr>`).join('') : '<tr><td colspan="9" class="se-empty">暂无手工覆写 · 可在上方选择起止时段批量录入，或直接连接三大预测库</td></tr>';
+      // 表格单元格内嵌无缝编辑：失焦或回车直接写回 pas.db
+      tb.querySelectorAll('input[data-ovr-slot]').forEach((inp) => {
+        inp.addEventListener('change', async () => {
+          const slot = Number(inp.dataset.ovrSlot);
+          const tr = tb.querySelector(`tr[data-ovr-row="${slot}"]`);
+          if (!tr) return;
+          const payload = { slot_idx: slot };
+          tr.querySelectorAll('input[data-ovr-field]').forEach((el) => {
+            payload[el.dataset.ovrField] = el.value;
+          });
+          try {
+            await apiPost('/api/ew/overrides', payload);
+            showNotice(`时段 #${slot} 覆写已保存`);
+          } catch (err) {
+            showNotice(err.message || '保存失败', true);
+          }
+        });
+      });
       tb.querySelectorAll('[data-del-ovr]').forEach((b) => {
         b.addEventListener('click', async () => {
           await apiPost(`/api/ew/overrides/${b.dataset.delOvr}/delete`);
@@ -1341,11 +1422,15 @@
     const lp = document.getElementById('ew-sc-level-pill');
     const mt = document.getElementById('ew-sc-meta');
     if (lp && latest) {
-      lp.className = `se-pill ${levelTone(latest.risk_level)}`;
-      lp.textContent = `${latest.risk_level} · ${latest.health_grade}级`;
+      const hasSc = latest.security_score != null;
+      lp.className = `se-pill ${hasSc ? levelTone(latest.risk_level) : 'neutral'}`;
+      lp.textContent = hasSc ? `${latest.risk_level} · ${latest.health_grade}级` : (latest.risk_level || '无数据');
     }
     if (mt && latest) {
-      mt.textContent = `#${latest.ew_run_id} · ${latest.scenario_label} · 绿电维生 ${latest.green_survival_capped ? '≥' : ''}${fmt(latest.green_survival_hours, 2)}h`;
+      const survStr = latest.green_survival_hours != null
+        ? `${latest.green_survival_capped ? '≥' : ''}${fmt(latest.green_survival_hours, 2)}h`
+        : '—';
+      mt.textContent = `#${latest.ew_run_id} · ${latest.scenario_label || '—'} · 绿电维生 ${survStr}`;
     }
     const scSel = document.getElementById('ew-sc-scenario');
     if (scSel && Array.isArray(home.scenarios)) {
@@ -1357,7 +1442,9 @@
     if (dsEl) {
       dsEl.innerHTML = ['renewgen', 'load', 'weather'].map((k) => {
         const it = ds[k] || {};
-        return `<span class="se-pill ${it.connected ? 'ok' : 'neutral'}" title="${esc(it.path || '')}">${k}.db:${it.connected ? `${it.rows}点` : '推演'}</span>`;
+        const ok = Boolean(it.connected);
+        const stTxt = ok ? `${it.rows}点` : (it.exists ? '空表' : '缺失');
+        return `<span class="se-pill ${ok ? 'ok' : 'bad'}" title="${esc(it.path || '')}">${k}.db:${stTxt}</span>`;
       }).join('');
     }
     const jump = document.getElementById('ew-svg-jump');
@@ -1365,7 +1452,19 @@
       const list = Object.values(topo.devices).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       jump.innerHTML = '<option value="">定位设备…</option>' + list.map((d) => `<option value="${esc(d.dev_id)}">${esc(d.name)} (${esc(d.device_type)})</option>`).join('');
     }
-    setSimSlot(Math.min(sim.slot, Math.max(0, (home.points || []).length - 1)));
+    const pts = home.points || [];
+    if (!pts.length) {
+      const hud = document.getElementById('ew-sim-hud');
+      if (hud) hud.innerHTML = '<span class="hud-item"><strong>无预测库数据</strong><small>请点击右上「预测与覆写」选择预测库或录入时段数据</small></span>';
+      const curveHost = document.getElementById('ew-sim-curve');
+      if (curveHost) curveHost.innerHTML = '<div class="se-empty">暂无预测趋势数据（缺少 renewgen.db / load.db / weather.db 或手工覆写）</div>';
+      const kv = document.getElementById('ew-sim-kv');
+      if (kv) kv.innerHTML = '<div class="se-empty" style="grid-column:span 2">—</div>';
+      const rl = document.getElementById('ew-sim-risk-list');
+      if (rl) rl.innerHTML = '<div class="se-empty">—</div>';
+      return;
+    }
+    setSimSlot(Math.min(sim.slot, pts.length - 1));
   }
 
   /* ==================== 6. 绿电维生专属页 ==================== */
@@ -1376,46 +1475,85 @@
     const pts = home.points || [];
     if (!latest) return;
 
-    const h = Number(latest.green_survival_hours || 0);
+    const hasSurv = latest.green_survival_hours != null && Number.isFinite(Number(latest.green_survival_hours));
+    const h = hasSurv ? Number(latest.green_survival_hours) : null;
     const capped = Number(latest.green_survival_capped) === 1;
-    const gTone = survTone(h, capped);
+    const gTone = hasSurv ? survTone(h, capped) : 'neutral';
     const pill = document.getElementById('ew-gr-pill');
     const meta = document.getElementById('ew-gr-meta');
     if (pill) {
       pill.className = `se-pill ${gTone} tabular`;
-      pill.textContent = capped ? `纯绿电 ≥${h.toFixed(1)}h` : `纯绿电 ${h.toFixed(2)}h`;
+      pill.textContent = !hasSurv ? '无数据' : (capped ? `纯绿电 ≥${h.toFixed(1)}h` : `纯绿电 ${h.toFixed(2)}h`);
     }
     if (meta) {
-      meta.textContent = `${latest.scenario_label} · 初始SOC ${fmt(latest.storage_init_soc_pct, 1)}% · 24h最低 ${fmt(latest.storage_min_soc_24h_pct, 1)}%`;
+      meta.textContent = `${latest.scenario_label || '—'} · 初始SOC ${latest.storage_init_soc_pct != null ? `${fmt(latest.storage_init_soc_pct, 1)}%` : '—'} · 24h最低 ${latest.storage_min_soc_24h_pct != null ? `${fmt(latest.storage_min_soc_24h_pct, 1)}%` : '—'}`;
     }
 
     const hero = document.getElementById('ew-gr-hero');
     if (hero) {
+      const hasH2 = latest.green_survival_with_h2_hours != null && Number.isFinite(Number(latest.green_survival_with_h2_hours));
+      const hasNoRen = latest.green_survival_no_ren_hours != null && Number.isFinite(Number(latest.green_survival_no_ren_hours));
+      const hasMinSoc = latest.storage_min_soc_24h_pct != null && Number.isFinite(Number(latest.storage_min_soc_24h_pct));
+      const hasDef = latest.deficit_total_kwh != null && Number.isFinite(Number(latest.deficit_total_kwh));
       const tiles = [
-        { tone: gTone, lbl: '纯电化学绿电维生时长', badge: capped ? `外推 ${fmt(latest.green_survival_extrap_hours, 1)}h` : `${latest.green_exhaust_time || '—'} 触底`, val: `${capped ? '≥' : ''}${h.toFixed(capped ? 1 : 2)}<small>h</small>`, sub: '零柴发 · 仅依赖风光与电化学储能', pct: Math.min(100, (h / 24) * 100) },
-        { tone: 'accent', lbl: '无风光纯储能保底', badge: `低温折减 ${fmt(Number(latest.storage_cold_factor || 1) * 100, 1)}%`, val: `${fmt(latest.green_survival_no_ren_hours, 2)}<small>h</small>`, sub: `可用 ${fmt(latest.storage_usable_kwh, 1)} / ${fmt(latest.storage_total_kwh, 0)} kWh`, pct: Math.min(100, (Number(latest.green_survival_no_ren_hours || 0) / 12) * 100) },
-        { tone: 'ok', lbl: '含储氢扩展维生', badge: '绿氢协同', val: `${fmt(latest.green_survival_with_h2_hours, 1)}<small>h</small>`, sub: '电化学储能 + 储氢燃料电池协同', pct: Math.min(100, (Number(latest.green_survival_with_h2_hours || 0) / 72) * 100) },
-        { tone: Number(latest.storage_min_soc_24h_pct) <= 16 ? 'bad' : 'ok', lbl: '24h 最低储能 SOC', badge: `初 ${fmt(latest.storage_init_soc_pct, 1)}%`, val: `${fmt(latest.storage_min_soc_24h_pct, 1)}<small>%</small>`, sub: `最大放电能力 ${fmt(latest.storage_max_discharge_kw, 0)} kW`, pct: Number(latest.storage_min_soc_24h_pct || 0) },
-        { tone: Number(latest.deficit_total_kwh) > 0 ? 'bad' : 'ok', lbl: '24h 绿电缺口 / 占比', badge: `占比 ${fmt(latest.green_renewable_share_pct, 1)}%`, val: `${fmt(latest.deficit_total_kwh, 1)}<small>kWh</small>`, sub: `最大缺口 ${fmt(latest.max_deficit_kw, 1)} kW`, pct: Math.min(100, Number(latest.green_renewable_share_pct || 0)) },
+        {
+          tone: gTone, lbl: '纯电化学绿电维生时长',
+          badge: !hasSurv ? '缺少预测库/SOC' : (capped ? `外推 ${fmt(latest.green_survival_extrap_hours, 1)}h` : `${latest.green_exhaust_time || '—'} 触底`),
+          val: !hasSurv ? '—' : `${capped ? '≥' : ''}${h.toFixed(capped ? 1 : 2)}<small>h</small>`,
+          sub: hasSurv ? '零柴发 · 仅依赖风光与电化学储能' : '请在「态势推演 → 预测与覆写」配置数据源',
+          pct: hasSurv ? Math.min(100, (h / 24) * 100) : 0,
+        },
+        {
+          tone: hasNoRen ? 'accent' : 'neutral', lbl: '无风光纯储能保底',
+          badge: latest.storage_cold_factor != null ? `低温折减 ${fmt(Number(latest.storage_cold_factor) * 100, 1)}%` : '—',
+          val: hasNoRen ? `${fmt(latest.green_survival_no_ren_hours, 2)}<small>h</small>` : '—',
+          sub: latest.storage_total_kwh ? `可用 ${fmt(latest.storage_usable_kwh, 1)} / ${fmt(latest.storage_total_kwh, 0)} kWh` : 'devices.db 无电化学储能',
+          pct: hasNoRen ? Math.min(100, (Number(latest.green_survival_no_ren_hours) / 12) * 100) : 0,
+        },
+        {
+          tone: hasH2 ? 'ok' : 'neutral', lbl: '含储氢扩展维生',
+          badge: hasH2 ? '绿氢协同' : '无氢电容量字段',
+          val: hasH2 ? `${fmt(latest.green_survival_with_h2_hours, 1)}<small>h</small>` : '—',
+          sub: hasH2 ? '电化学储能 + 储氢燃料电池协同' : 'devices.db HydroStorage 未定义电容量',
+          pct: hasH2 ? Math.min(100, (Number(latest.green_survival_with_h2_hours) / 72) * 100) : 0,
+        },
+        {
+          tone: !hasMinSoc ? 'neutral' : (Number(latest.storage_min_soc_24h_pct) <= 16 ? 'bad' : 'ok'), lbl: '24h 最低储能 SOC',
+          badge: latest.storage_init_soc_pct != null ? `初 ${fmt(latest.storage_init_soc_pct, 1)}%` : '无SOC',
+          val: hasMinSoc ? `${fmt(latest.storage_min_soc_24h_pct, 1)}<small>%</small>` : '—',
+          sub: latest.storage_max_discharge_kw ? `最大放电能力 ${fmt(latest.storage_max_discharge_kw, 0)} kW` : '—',
+          pct: hasMinSoc ? Number(latest.storage_min_soc_24h_pct) : 0,
+        },
+        {
+          tone: !hasDef ? 'neutral' : (Number(latest.deficit_total_kwh) > 0 ? 'bad' : 'ok'), lbl: '24h 绿电缺口 / 占比',
+          badge: latest.green_renewable_share_pct != null ? `占比 ${fmt(latest.green_renewable_share_pct, 1)}%` : '—',
+          val: hasDef ? `${fmt(latest.deficit_total_kwh, 1)}<small>kWh</small>` : '—',
+          sub: latest.max_deficit_kw != null ? `最大缺口 ${fmt(latest.max_deficit_kw, 1)} kW` : '—',
+          pct: latest.green_renewable_share_pct != null ? Math.min(100, Number(latest.green_renewable_share_pct)) : 0,
+        },
       ];
       hero.innerHTML = tiles.map((t) => `
         <div class="pas-hero-tile tone-${t.tone}">
           <div class="pas-hero-top"><span class="pas-hero-lbl">${esc(t.lbl)}</span><span class="pas-hero-badge ${t.tone} tabular">${esc(t.badge)}</span></div>
-          <div class="pas-hero-val-row"><div class="pas-hero-val ${t.tone === 'bad' ? 'bad' : (t.tone === 'ok' ? 'ok' : '')} tabular">${t.val}</div><div class="pas-hero-sub tabular">${esc(t.sub)}</div></div>
-          <div class="pas-hero-meter"><i style="width:${Math.max(4, Math.min(100, t.pct)).toFixed(1)}%"></i></div>
+          <div class="pas-hero-val-row"><div class="pas-hero-val ${t.tone === 'bad' ? 'bad' : (t.tone === 'ok' ? 'ok' : '')} tabular">${t.val}</div><div class="pas-hero-sub tabular" title="${esc(t.sub)}">${esc(t.sub)}</div></div>
+          <div class="pas-hero-meter"><i style="width:${t.pct > 0 ? Math.max(4, Math.min(100, t.pct)).toFixed(1) : '0'}%"></i></div>
         </div>`).join('');
     }
 
     const badge = document.getElementById('ew-gr-badge');
-    if (badge) { badge.className = `se-pill ${gTone} tabular`; badge.textContent = capped ? '24h+ 可持续' : `${h.toFixed(2)}h`; }
+    if (badge) { badge.className = `se-pill ${gTone} tabular`; badge.textContent = !hasSurv ? '无数据' : (capped ? '24h+ 可持续' : `${h.toFixed(2)}h`); }
     const gauge = document.getElementById('ew-gr-gauge');
-    if (gauge && window.PAS_KIT?.renderGauge) {
-      window.PAS_KIT.renderGauge(gauge, {
-        value: Math.min(24, h), max: 24,
-        label: capped ? `≥24h（外推 ${fmt(latest.green_survival_extrap_hours, 1)}h）` : `${latest.green_exhaust_time || '—'} 触底`,
-        unit: 'h',
-        color: gTone === 'ok' ? 'var(--sem-ok)' : (gTone === 'bad' ? 'var(--sem-danger)' : 'var(--sem-warn)'),
-      });
+    if (gauge) {
+      if (!hasSurv) {
+        gauge.innerHTML = '<div class="ew-gauge-fallback tabular"><strong style="color:var(--text-muted)">—</strong><span>缺少预测库或储能实时 SOC</span></div>';
+      } else if (window.PAS_KIT?.renderGauge) {
+        window.PAS_KIT.renderGauge(gauge, {
+          value: Math.min(24, h), max: 24,
+          label: capped ? `≥24h（外推 ${fmt(latest.green_survival_extrap_hours, 1)}h）` : `${latest.green_exhaust_time || '—'} 触底`,
+          unit: 'h',
+          color: gTone === 'ok' ? 'var(--sem-ok)' : (gTone === 'bad' ? 'var(--sem-danger)' : 'var(--sem-warn)'),
+        });
+      }
     }
     const chips = document.getElementById('ew-gr-chips');
     if (chips) {
@@ -1709,17 +1847,26 @@
     document.getElementById('ew-ovr-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const g = (id) => document.getElementById(id)?.value;
+      const sf = g('ovr-slot-from');
+      const st = g('ovr-slot-to');
+      const payload = {
+        irradiance_wm2: g('ovr-irr'),
+        wind_speed_ms: g('ovr-wind'),
+        ambient_temp_c: g('ovr-temp'),
+        wind_kw: g('ovr-wkw'),
+        pv_kw: g('ovr-pkw'),
+        load_kw: g('ovr-lkw'),
+      };
+      if (sf !== undefined && sf !== '') {
+        payload.slot_from = Number(sf);
+        payload.slot_to = st !== undefined && st !== '' ? Number(st) : Number(sf);
+      } else {
+        payload.slot_idx = Number(g('ovr-slot'));
+      }
       try {
-        await apiPost('/api/ew/overrides', {
-          slot_idx: Number(g('ovr-slot')),
-          irradiance_wm2: g('ovr-irr'),
-          wind_speed_ms: g('ovr-wind'),
-          ambient_temp_c: g('ovr-temp'),
-          wind_kw: g('ovr-wkw'),
-          pv_kw: g('ovr-pkw'),
-          load_kw: g('ovr-lkw'),
-        });
-        showNotice('已保存单点预测覆写');
+        const res = await apiPost('/api/ew/overrides', payload);
+        const cnt = res?.data?.count || 1;
+        showNotice(cnt > 1 ? `已批量写入 ${cnt} 个时段覆写` : '已保存单点预测覆写');
         await loadConfigPage();
         if (view === 'scenario') await triggerRun();
       } catch (err) {
