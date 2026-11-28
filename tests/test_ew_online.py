@@ -100,24 +100,44 @@ def test_ew_reads_three_forecast_dbs_and_persists(tmp_path: Path):
     repo = Repository(tmp_path / "pas.db")
     repo.initialize()
     params = repo.ew_params_get()
+    # 传入真实模型储能表，验证按列名精确读取容量（绝不编造默认假储能）
+    model_tables = {
+        "ACGenerator": {"rows": [{"idx": 23, "name": "交流电化学储能-23"}, {"idx": 26, "name": "交流电化学储能-26"}]},
+        "ACStorageGen": {
+            "rows": [
+                {"idx": 1, "idx_acgenerator": 23, "energy_capacity": 200.0, "max_charge_power": 100.0, "max_discharge_power": 100.0, "state_of_charge": 72.0},
+                {"idx": 2, "idx_acgenerator": 26, "energy_capacity": 100.0, "max_charge_power": 100.0, "max_discharge_power": 100.0, "state_of_charge": 68.0},
+            ]
+        },
+        "DCGenerator": {"rows": [{"idx": 4, "name": "电化学储能-1"}]},
+        "DCStorageGen": {
+            "rows": [
+                {"idx": 1, "idx_dcgenerator": 4, "energy_capacity": 60.0, "max_charge_power": 60.0, "max_discharge_power": 60.0, "state_of_charge": 88.0},
+            ]
+        },
+    }
     res = run_ew_analysis(
         params=params,
         weather_state={"irradiance_wm2": 300.0, "wind_speed_ms": 8.5, "ambient_temp_c": -20.0},
-        lf_snap={"latest": {"run_id": 1, "total_load_p": 160.0, "max_loading_pct": 68.0, "min_v_pu": 0.975}},
+        lf_snap={
+            "latest": {"run_id": 1, "total_load_p": 160.0, "max_loading_pct": 68.0, "min_v_pu": 0.975},
+            "branches": [{"name": "换流器-1", "branch_type": "DCACConverter", "loading_pct": 68.0}],
+        },
         ca_snap={"latest": {"run_id": 2, "max_loading_pct": 72.0}},
         contingencies=[{"name": "N-1:换流器-1", "category": "N-1", "target_desc": "换流器-1", "priority": 10, "enabled": 1}],
-        model_tables=None,
+        model_tables=model_tables,
         scada_db_path=None,
         workspace_dir=ws,
         overrides=[],
     )
     assert res["forecast_source"] == "forecast_db"
     assert len(res["points"]) == 96
+    assert res["storage_total_kwh"] == pytest.approx(360.0)
     ds = res["weather_snapshot"]["data_sources"]
     assert ds["renewgen"]["connected"] is True and ds["renewgen"]["rows"] == 96
     assert ds["load"]["connected"] is True and ds["load"]["rows"] == 96
     assert ds["weather"]["connected"] is True and ds["weather"]["rows"] == 96
-    assert res["green_survival_hours"] > 0
+    assert res["green_survival_hours"] is not None and res["green_survival_hours"] > 0
 
     ew_run_id = repo.ew_persist_run(res, source="test")
     assert ew_run_id >= 1
@@ -129,8 +149,31 @@ def test_ew_reads_three_forecast_dbs_and_persists(tmp_path: Path):
     repo.close()
 
 
+def test_ew_missing_db_never_fabricates_data(tmp_path: Path):
+    """验证缺少三大预测库与模型储能库时，严格返回空数据，严禁伪造假曲线或假储能。"""
+    res = run_ew_analysis(
+        params=DEFAULT_EW_PARAMS,
+        weather_state={},
+        lf_snap=None,
+        ca_snap=None,
+        contingencies=[],
+        model_tables=None,
+        scada_db_path=None,
+        workspace_dir=tmp_path,
+        overrides=[],
+    )
+    assert res["forecast_source"] == "missing"
+    assert res["points"] == []
+    assert res["risks"] == []
+    assert res["storage_units"] == []
+    assert res["green_survival_hours"] is None
+    assert res["security_score"] is None
+    assert res["risk_level"] == "无数据"
+
+
 def test_ew_web_api_and_static_pages(tmp_path: Path):
-    """验证 EW REST API 读写闭环与 4 个前端页面完备。"""
+    """验证 EW REST API 读写闭环与 5 个前端主页面完备。"""
+    _seed_forecast_dbs(tmp_path / "sqldb" / "forecast")
     repo = Repository(tmp_path / "pas.db")
     repo.initialize()
 
@@ -141,13 +184,13 @@ def test_ew_web_api_and_static_pages(tmp_path: Path):
     web_root = Path(__file__).resolve().parents[1] / "web"
     app = PasWebApp(_DummyCfg(), repo, scheduler=None, static_root=web_root)
 
-    # 首次 GET /api/ew/home 自动计算并持久化
+    # 首次 GET /api/ew/home 自动读取真实预测库并持久化
     r_home = app.api_get("/api/ew/home")
     assert r_home["ok"] is True
     assert r_home["data"]["latest"] is not None
     assert len(r_home["data"]["points"]) == 96
 
-    # 切换暴风雪过境剧本并重算
+    # 切换暴风雪过境演练并重算
     r_run = app.api_post("/api/ew/run", {"scenario": "blizzard_transit", "source": "test"})
     assert r_run["ok"] is True
     assert r_run["data"]["latest"]["forecast_scenario"] == "blizzard_transit"

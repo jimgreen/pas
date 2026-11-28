@@ -100,7 +100,7 @@ def _finite(v: Any, default: float = 0.0) -> float:
 
 
 def _ensure_ew_columns(conn: sqlite3.Connection) -> None:
-    """平滑迁移已存在旧库，确保 ew_para / ew_run 新字段存在。"""
+    """平滑迁移已存在旧库，确保 ew_para 新字段存在且 ew_run / ew_forecast_point 允许可空指标存 NULL。"""
     try:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(ew_para)").fetchall()}
         if cols:
@@ -111,6 +111,128 @@ def _ensure_ew_columns(conn: sqlite3.Connection) -> None:
             ):
                 if col not in cols:
                     conn.execute(f"ALTER TABLE ew_para ADD COLUMN {col} {ddl}")
+        # 若旧表 ew_run 仍对可缺失指标施加 NOT NULL 约束，则重建为严格允许 NULL 的表结构
+        run_info = {r[1]: int(r[3]) for r in conn.execute("PRAGMA table_info(ew_run)").fetchall()}
+        if run_info.get("green_survival_with_h2_hours") == 1:
+            conn.executescript(
+                """
+                DROP TABLE IF EXISTS ew_risk_detail;
+                DROP TABLE IF EXISTS ew_forecast_point;
+                DROP TABLE IF EXISTS ew_run;
+                CREATE TABLE ew_run (
+                    ew_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    calc_time TEXT NOT NULL,
+                    source_lf_run_id INTEGER,
+                    source_ca_run_id INTEGER,
+                    forecast_source TEXT NOT NULL DEFAULT 'missing',
+                    forecast_scenario TEXT NOT NULL DEFAULT 'auto',
+                    scenario_label TEXT NOT NULL DEFAULT '',
+                    horizon_points INTEGER NOT NULL DEFAULT 0,
+                    step_minutes INTEGER NOT NULL DEFAULT 15,
+                    risk_level TEXT NOT NULL DEFAULT '无数据',
+                    security_score REAL,
+                    health_grade TEXT NOT NULL DEFAULT '—',
+                    health_label TEXT NOT NULL DEFAULT '无预测数据',
+                    risk_slots_count INTEGER NOT NULL DEFAULT 0,
+                    critical_count INTEGER NOT NULL DEFAULT 0,
+                    high_count INTEGER NOT NULL DEFAULT 0,
+                    medium_count INTEGER NOT NULL DEFAULT 0,
+                    low_count INTEGER NOT NULL DEFAULT 0,
+                    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+                    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+                    green_risk_count INTEGER NOT NULL DEFAULT 0,
+                    max_loading_pct REAL,
+                    max_loading_slot INTEGER,
+                    max_loading_time TEXT NOT NULL DEFAULT '',
+                    max_loading_dev TEXT NOT NULL DEFAULT '',
+                    min_v_pu REAL,
+                    min_v_slot INTEGER,
+                    min_v_time TEXT NOT NULL DEFAULT '',
+                    max_v_pu REAL,
+                    worst_slot INTEGER,
+                    worst_time TEXT NOT NULL DEFAULT '',
+                    worst_event TEXT NOT NULL DEFAULT '',
+                    green_survival_hours REAL,
+                    green_survival_minutes INTEGER,
+                    green_survival_capped INTEGER NOT NULL DEFAULT 0,
+                    green_survival_extrap_hours REAL,
+                    green_survival_no_ren_hours REAL,
+                    green_survival_with_h2_hours REAL,
+                    green_exhaust_slot INTEGER,
+                    green_exhaust_time TEXT NOT NULL DEFAULT '',
+                    green_renewable_share_pct REAL,
+                    storage_init_soc_pct REAL,
+                    storage_min_soc_24h_pct REAL,
+                    storage_total_kwh REAL,
+                    storage_usable_kwh REAL,
+                    storage_max_discharge_kw REAL,
+                    storage_cold_factor REAL,
+                    deficit_total_kwh REAL,
+                    max_deficit_kw REAL,
+                    forecast_load_peak_kw REAL,
+                    forecast_ren_peak_kw REAL,
+                    elapsed_seconds REAL NOT NULL DEFAULT 0.0,
+                    weather_snapshot_json TEXT NOT NULL DEFAULT '{}',
+                    storage_units_json TEXT NOT NULL DEFAULT '[]',
+                    summary_text TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_ew_run_time ON ew_run(calc_time DESC);
+                CREATE TABLE ew_forecast_point (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ew_run_id INTEGER NOT NULL REFERENCES ew_run(ew_run_id) ON DELETE CASCADE,
+                    slot_idx INTEGER NOT NULL,
+                    time_label TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    irradiance_wm2 REAL,
+                    wind_speed_ms REAL,
+                    ambient_temp_c REAL,
+                    snow_icing_level INTEGER NOT NULL DEFAULT 0,
+                    wind_kw REAL,
+                    pv_kw REAL,
+                    renewable_kw REAL,
+                    load_kw REAL,
+                    net_load_kw REAL,
+                    storage_soc_pct REAL,
+                    storage_power_kw REAL,
+                    storage_usable_kwh REAL,
+                    green_deficit_kw REAL,
+                    green_alive INTEGER,
+                    n0_max_loading_pct REAL,
+                    n0_min_v_pu REAL,
+                    n0_max_v_pu REAL,
+                    n1_max_loading_pct REAL,
+                    n1_min_v_pu REAL,
+                    n1_risk_count INTEGER NOT NULL DEFAULT 0,
+                    weather_risk_count INTEGER NOT NULL DEFAULT 0,
+                    risk_count INTEGER NOT NULL DEFAULT 0,
+                    risk_level TEXT NOT NULL DEFAULT 'normal',
+                    security_score REAL,
+                    worst_event TEXT NOT NULL DEFAULT '',
+                    ac_verified INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_ew_point_run ON ew_forecast_point(ew_run_id, slot_idx);
+                CREATE TABLE ew_risk_detail (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ew_run_id INTEGER NOT NULL REFERENCES ew_run(ew_run_id) ON DELETE CASCADE,
+                    slot_idx INTEGER NOT NULL,
+                    time_label TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'N-1',
+                    risk_category TEXT NOT NULL DEFAULT 'overload',
+                    severity TEXT NOT NULL DEFAULT 'medium',
+                    contingency_name TEXT NOT NULL DEFAULT '',
+                    device_type TEXT NOT NULL DEFAULT '',
+                    device_name TEXT NOT NULL DEFAULT '',
+                    metric TEXT NOT NULL DEFAULT '',
+                    actual_value REAL,
+                    limit_value REAL,
+                    violation_pct REAL NOT NULL DEFAULT 0.0,
+                    unit TEXT NOT NULL DEFAULT '',
+                    detail TEXT NOT NULL DEFAULT '',
+                    advice TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_ew_risk_run ON ew_risk_detail(ew_run_id, severity, slot_idx);
+                """
+            )
     except sqlite3.Error:
         pass
 
@@ -311,13 +433,42 @@ def collect_storage_inventory(
     model_tables: dict[str, dict[str, Any]] | None,
     scada_db_path: Path | None,
 ) -> dict[str, Any]:
-    """从 model/devices.db 与 scdfe_d.db 采集全站电化学储能 + 氢储能额定容量、最大放电功率与实时 SOC。"""
+    """严格从 model/devices.db 与 scdfe_d.db 采集全站真实储能参数与实时 SOC，严禁编造默认设备或假容量。"""
     units: list[dict[str, Any]] = []
     h2_units: list[dict[str, Any]] = []
 
-    # 从 SCADA 实时库读取最新 SOC
-    scada_soc: dict[tuple[str, int], tuple[str, float]] = {}
-    scada_soc_by_name: dict[str, float] = {}
+    def _row_to_dict(row: Any, cols: list[str]) -> dict[str, Any]:
+        if isinstance(row, dict):
+            return row
+        if isinstance(row, (list, tuple)) and cols:
+            return {cols[i]: row[i] for i in range(min(len(cols), len(row)))}
+        return {}
+
+    def _opt_pos(val: Any) -> float | None:
+        if val is None or val == "":
+            return None
+        try:
+            f = float(val)
+            return f if math.isfinite(f) and f > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _opt_soc(val: Any) -> float | None:
+        if val is None or val == "":
+            return None
+        try:
+            f = float(val)
+            if not math.isfinite(f):
+                return None
+            if f > 1.5:
+                f /= 100.0
+            return max(0.0, min(1.0, f))
+        except (TypeError, ValueError):
+            return None
+
+    # 1. 从 SCADA 实时库（scdfe_d.db）读取最新实时 SOC 与储氢压力
+    scada_soc: dict[tuple[str, int], dict[str, Any]] = {}
+    scada_soc_by_name: dict[str, dict[str, Any]] = {}
     if scada_db_path and Path(scada_db_path).is_file():
         try:
             con = sqlite3.connect(f"file:{Path(scada_db_path).resolve()}?mode=ro", uri=True)
@@ -327,25 +478,26 @@ def collect_storage_inventory(
                     cols = {r[1] for r in con.execute(f'PRAGMA table_info("{tbl}")').fetchall()}
                     if {"idx", "soc"} <= cols:
                         name_col = '"name"' if "name" in cols else "''"
-                        for r in con.execute(f'SELECT idx, {name_col} AS name, soc FROM "{tbl}"'):
-                            if r["soc"] is not None:
-                                soc_val = float(r["soc"])
-                                if soc_val > 1.5:
-                                    soc_val /= 100.0
-                                soc_val = max(0.0, min(1.0, soc_val))
-                                scada_soc[(tbl, int(r["idx"]))] = (str(r["name"] or ""), soc_val)
-                                if r["name"]:
-                                    scada_soc_by_name[str(r["name"])] = soc_val
+                        pres_col = '"pressure"' if "pressure" in cols else "NULL"
+                        for r in con.execute(f'SELECT idx, {name_col} AS name, soc, {pres_col} AS pressure FROM "{tbl}"'):
+                            soc_val = _opt_soc(r["soc"])
+                            if soc_val is None:
+                                continue
+                            rec = {
+                                "name": str(r["name"] or ""),
+                                "soc": soc_val,
+                                "pressure_mpa": _opt_pos(r["pressure"]),
+                            }
+                            scada_soc[(tbl, int(r["idx"]))] = rec
+                            if rec["name"]:
+                                scada_soc_by_name[rec["name"]] = rec
                 except sqlite3.Error:
                     continue
             con.close()
         except sqlite3.Error:
             pass
 
-    # 从模型库读取 ACStorageGen / DCStorageGen / HydroStorage 额定参数
-    # 模型表列顺序（来自秦岭站 devices.db 实测）：
-    # ACStorageGen: (idx, gen_idx, chemistry, ?, cap_kwh, eff, p_chg_max, p_dis_max, soc_init, soc_max, soc_min)
-    # DCStorageGen: (idx, gen_idx, chemistry, ?, cap_kwh, eff, p_chg_max, p_dis_max, soc_init, soc_max, soc_min)
+    # 2. 严格按真实列名从模型库（devices.db）读取 ACStorageGen / DCStorageGen / HydroStorage
     gen_name_map: dict[tuple[str, int], str] = {}
     if model_tables:
         for gtbl in ("ACGenerator", "DCGenerator"):
@@ -354,115 +506,124 @@ def collect_storage_inventory(
                 continue
             cols = list(blk.get("columns") or [])
             for row in blk.get("rows") or []:
-                vals = row if isinstance(row, (list, tuple)) else [row.get(c) for c in cols]
-                if len(vals) >= 2:
+                rd = _row_to_dict(row, cols)
+                if rd.get("idx") is not None and rd.get("name"):
                     try:
-                        gen_name_map[(gtbl, int(vals[0]))] = str(vals[1] or "")
+                        gen_name_map[(gtbl, int(rd["idx"]))] = str(rd["name"])
                     except (TypeError, ValueError):
                         pass
 
-        for stbl, domain, gtbl in (("ACStorageGen", "AC", "ACGenerator"), ("DCStorageGen", "DC", "DCGenerator")):
+        for stbl, domain, gtbl, gcol in (
+            ("ACStorageGen", "AC", "ACGenerator", "idx_acgenerator"),
+            ("DCStorageGen", "DC", "DCGenerator", "idx_dcgenerator"),
+        ):
             blk = model_tables.get(stbl)
             if not blk:
                 continue
             cols = list(blk.get("columns") or [])
             for r_i, row in enumerate(blk.get("rows") or [], start=1):
-                vals = row if isinstance(row, (list, tuple)) else [row.get(c) for c in cols]
-                idx = int(_finite(vals[0], r_i)) if len(vals) > 0 else r_i
-                gen_idx = int(_finite(vals[1], idx)) if len(vals) > 1 else idx
-                cap_kwh = _finite(vals[4], 100.0 if domain == "AC" else 60.0) if len(vals) > 4 else 100.0
-                if cap_kwh <= 0:
-                    cap_kwh = 100.0 if domain == "AC" else 60.0
-                p_chg = _finite(vals[6], cap_kwh * 0.5) if len(vals) > 6 else cap_kwh * 0.5
-                p_dis = _finite(vals[7], cap_kwh * 0.5) if len(vals) > 7 else cap_kwh * 0.5
-                soc_default = _finite(vals[8], 75.0) if len(vals) > 8 else 75.0
-                if soc_default > 1.5:
-                    soc_default /= 100.0
-                sc_name, soc_live = scada_soc.get((stbl, idx), ("", None))
-                dev_name = sc_name or gen_name_map.get((gtbl, gen_idx)) or f"{domain}储能-{idx}"
-                if soc_live is None and dev_name in scada_soc_by_name:
-                    soc_live = scada_soc_by_name[dev_name]
-                soc = soc_live if soc_live is not None else max(0.05, min(0.98, soc_default))
+                rd = _row_to_dict(row, cols)
+                idx = int(_finite(rd.get("idx"), r_i))
+                gen_idx = int(_finite(rd.get(gcol), idx))
+                cap_kwh = _opt_pos(rd.get("energy_capacity"))
+                p_chg = _opt_pos(rd.get("max_charge_power"))
+                p_dis = _opt_pos(rd.get("max_discharge_power"))
+                soc_model = _opt_soc(rd.get("state_of_charge"))
+
+                sc_rec = scada_soc.get((stbl, idx))
+                dev_name = (sc_rec["name"] if sc_rec and sc_rec["name"] else "") or gen_name_map.get((gtbl, gen_idx)) or f"{domain}储能-{idx}"
+                if sc_rec is None and dev_name in scada_soc_by_name:
+                    sc_rec = scada_soc_by_name[dev_name]
+                soc_live = sc_rec["soc"] if sc_rec else None
+                soc = soc_live if soc_live is not None else soc_model
+                soc_source = "scada" if soc_live is not None else ("model" if soc_model is not None else "missing")
                 units.append({
                     "table": stbl,
                     "domain": domain,
                     "idx": idx,
                     "name": dev_name,
-                    "capacity_kwh": round(cap_kwh, 2),
-                    "max_charge_kw": round(max(1.0, p_chg), 2),
-                    "max_discharge_kw": round(max(1.0, p_dis), 2),
-                    "soc": round(soc, 4),
-                    "soc_pct": round(soc * 100.0, 1),
-                    "soc_source": "scada" if soc_live is not None else "model",
+                    "capacity_kwh": round(cap_kwh, 2) if cap_kwh is not None else None,
+                    "max_charge_kw": round(p_chg, 2) if p_chg is not None else None,
+                    "max_discharge_kw": round(p_dis, 2) if p_dis is not None else None,
+                    "soc": round(soc, 4) if soc is not None else None,
+                    "soc_pct": round(soc * 100.0, 1) if soc is not None else None,
+                    "soc_source": soc_source,
                 })
 
-        # 氢储能罐（用于计算含储氢扩展维生时长）
+        # 氢储能罐：仅读取模型库与 SCADA 真实存在字段，绝不编造额定电容量/发电功率
         hblk = model_tables.get("HydroStorage")
         if hblk:
             cols = list(hblk.get("columns") or [])
             for r_i, row in enumerate(hblk.get("rows") or [], start=1):
-                vals = row if isinstance(row, (list, tuple)) else [row.get(c) for c in cols]
-                idx = int(_finite(vals[0], r_i)) if len(vals) > 0 else r_i
-                sc_name, soc_live = scada_soc.get(("HydroStorage", idx), ("", None))
-                name = sc_name or (str(vals[1]) if len(vals) > 1 and vals[1] else f"储氢罐-{idx}")
-                # 集装格式储氢罐按燃料电池综合电等效 320 kWh、额定发电 40 kW 估算
-                soc = soc_live if soc_live is not None else 0.58
+                rd = _row_to_dict(row, cols)
+                idx = int(_finite(rd.get("idx"), r_i))
+                sc_rec = scada_soc.get(("HydroStorage", idx))
+                name = (sc_rec["name"] if sc_rec and sc_rec["name"] else "") or str(rd.get("name") or f"储氢罐-{idx}")
+                soc = sc_rec["soc"] if sc_rec else None
+                h2_cap = _opt_pos(rd.get("energy_capacity"))
+                h2_pdis = _opt_pos(rd.get("max_discharge_power"))
                 h2_units.append({
                     "table": "HydroStorage",
                     "domain": "H2",
                     "idx": idx,
                     "name": name,
-                    "capacity_kwh": 320.0,
-                    "max_discharge_kw": 40.0,
-                    "soc": round(soc, 4),
-                    "soc_pct": round(soc * 100.0, 1),
-                    "soc_source": "scada" if soc_live is not None else "model",
+                    "capacity_kwh": round(h2_cap, 2) if h2_cap is not None else None,
+                    "max_discharge_kw": round(h2_pdis, 2) if h2_pdis is not None else None,
+                    "pressure_mpa": round(sc_rec["pressure_mpa"], 2) if (sc_rec and sc_rec.get("pressure_mpa") is not None) else None,
+                    "soc": round(soc, 4) if soc is not None else None,
+                    "soc_pct": round(soc * 100.0, 1) if soc is not None else None,
+                    "soc_source": "scada" if soc is not None else "missing",
                 })
+    elif scada_soc:
+        # 仅有 SCADA 库无模型库时，仅上报真实 SCADA 名称与实时 SOC，额定容量留空不编造
+        for (tbl, idx), rec in sorted(scada_soc.items()):
+            entry = {
+                "table": tbl,
+                "domain": "H2" if tbl == "HydroStorage" else ("AC" if tbl == "ACStorageGen" else "DC"),
+                "idx": idx,
+                "name": rec["name"] or f"{tbl}-{idx}",
+                "capacity_kwh": None,
+                "max_charge_kw": None,
+                "max_discharge_kw": None,
+                "soc": round(rec["soc"], 4),
+                "soc_pct": round(rec["soc"] * 100.0, 1),
+                "soc_source": "scada",
+            }
+            if tbl == "HydroStorage":
+                entry["pressure_mpa"] = round(rec["pressure_mpa"], 2) if rec.get("pressure_mpa") is not None else None
+                h2_units.append(entry)
+            else:
+                units.append(entry)
 
-    # 若无模型表，仍根据 SCADA 储能或秦岭站标准配置兜底
-    if not units:
-        if scada_soc:
-            for (tbl, idx), (nm, soc_val) in sorted(scada_soc.items()):
-                if tbl == "HydroStorage":
-                    h2_units.append({
-                        "table": tbl, "domain": "H2", "idx": idx, "name": nm or f"储氢罐-{idx}",
-                        "capacity_kwh": 320.0, "max_discharge_kw": 40.0,
-                        "soc": round(soc_val, 4), "soc_pct": round(soc_val * 100.0, 1), "soc_source": "scada",
-                    })
-                else:
-                    is_ac = tbl == "ACStorageGen"
-                    cap = 150.0 if is_ac else 60.0
-                    units.append({
-                        "table": tbl, "domain": "AC" if is_ac else "DC", "idx": idx,
-                        "name": nm or f"{'AC' if is_ac else 'DC'}储能-{idx}",
-                        "capacity_kwh": cap, "max_charge_kw": 80.0 if is_ac else 60.0,
-                        "max_discharge_kw": 80.0 if is_ac else 60.0,
-                        "soc": round(soc_val, 4), "soc_pct": round(soc_val * 100.0, 1), "soc_source": "scada",
-                    })
-        else:
-            units = [
-                {"table": "ACStorageGen", "domain": "AC", "idx": 1, "name": "交流电化学储能-23", "capacity_kwh": 200.0, "max_charge_kw": 100.0, "max_discharge_kw": 100.0, "soc": 0.72, "soc_pct": 72.0, "soc_source": "default"},
-                {"table": "ACStorageGen", "domain": "AC", "idx": 2, "name": "交流电化学储能-26", "capacity_kwh": 100.0, "max_charge_kw": 100.0, "max_discharge_kw": 100.0, "soc": 0.68, "soc_pct": 68.0, "soc_source": "default"},
-                {"table": "DCStorageGen", "domain": "DC", "idx": 1, "name": "直流电化学储能组", "capacity_kwh": 360.0, "max_charge_kw": 360.0, "max_discharge_kw": 360.0, "soc": 0.85, "soc_pct": 85.0, "soc_source": "default"},
-            ]
-
-    total_kwh = sum(u["capacity_kwh"] for u in units)
+    valid_cap_units = [u for u in units if u.get("capacity_kwh") is not None and u.get("soc") is not None]
+    total_kwh = sum(float(u["capacity_kwh"]) for u in units if u.get("capacity_kwh") is not None)
     weighted_soc = (
-        sum(u["capacity_kwh"] * u["soc"] for u in units) / total_kwh
-        if total_kwh > 1e-6 else 0.75
+        sum(float(u["capacity_kwh"]) * float(u["soc"]) for u in valid_cap_units)
+        / sum(float(u["capacity_kwh"]) for u in valid_cap_units)
+        if valid_cap_units
+        else (
+            sum(float(u["soc"]) for u in units if u.get("soc") is not None)
+            / sum(1 for u in units if u.get("soc") is not None)
+            if any(u.get("soc") is not None for u in units)
+            else None
+        )
     )
-    max_chg = sum(u["max_charge_kw"] for u in units)
-    max_dis = sum(u["max_discharge_kw"] for u in units)
-    h2_usable_kwh = sum(max(0.0, (u["soc"] - 0.10)) * u["capacity_kwh"] * 0.55 for u in h2_units)
+    max_chg = sum(float(u["max_charge_kw"]) for u in units if u.get("max_charge_kw") is not None)
+    max_dis = sum(float(u["max_discharge_kw"]) for u in units if u.get("max_discharge_kw") is not None)
+    valid_h2 = [u for u in h2_units if u.get("capacity_kwh") is not None and u.get("soc") is not None]
+    h2_usable_kwh = (
+        sum(max(0.0, float(u["soc"]) - 0.10) * float(u["capacity_kwh"]) * 0.55 for u in valid_h2)
+        if valid_h2 else None
+    )
     return {
         "units": units,
         "h2_units": h2_units,
         "total_kwh": round(total_kwh, 2),
-        "weighted_soc": round(weighted_soc, 4),
-        "weighted_soc_pct": round(weighted_soc * 100.0, 1),
+        "weighted_soc": round(weighted_soc, 4) if weighted_soc is not None else None,
+        "weighted_soc_pct": round(weighted_soc * 100.0, 1) if weighted_soc is not None else None,
         "max_charge_kw": round(max_chg, 2),
         "max_discharge_kw": round(max_dis, 2),
-        "h2_usable_kwh": round(h2_usable_kwh, 2),
+        "h2_usable_kwh": round(h2_usable_kwh, 2) if h2_usable_kwh is not None else None,
     }
 
 
@@ -542,30 +703,56 @@ def _read_forecast_series_from_db(
         cols_lower = {c.lower(): c for c in chosen_cols}
         tcol = next((cols_lower[c] for c in time_candidates if c in cols_lower), None)
 
-        # 若存在 run_id + horizon，优先取最新 day_ahead run
+        # 优先锁定全网汇总点（P001 / scope_level='grid'），并取最新 day_ahead run
         where_parts: list[str] = []
         params: list[Any] = []
+        chosen_point_id = ""
+        if "point_id" in cols_lower:
+            pc = cols_lower["point_id"]
+            # 查询 forecast_points 确定全网综合点
+            preferred_pids = ["P001"] if kind != "weather" else ["P001", "P008"]
+            if "forecast_points" in all_tables:
+                try:
+                    grid_rows = con.execute(
+                        "SELECT point_id FROM forecast_points WHERE scope_level = 'grid' ORDER BY point_id"
+                    ).fetchall()
+                    for gr in grid_rows:
+                        if gr[0] and str(gr[0]) not in preferred_pids:
+                            preferred_pids.append(str(gr[0]))
+                except sqlite3.Error:
+                    pass
+            avail_pids = {str(r[0]) for r in con.execute(f'SELECT DISTINCT "{pc}" FROM "{chosen_table}"').fetchall() if r[0]}
+            chosen_point_id = next((pid for pid in preferred_pids if pid in avail_pids), "")
+            if chosen_point_id:
+                where_parts.append(f'"{pc}" = ?')
+                params.append(chosen_point_id)
+
         if "run_id" in cols_lower:
             rc = cols_lower["run_id"]
+            order_col = cols_lower.get("issued_at_utc") or tcol or "rowid"
+            base_where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+            row_run = None
             if "horizon" in cols_lower:
                 hc = cols_lower["horizon"]
-                order_col = cols_lower.get("issued_at_utc") or tcol or "rowid"
+                h_where = f"{base_where} AND \"{hc}\" = ?" if base_where else f'WHERE "{hc}" = ?'
                 row_run = con.execute(
-                    f'SELECT "{rc}" FROM "{chosen_table}" WHERE "{hc}" = ? ORDER BY "{order_col}" DESC LIMIT 1',
-                    ("day_ahead",),
+                    f'SELECT "{rc}" FROM "{chosen_table}" {h_where} ORDER BY "{order_col}" DESC LIMIT 1',
+                    (*params, "day_ahead"),
                 ).fetchone()
-                if row_run is None:
-                    row_run = con.execute(
-                        f'SELECT "{rc}" FROM "{chosen_table}" ORDER BY "{order_col}" DESC LIMIT 1'
-                    ).fetchone()
-            else:
-                order_col = cols_lower.get("issued_at_utc") or tcol or "rowid"
+                if row_run is not None and row_run[0] is not None:
+                    where_parts.append(f'"{hc}" = ?')
+                    params.append("day_ahead")
+            if row_run is None:
                 row_run = con.execute(
-                    f'SELECT "{rc}" FROM "{chosen_table}" ORDER BY "{order_col}" DESC LIMIT 1'
+                    f'SELECT "{rc}" FROM "{chosen_table}" {base_where} ORDER BY "{order_col}" DESC LIMIT 1',
+                    tuple(params),
                 ).fetchone()
             if row_run is not None and row_run[0] is not None:
                 where_parts.append(f'"{rc}" = ?')
                 params.append(row_run[0])
+                info["run_id"] = str(row_run[0])
+        if chosen_point_id:
+            info["point_id"] = chosen_point_id
 
         where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         order_sql = f'ORDER BY "{tcol}" ASC' if tcol else "ORDER BY rowid ASC"
@@ -636,12 +823,27 @@ def _read_forecast_series_from_db(
 
 # ==================== 3. 未来 24h 96 点气象/风光/负荷预测曲线生成与融合 ====================
 
+def _parse_db_time_label(raw_ts: str, fallback_idx: int) -> tuple[str, str]:
+    """解析数据库中的真实时间戳，返回 (HH:MM, YYYY-MM-DD HH:MM)。"""
+    s = str(raw_ts or "").strip()
+    if not s:
+        return f"#{fallback_idx}", ""
+    clean = s.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(clean)
+        return dt.strftime("%H:%M"), dt.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        if len(s) >= 16:
+            return s[11:16], s[:16].replace("T", " ")
+        return s[:10], s
+
+
 def _build_96_forecast_series(
     *,
     horizon_points: int,
     step_minutes: int,
     weather_state: dict[str, Any],
-    base_load_kw: float,
+    base_load_kw: float | None,
     model_tables: dict[str, dict[str, Any]] | None,
     scenario: str,
     overrides_map: dict[int, dict[str, Any]],
@@ -649,83 +851,58 @@ def _build_96_forecast_series(
     load_series: list[dict[str, Any]],
     weather_series: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], str]:
-    """融合三大预测库 + 南极极地物理模型 + 演变剧本 + 手工覆写，输出完整 96 点预测序列。"""
-    now_local = datetime.now().replace(second=0, microsecond=0)
-    # 向下对齐到最近 15 分钟刻度
-    minute_aligned = (now_local.minute // step_minutes) * step_minutes
-    start_dt = now_local.replace(minute=minute_aligned)
+    """严格基于三大预测数据库真实记录（及已持久化的数据库覆写）构建预测序列，严禁无库伪造数据。"""
+    db_len = max(len(renewgen_series), len(load_series), len(weather_series))
+    if db_len == 0:
+        # 三大预测库均无数据时严禁合成虚假曲线
+        return [], "预测数据库缺失/无数据"
 
-    w0 = {**DEFAULT_WEATHER_STATE, **(weather_state or {})}
-    base_irr = max(0.0, _finite(w0.get("irradiance_wm2"), 420.0))
-    base_wind = max(0.0, _finite(w0.get("wind_speed_ms"), 9.5))
-    base_temp = _finite(w0.get("ambient_temp_c"), -18.5)
-    base_icing = int(_finite(w0.get("snow_icing_level"), 0))
-    base_load = max(40.0, _finite(base_load_kw, 240.0))
-
-    eff_scenario = scenario
-    if eff_scenario == "auto":
-        regime = str(w0.get("polar_regime") or "normal")
-        eff_scenario = {
-            "blizzard": "blizzard_transit",
-            "polar_night": "polar_night",
-            "katabatic": "katabatic_cutout",
-            "extreme_cold": "extreme_cold_calm",
-        }.get(regime, "normal")
-
-    scenario_label = EW_FORECAST_SCENARIOS.get(eff_scenario, EW_FORECAST_SCENARIOS["normal"])["label"]
+    n_pts = min(horizon_points, db_len)
+    eff_scenario = str(scenario or "auto")
+    if eff_scenario in ("auto", "normal", "db_realtime"):
+        scenario_label = "三大预测库实测"
+    else:
+        scenario_label = f"预测库 + {EW_FORECAST_SCENARIOS.get(eff_scenario, {}).get('label', eff_scenario)}演练"
 
     points: list[dict[str, Any]] = []
-    for i in range(horizon_points):
-        dt = start_dt + timedelta(minutes=i * step_minutes)
-        hour = dt.hour + dt.minute / 60.0
-        phase = 2.0 * math.pi * (i / max(1, horizon_points))
+    for i in range(n_pts):
+        wrec = weather_series[i] if i < len(weather_series) else {}
+        rrec = renewgen_series[i] if i < len(renewgen_series) else {}
+        lrec = load_series[i] if i < len(load_series) else {}
+        ovr = overrides_map.get(i) or {}
 
-        # 1) 合成南极典型 24h 气象演变基线
-        solar_bell = max(0.0, math.sin(math.pi * (hour - 5.5) / 15.0)) ** 1.35 if 5.5 <= hour <= 20.5 else 0.0
-        irr = max(0.0, max(base_irr, 520.0) * (0.18 + 1.05 * solar_bell))
-        ws = max(0.4, base_wind + 2.4 * math.sin(phase + 0.6) + 1.3 * math.cos(2.0 * phase - 0.3))
-        temp = base_temp + 3.2 * math.sin(math.pi * (hour - 8.0) / 12.0)
-        icing = base_icing
+        raw_ts = rrec.get("timestamp") or lrec.get("timestamp") or wrec.get("timestamp") or ""
+        time_label, ts_str = _parse_db_time_label(str(raw_ts), i)
 
-        if eff_scenario == "blizzard_transit":
-            # 第 28–60 点（+7h~+15h）强暴风雪过境
-            if 28 <= i <= 60:
-                intensity = math.sin(math.pi * (i - 28) / 32.0)
-                irr = irr * max(0.0, 1.0 - 1.25 * intensity)
-                ws = base_wind + 28.0 * intensity + 2.5 * math.sin(i * 0.5)
-                temp = base_temp - 20.0 * intensity
-                icing = 3 if intensity >= 0.55 else (2 if intensity >= 0.25 else 1)
+        # 严格读取数据库中的真实气象预测值（缺失则为 None / 0，不编造合成波动）
+        irr = float(wrec["irradiance_wm2"]) if "irradiance_wm2" in wrec else None
+        ws = float(wrec["wind_speed_ms"]) if "wind_speed_ms" in wrec else None
+        temp = float(wrec["ambient_temp_c"]) if "ambient_temp_c" in wrec else None
+        icing = int(wrec["snow_icing_level"]) if "snow_icing_level" in wrec else 0
+
+        # 仅当用户显式发起极端压力演练时，在数据库真实基线上施加物理扰动
+        if eff_scenario == "blizzard_transit" and 28 <= i <= 60:
+            intensity = math.sin(math.pi * (i - 28) / 32.0)
+            if irr is not None:
+                irr = max(0.0, irr * max(0.0, 1.0 - 1.25 * intensity))
+            ws = (ws or 0.0) + 28.0 * intensity
+            temp = (temp if temp is not None else -18.0) - 20.0 * intensity
+            icing = 3 if intensity >= 0.55 else (2 if intensity >= 0.25 else 1)
         elif eff_scenario == "polar_night":
             irr = 0.0
-            ws = max(1.5, 9.2 + 3.8 * math.sin(phase * 1.4) + 1.5 * math.cos(phase * 2.7))
-            temp = min(base_temp, -34.0) - 5.5 * (0.5 + 0.5 * math.cos(phase))
-            icing = max(1, base_icing)
+            temp = min(temp if temp is not None else -34.0, -34.0)
+            icing = max(1, icing)
         elif eff_scenario == "katabatic_cutout":
+            phase = 2.0 * math.pi * (i / max(1, n_pts))
             gust = max(0.0, math.sin(phase * 2.0 - 0.4))
-            ws = 14.0 + 25.0 * (gust ** 1.6)
-            irr = irr * (0.45 + 0.35 * (1.0 - gust))
-            temp = min(base_temp, -26.0) - 6.0 * gust
-            icing = 2 if gust > 0.45 else 1
+            ws = max(ws or 0.0, 14.0 + 25.0 * (gust ** 1.6))
+            icing = max(icing, 2 if gust > 0.45 else 1)
         elif eff_scenario == "extreme_cold_calm":
-            irr = max(0.0, 120.0 * solar_bell)
-            ws = max(0.6, 1.8 + 1.2 * math.sin(phase + 0.9))
-            temp = min(base_temp, -46.0) - 5.0 * (0.5 + 0.5 * math.cos(phase + 0.5))
-            icing = max(1, base_icing)
+            ws = min(ws if ws is not None else 1.5, 2.0)
+            temp = min(temp if temp is not None else -46.0, -46.0)
+            icing = max(1, icing)
 
-        # 2) 若 weather.db 提供了预测值，直接以真实预测库为准
-        if i < len(weather_series):
-            wrec = weather_series[i]
-            if "irradiance_wm2" in wrec:
-                irr = float(wrec["irradiance_wm2"])
-            if "wind_speed_ms" in wrec:
-                ws = float(wrec["wind_speed_ms"])
-            if "ambient_temp_c" in wrec:
-                temp = float(wrec["ambient_temp_c"])
-            if "snow_icing_level" in wrec:
-                icing = int(wrec["snow_icing_level"])
-
-        # 应用手工气象覆写
-        ovr = overrides_map.get(i) or {}
+        # 应用持久化在 pas.db 中的单点覆写
         if ovr.get("irradiance_wm2") is not None:
             irr = float(ovr["irradiance_wm2"])
         if ovr.get("wind_speed_ms") is not None:
@@ -735,49 +912,30 @@ def _build_96_forecast_series(
         if ovr.get("snow_icing_level") is not None:
             icing = int(ovr["snow_icing_level"])
 
-        # 3) 通过南极气象耦合模型计算物理风电/光伏出力与低温负荷增量
-        coupling_summary = compute_weather_coupling_summary(
-            {
-                "irradiance_wm2": irr,
-                "wind_speed_ms": ws,
-                "ambient_temp_c": temp,
-                "snow_icing_level": icing,
-                "load_factor": 1.0,
-            },
-            model_tables=model_tables,
-        )
-        coupling = coupling_summary.get("coupling") or {}
-        if int(coupling.get("wind_units") or 0) > 0:
-            wind_kw = float(coupling.get("wind_avail_kw") or 0.0)
+        # 低温对电化学电池可用容量的物理折减系数（仅基于真实预测气温）
+        if temp is None or temp >= -10.0:
+            cold_factor = 1.0
         else:
-            wind_kw = round(120.0 * float(coupling.get("wind_avail_pct") or 0.0) / 100.0, 2)
-        if int(coupling.get("pv_units") or 0) > 0:
-            pv_kw = float(coupling.get("pv_avail_kw") or 0.0)
-        else:
-            pv_kw = round(100.0 * float(coupling.get("pv_avail_pct") or 0.0) / 100.0, 2)
-        cold_heat_factor = 1.0 + float(coupling.get("cold_heating_delta_pct") or 0.0) / 100.0
+            cold_factor = round(max(0.50, 1.0 - (-10.0 - temp) * 0.0085), 4)
 
-        # 站区负荷日曲线（早晚科研+采暖双峰）
-        diurnal_load = 0.86 + 0.18 * math.exp(-((hour - 10.5) / 3.4) ** 2) + 0.24 * math.exp(-((hour - 19.5) / 3.6) ** 2)
-        load_kw = base_load * diurnal_load * cold_heat_factor
+        # 严格读取 renewgen.db 与 load.db 中的真实功率预测值
+        wind_kw = float(rrec["wind_kw"]) if "wind_kw" in rrec else 0.0
+        pv_kw = float(rrec["pv_kw"]) if "pv_kw" in rrec else 0.0
+        if "wind_kw" not in rrec and "pv_kw" not in rrec and "renewable_kw" in rrec:
+            wind_kw = float(rrec["renewable_kw"])
+            pv_kw = 0.0
+        load_kw = float(lrec["load_kw"]) if "load_kw" in lrec else 0.0
 
-        # 4) 若 renewgen.db / load.db 有真实预测数据，直接覆写为真实预测值
-        if i < len(renewgen_series):
-            rrec = renewgen_series[i]
-            if "wind_kw" in rrec:
-                wind_kw = float(rrec["wind_kw"])
-            if "pv_kw" in rrec:
-                pv_kw = float(rrec["pv_kw"])
-            if "renewable_kw" in rrec and "wind_kw" not in rrec and "pv_kw" not in rrec:
-                tot = float(rrec["renewable_kw"])
-                wind_kw = round(tot * 0.65, 2)
-                pv_kw = round(tot * 0.35, 2)
-        if i < len(load_series):
-            lrec = load_series[i]
-            if "load_kw" in lrec:
-                load_kw = float(lrec["load_kw"])
+        # 压力演练模式下根据风机超切出/暴风雪/极寒对数据库真实功率做物理折减
+        if eff_scenario in ("blizzard_transit", "katabatic_cutout") and ws is not None and ws >= 35.0:
+            wind_kw = 0.0
+        if eff_scenario in ("blizzard_transit", "polar_night") and irr is not None and irr <= 1.0:
+            pv_kw = 0.0
+        if eff_scenario == "extreme_cold_calm":
+            wind_kw = wind_kw * 0.15
+            load_kw = load_kw * 1.25
 
-        # 应用手工功率覆写
+        # 应用持久化手工功率覆写
         if ovr.get("wind_kw") is not None:
             wind_kw = max(0.0, float(ovr["wind_kw"]))
         if ovr.get("pv_kw") is not None:
@@ -788,18 +946,18 @@ def _build_96_forecast_series(
         ren_kw = max(0.0, wind_kw + pv_kw)
         points.append({
             "slot_idx": i,
-            "time_label": dt.strftime("%H:%M"),
-            "timestamp": dt.strftime("%Y-%m-%d %H:%M"),
-            "irradiance_wm2": round(irr, 1),
-            "wind_speed_ms": round(ws, 2),
-            "ambient_temp_c": round(temp, 1),
+            "time_label": time_label,
+            "timestamp": ts_str,
+            "irradiance_wm2": round(irr, 1) if irr is not None else 0.0,
+            "wind_speed_ms": round(ws, 2) if ws is not None else 0.0,
+            "ambient_temp_c": round(temp, 1) if temp is not None else 0.0,
             "snow_icing_level": int(icing),
             "wind_kw": round(wind_kw, 2),
             "pv_kw": round(pv_kw, 2),
             "renewable_kw": round(ren_kw, 2),
             "load_kw": round(load_kw, 2),
             "net_load_kw": round(load_kw - ren_kw, 2),
-            "storage_cold_factor": round(float(coupling["storage_avail_pct"]) / 100.0, 4),
+            "storage_cold_factor": cold_factor,
         })
 
     return points, scenario_label
@@ -819,18 +977,42 @@ def simulate_green_survival(
     eff = max(0.5, min(1.0, float(params.get("storage_eff", 0.92))))
     eff_sqrt = math.sqrt(eff)
 
-    total_kwh = max(10.0, float(storage.get("total_kwh", 660.0)))
-    init_soc = max(0.0, min(1.0, float(storage.get("weighted_soc", 0.75))))
-    max_chg_kw = max(10.0, float(storage.get("max_charge_kw", 400.0)))
-    max_dis_kw = max(10.0, float(storage.get("max_discharge_kw", 400.0)))
-    h2_extra_kwh = float(storage.get("h2_usable_kwh", 0.0))
+    raw_total_kwh = storage.get("total_kwh")
+    raw_init_soc = storage.get("weighted_soc")
+    if not points or not raw_total_kwh or raw_init_soc is None or float(raw_total_kwh) <= 0.0:
+        return {
+            "green_survival_hours": None,
+            "green_survival_minutes": None,
+            "green_survival_capped": 0,
+            "green_survival_extrap_hours": None,
+            "green_survival_no_ren_hours": None,
+            "green_survival_with_h2_hours": None,
+            "green_exhaust_slot": None,
+            "green_exhaust_time": "",
+            "green_renewable_share_pct": None,
+            "storage_init_soc_pct": round(float(raw_init_soc) * 100.0, 2) if raw_init_soc is not None else None,
+            "storage_min_soc_24h_pct": None,
+            "storage_total_kwh": round(float(raw_total_kwh), 2) if raw_total_kwh else 0.0,
+            "storage_usable_kwh": None,
+            "storage_max_discharge_kw": round(float(storage.get("max_discharge_kw") or 0.0), 2),
+            "storage_cold_factor": None,
+            "deficit_total_kwh": None,
+            "max_deficit_kw": None,
+        }
 
-    first_cold = float(points[0].get("storage_cold_factor", 1.0)) if points else 1.0
+    total_kwh = float(raw_total_kwh)
+    init_soc = max(0.0, min(1.0, float(raw_init_soc)))
+    max_chg_kw = max(1.0, float(storage.get("max_charge_kw") or total_kwh))
+    max_dis_kw = max(1.0, float(storage.get("max_discharge_kw") or total_kwh))
+    h2_extra_kwh = storage.get("h2_usable_kwh")
+    has_h2 = h2_extra_kwh is not None and float(h2_extra_kwh) > 0.0
+
+    first_cold = float(points[0].get("storage_cold_factor", 1.0))
     init_usable_kwh = max(0.0, (init_soc - soc_min) * total_kwh * first_cold)
 
     # 极端无风光保底维生时长（此刻风光骤降为 0、纯靠当前电化学储能能撑多久）
-    load_now = max(1.0, float(points[0]["load_kw"])) if points else 150.0
-    no_ren_hours = (init_usable_kwh * eff_sqrt) / load_now
+    load_now = float(points[0]["load_kw"])
+    no_ren_hours = ((init_usable_kwh * eff_sqrt) / load_now) if load_now > 1e-6 else None
 
     # 逐点纯电化学仿真
     soc = init_soc
@@ -844,9 +1026,9 @@ def simulate_green_survival(
     total_load_kwh = 0.0
     green_served_kwh = 0.0
 
-    # 同步跑一条“含氢储能扩展”仿真用于双口径参考
-    h2_rem_kwh = h2_extra_kwh
-    h2_exhausted = False
+    # 仅在数据库存在真实氢储电容量时才计算含储氢扩展口径
+    h2_rem_kwh = float(h2_extra_kwh) if has_h2 else 0.0
+    h2_exhausted = not has_h2
     h2_survival_hours = 0.0
 
     for pt in points:
@@ -944,8 +1126,8 @@ def simulate_green_survival(
         "green_survival_minutes": int(round(survival_hours * 60.0)),
         "green_survival_capped": 1 if capped else 0,
         "green_survival_extrap_hours": round(extrap_hours, 2),
-        "green_survival_no_ren_hours": round(no_ren_hours, 2),
-        "green_survival_with_h2_hours": round(h2_survival_hours, 2),
+        "green_survival_no_ren_hours": round(no_ren_hours, 2) if no_ren_hours is not None else None,
+        "green_survival_with_h2_hours": round(h2_survival_hours, 2) if has_h2 else None,
         "green_exhaust_slot": exhaust_slot,
         "green_exhaust_time": exhaust_time,
         "green_renewable_share_pct": round(min(100.0, max(0.0, ren_share_pct)), 2),
@@ -987,7 +1169,7 @@ def run_ew_analysis(
     warn_pct = float(eff.get("overload_warn_pct", 80.0))
     lim_pct = float(eff.get("overload_limit_pct", 100.0))
 
-    # 1. 基态潮流标定（优先取最新收敛 LF 断面 + CA 结果）
+    # 1. 基态潮流标定（严格取最新收敛 LF 断面 + CA 结果，无 LF 断面绝不编造假基态与假支路）
     lf_latest = (lf_snap or {}).get("latest") or {}
     lf_buses = list((lf_snap or {}).get("buses") or [])
     lf_branches = list((lf_snap or {}).get("branches") or [])
@@ -995,55 +1177,55 @@ def run_ew_analysis(
     source_lf_run_id = int(lf_latest["run_id"]) if lf_latest.get("run_id") is not None else None
     source_ca_run_id = int(ca_latest["run_id"]) if ca_latest.get("run_id") is not None else None
 
-    base_load_kw = max(60.0, _finite(lf_latest.get("total_load_p"), 260.0))
-    base_max_loading = _finite(lf_latest.get("max_loading_pct"), _finite(ca_latest.get("max_loading_pct"), 48.0))
+    raw_lf_load = lf_latest.get("total_load_p")
+    base_load_kw: float | None = float(raw_lf_load) if raw_lf_load is not None and _finite(raw_lf_load, 0.0) > 0 else None
+    raw_lf_ld = lf_latest.get("max_loading_pct") if lf_latest.get("max_loading_pct") is not None else ca_latest.get("max_loading_pct")
+    base_max_loading: float | None = float(raw_lf_ld) if raw_lf_ld is not None else None
+
     # 过滤停运/弱联络孤岛异常母线，取有效运行主网母线电压作为 96 点推演基态
     active_bus_vs = [
         float(b["v_pu"])
         for b in lf_buses
         if b.get("v_pu") is not None and 0.85 <= _finite(b.get("v_pu"), 0.0) <= 1.15
     ]
-    raw_min_v = min(active_bus_vs) if active_bus_vs else _finite(lf_latest.get("min_v_pu"), _finite(ca_latest.get("min_v_pu"), 0.985))
-    raw_max_v = max(active_bus_vs) if active_bus_vs else _finite(lf_latest.get("max_v_pu"), _finite(ca_latest.get("max_v_pu"), 1.022))
-    base_min_v = raw_min_v if 0.85 <= raw_min_v <= 1.05 else 0.985
-    base_max_v = raw_max_v if 0.95 <= raw_max_v <= 1.15 else 1.022
+    raw_min_v = min(active_bus_vs) if active_bus_vs else (
+        lf_latest.get("min_v_pu") if lf_latest.get("min_v_pu") is not None else ca_latest.get("min_v_pu")
+    )
+    raw_max_v = max(active_bus_vs) if active_bus_vs else (
+        lf_latest.get("max_v_pu") if lf_latest.get("max_v_pu") is not None else ca_latest.get("max_v_pu")
+    )
+    base_min_v: float | None = float(raw_min_v) if (raw_min_v is not None and 0.85 <= _finite(raw_min_v, 0.0) <= 1.05) else None
+    base_max_v: float | None = float(raw_max_v) if (raw_max_v is not None and 0.95 <= _finite(raw_max_v, 0.0) <= 1.15) else None
 
-    # 提取关键支路/换流器作为 N-1 评估对象（按基态负载率与优先级排序）
+    # 提取关键支路/换流器作为 N-1 评估对象（严格来自真实 LF 支路结果，无数据则留空）
     branch_profiles: list[dict[str, Any]] = []
     for br in lf_branches:
         ld = _finite(br.get("loading_pct"), 0.0)
         btype = str(br.get("branch_type") or br.get("device_type") or "ACBranch")
         bname = str(br.get("name") or br.get("device_name") or f"{btype}-{br.get('idx', '')}")
-        # 换流器与高载支路在 N-1 下具有更高功率转移放大系数
         transfer_factor = 1.48 if "Converter" in btype else 1.32
         branch_profiles.append({
             "name": bname,
             "type": btype,
-            "base_loading": max(8.0, ld),
+            "base_loading": max(0.0, ld),
             "transfer_factor": transfer_factor,
         })
     branch_profiles.sort(key=lambda x: (-x["base_loading"], x["name"]))
-    if not branch_profiles:
-        branch_profiles = [
-            {"name": "交直流互联换流器-1", "type": "DCACConverter", "base_loading": max(35.0, base_max_loading), "transfer_factor": 1.50},
-            {"name": "交流主联络线路-1", "type": "ACBranch", "base_loading": max(28.0, base_max_loading * 0.85), "transfer_factor": 1.35},
-            {"name": "直流母线主支路-1", "type": "DCBranch", "base_loading": max(24.0, base_max_loading * 0.78), "transfer_factor": 1.30},
-        ]
 
-    # 从 CA 预想故障库提取核心 N-1 设备（优先使用用户启用的设备）
+    # 从 CA 预想故障库提取核心 N-1 设备（严格来自数据库，无则仅从真实 LF 支路生成）
     n1_defs = [c for c in (contingencies or []) if str(c.get("category") or "N-1") == "N-1" and int(c.get("enabled", 1)) == 1]
     n1_defs.sort(key=lambda x: (int(x.get("priority") or 50), str(x.get("name") or "")))
     n1_defs = n1_defs[:max_n1_dev]
-    if not n1_defs:
+    if not n1_defs and branch_profiles:
         n1_defs = [
             {"name": f"N-1:{bp['name']}", "target_desc": bp["name"], "priority": 10 + idx}
             for idx, bp in enumerate(branch_profiles[:min(6, max_n1_dev)])
         ]
 
-    # 2. 采集全站实时储能容量与 SOC
+    # 2. 采集全站真实储能容量与实时 SOC（devices.db + scdfe_d.db）
     storage = collect_storage_inventory(model_tables, scada_db_path)
 
-    # 3. 尝试直连三大预测数据库（renewgen.db / load.db / weather.db）
+    # 3. 严格直连三大预测数据库（renewgen.db / load.db / weather.db）
     rg_path = _resolve_db_path(eff["renewgen_db_path"], workspace_dir)
     ld_path = _resolve_db_path(eff["load_db_path"], workspace_dir)
     wx_path = _resolve_db_path(eff["weather_db_path"], workspace_dir)
@@ -1055,9 +1237,9 @@ def run_ew_analysis(
     if connected_cnt == 3:
         forecast_source = "forecast_db"
     elif connected_cnt > 0:
-        forecast_source = "hybrid_db_polar"
+        forecast_source = "partial_forecast_db"
     else:
-        forecast_source = "polar_synthesis"
+        forecast_source = "missing"
 
     overrides_map = {int(o["slot_idx"]): o for o in (overrides or [])}
     points, scenario_label = _build_96_forecast_series(
@@ -1073,25 +1255,27 @@ def run_ew_analysis(
         weather_series=wx_series,
     )
 
-    # 4. 逐点纯绿电维生时长精确物理仿真
+    # 4. 逐点纯绿电维生时长精确物理仿真（无真实预测点或无真实储能时返回 None，不伪造）
     green_stats = simulate_green_survival(points, storage, eff)
 
-    # 5. 对未来 96 个时间点执行 N-0 + N-1 + 气象突变扰动扫描与潜在风险提取
+    # 5. 对真实预测点执行 N-0 / N-1 / 气象扰动 / 绿电维生扫描
     risks: list[dict[str, Any]] = []
     soc_min_pct = float(eff.get("storage_min_soc", 0.15)) * 100.0
     soc_warn_pct = min(40.0, soc_min_pct + 12.0)
 
-    global_max_load_pct = 0.0
-    global_max_load_slot = 0
-    global_max_load_time = points[0]["time_label"] if points else ""
-    global_max_load_dev = branch_profiles[0]["name"]
+    has_lf_grid = (base_load_kw is not None and (branch_profiles or base_max_loading is not None) and base_min_v is not None)
+    lead_branch = branch_profiles[0] if branch_profiles else None
+    global_max_load_pct: float | None = None
+    global_max_load_slot: int | None = None
+    global_max_load_time = ""
+    global_max_load_dev = lead_branch["name"] if lead_branch else ""
     global_min_v: float | None = None
-    global_min_v_slot = 0
-    global_min_v_time = points[0]["time_label"] if points else ""
+    global_min_v_slot: int | None = None
+    global_min_v_time = ""
     global_max_v: float | None = None
 
-    worst_slot = 0
-    worst_time = points[0]["time_label"] if points else ""
+    worst_slot: int | None = None
+    worst_time = ""
     worst_event = ""
     worst_rank = (-1, 0.0)
 
@@ -1103,110 +1287,113 @@ def run_ew_analysis(
     green_warn_emitted = False
     green_deplete_emitted = False
 
-    lead_branch = branch_profiles[0]
     for pt in points:
         slot = int(pt["slot_idx"])
         t_lbl = str(pt["time_label"])
         load_kw = float(pt["load_kw"])
         ren_kw = float(pt["renewable_kw"])
         net_kw = abs(float(pt["net_load_kw"]))
-        load_ratio = max(0.35, max(load_kw, ren_kw * 0.92, net_kw * 1.15) / max(1.0, base_load_kw))
 
-        # N-0 未来时段基态支路负载与电压偏移模型
-        n0_loading = round(min(185.0, lead_branch["base_loading"] * (0.35 + 0.65 * load_ratio)), 2)
-        v_drop_base = max(0.008, 1.0 - base_min_v)
-        n0_min_v = round(max(0.78, 1.0 - v_drop_base * (0.45 + 0.65 * (load_kw / max(1.0, base_load_kw)))), 4)
-        # 新能源大发轻载时电压抬升
-        surplus_ratio = max(0.0, (ren_kw - load_kw) / max(1.0, base_load_kw))
-        n0_max_v = round(min(1.16, max(base_max_v, 1.01) + 0.032 * surplus_ratio), 4)
+        n0_loading: float | None = None
+        n0_min_v: float | None = None
+        n0_max_v: float | None = None
+        n1_max_loading: float | None = None
+        n1_min_v: float | None = None
+        n1_worst_dev = lead_branch["name"] if lead_branch else ""
 
         slot_risks: list[dict[str, Any]] = []
         slot_n1_risks = 0
         slot_wx_risks = 0
 
-        # 5.1 N-0 越限检查
-        if n0_loading >= warn_pct:
-            sev = "critical" if n0_loading >= lim_pct * 1.15 else ("high" if n0_loading >= lim_pct else "medium")
-            slot_risks.append({
-                "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "overload",
-                "severity": sev, "contingency_name": "未来基态 N-0", "device_type": lead_branch["type"],
-                "device_name": lead_branch["name"], "metric": "loading_pct",
-                "actual_value": n0_loading, "limit_value": lim_pct if n0_loading >= lim_pct else warn_pct,
-                "violation_pct": round(max(0.0, n0_loading - warn_pct), 2), "unit": "%",
-                "detail": f"{t_lbl} 预测负荷 {load_kw:.1f} kW，{lead_branch['name']} 负载率达 {n0_loading:.1f}%",
-                "advice": "提前安排储能错峰放电或调节电制氢负荷，降低通道重载风险",
-            })
-        if n0_min_v < v_min:
-            sev = "critical" if n0_min_v < v_min - 0.04 else "high"
-            slot_risks.append({
-                "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "undervoltage",
-                "severity": sev, "contingency_name": "未来基态 N-0", "device_type": "ACNode",
-                "device_name": "站区核心母线", "metric": "v_pu",
-                "actual_value": n0_min_v, "limit_value": v_min,
-                "violation_pct": round((v_min - n0_min_v) / v_min * 100.0, 2), "unit": "pu",
-                "detail": f"{t_lbl} 预测重负荷时段母线电压跌至 {n0_min_v:.4f} pu（下限 {v_min:.2f} pu）",
-                "advice": "提前投入换流器无功电压支撑并预留储能有功支撑裕度",
-            })
-        elif n0_max_v > v_max:
-            sev = "high" if n0_max_v > v_max + 0.03 else "medium"
-            slot_risks.append({
-                "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "overvoltage",
-                "severity": sev, "contingency_name": "未来基态 N-0", "device_type": "DCNode",
-                "device_name": "新能源汇集母线", "metric": "v_pu",
-                "actual_value": n0_max_v, "limit_value": v_max,
-                "violation_pct": round((n0_max_v - v_max) / v_max * 100.0, 2), "unit": "pu",
-                "detail": f"{t_lbl} 风光大发（{ren_kw:.1f} kW）致母线电压抬升至 {n0_max_v:.4f} pu",
-                "advice": "安排储能充电消纳或启动电制氢制荷，必要时平滑限电",
-            })
+        if has_lf_grid and base_load_kw is not None and base_min_v is not None:
+            ref_base_ld = lead_branch["base_loading"] if lead_branch else float(base_max_loading or 0.0)
+            load_ratio = max(0.25, max(load_kw, ren_kw * 0.92, net_kw * 1.15) / max(1.0, base_load_kw))
+            n0_loading = round(min(185.0, ref_base_ld * (0.35 + 0.65 * load_ratio)), 2)
+            v_drop_base = max(0.004, 1.0 - base_min_v)
+            n0_min_v = round(max(0.78, 1.0 - v_drop_base * (0.45 + 0.65 * (load_kw / max(1.0, base_load_kw)))), 4)
+            surplus_ratio = max(0.0, (ren_kw - load_kw) / max(1.0, base_load_kw))
+            n0_max_v = round(min(1.16, max(base_max_v or 1.0, 1.0) + 0.032 * surplus_ratio), 4)
 
-        # 5.2 N-1 预想故障扫描（评估该时段下关键设备退出后的转移负载与电压跌落）
-        n1_max_loading = n0_loading
-        n1_min_v = n0_min_v
-        n1_worst_dev = lead_branch["name"]
-        if scan_n1 and n1_defs:
-            for c_idx, cdef in enumerate(n1_defs):
-                cname = str(cdef.get("name") or f"N-1#{c_idx + 1}")
-                is_conv = ("换流" in cname) or ("Converter" in cname) or ("变流" in cname)
-                tf = 1.46 if is_conv else 1.28
-                # 不同设备随索引微调耦合灵敏度，保证物理分布合理
-                sens = max(0.72, 1.0 - c_idx * 0.035)
-                cand_load = round(min(210.0, n0_loading * tf * sens), 2)
-                cand_v = round(max(0.75, n0_min_v - (0.028 if is_conv else 0.017) * load_ratio * sens), 4)
-                if cand_load > n1_max_loading:
-                    n1_max_loading = cand_load
-                    n1_worst_dev = cname
-                if cand_v < n1_min_v:
-                    n1_min_v = cand_v
-                if cand_load >= lim_pct and slot_n1_risks < 2:
-                    sev = "critical" if cand_load >= lim_pct * 1.2 else "high"
-                    slot_n1_risks += 1
-                    slot_risks.append({
-                        "slot_idx": slot, "time_label": t_lbl, "category": "N-1", "risk_category": "overload",
-                        "severity": sev, "contingency_name": cname, "device_type": "DCACConverter" if is_conv else "ACBranch",
-                        "device_name": str(cdef.get("target_desc") or cname), "metric": "loading_pct",
-                        "actual_value": cand_load, "limit_value": lim_pct,
-                        "violation_pct": round(cand_load - lim_pct, 2), "unit": "%",
-                        "detail": f"{t_lbl} 预想故障 [{cname}] 后重载转移至 {cand_load:.1f}%（限值 {lim_pct:.0f}%）",
-                        "advice": "提前降低该通道运行负载率，确保 N-1 发生时备用通道不过载",
-                    })
-                elif cand_v < v_min and slot_n1_risks < 2:
-                    sev = "critical" if cand_v < v_min - 0.04 else "high"
-                    slot_n1_risks += 1
-                    slot_risks.append({
-                        "slot_idx": slot, "time_label": t_lbl, "category": "N-1", "risk_category": "undervoltage",
-                        "severity": sev, "contingency_name": cname, "device_type": "ACNode",
-                        "device_name": str(cdef.get("target_desc") or cname), "metric": "v_pu",
-                        "actual_value": cand_v, "limit_value": v_min,
-                        "violation_pct": round((v_min - cand_v) / v_min * 100.0, 2), "unit": "pu",
-                        "detail": f"{t_lbl} 预想故障 [{cname}] 后母线最低电压跌至 {cand_v:.4f} pu",
-                        "advice": "加强交直流母线无功电压调节，避免单故障引发局部失压",
-                    })
+            # 5.1 N-0 越限检查
+            if n0_loading >= warn_pct and lead_branch is not None:
+                sev = "critical" if n0_loading >= lim_pct * 1.15 else ("high" if n0_loading >= lim_pct else "medium")
+                slot_risks.append({
+                    "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "overload",
+                    "severity": sev, "contingency_name": "未来基态 N-0", "device_type": lead_branch["type"],
+                    "device_name": lead_branch["name"], "metric": "loading_pct",
+                    "actual_value": n0_loading, "limit_value": lim_pct if n0_loading >= lim_pct else warn_pct,
+                    "violation_pct": round(max(0.0, n0_loading - warn_pct), 2), "unit": "%",
+                    "detail": f"{t_lbl} 预测负荷 {load_kw:.1f} kW，{lead_branch['name']} 负载率达 {n0_loading:.1f}%",
+                    "advice": "提前安排储能错峰放电或调节电制氢负荷，降低通道重载风险",
+                })
+            if n0_min_v < v_min:
+                sev = "critical" if n0_min_v < v_min - 0.04 else "high"
+                slot_risks.append({
+                    "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "undervoltage",
+                    "severity": sev, "contingency_name": "未来基态 N-0", "device_type": "ACNode",
+                    "device_name": "站区核心母线", "metric": "v_pu",
+                    "actual_value": n0_min_v, "limit_value": v_min,
+                    "violation_pct": round((v_min - n0_min_v) / v_min * 100.0, 2), "unit": "pu",
+                    "detail": f"{t_lbl} 预测重负荷时段母线电压跌至 {n0_min_v:.4f} pu（下限 {v_min:.2f} pu）",
+                    "advice": "提前投入换流器无功电压支撑并预留储能有功支撑裕度",
+                })
+            elif n0_max_v > v_max:
+                sev = "high" if n0_max_v > v_max + 0.03 else "medium"
+                slot_risks.append({
+                    "slot_idx": slot, "time_label": t_lbl, "category": "N-0", "risk_category": "overvoltage",
+                    "severity": sev, "contingency_name": "未来基态 N-0", "device_type": "DCNode",
+                    "device_name": "新能源汇集母线", "metric": "v_pu",
+                    "actual_value": n0_max_v, "limit_value": v_max,
+                    "violation_pct": round((n0_max_v - v_max) / v_max * 100.0, 2), "unit": "pu",
+                    "detail": f"{t_lbl} 风光大发（{ren_kw:.1f} kW）致母线电压抬升至 {n0_max_v:.4f} pu",
+                    "advice": "安排储能充电消纳或启动电制氢制荷，必要时平滑限电",
+                })
 
-        # 5.3 未来时段气象/负荷突发扰动分析（风速超切出、暴风雪骤降、极寒负荷陡升）
+            # 5.2 N-1 预想故障扫描
+            n1_max_loading = n0_loading
+            n1_min_v = n0_min_v
+            if scan_n1 and n1_defs:
+                for c_idx, cdef in enumerate(n1_defs):
+                    cname = str(cdef.get("name") or f"N-1#{c_idx + 1}")
+                    is_conv = ("换流" in cname) or ("Converter" in cname) or ("变流" in cname)
+                    tf = 1.46 if is_conv else 1.28
+                    sens = max(0.72, 1.0 - c_idx * 0.035)
+                    cand_load = round(min(210.0, n0_loading * tf * sens), 2)
+                    cand_v = round(max(0.75, n0_min_v - (0.028 if is_conv else 0.017) * load_ratio * sens), 4)
+                    if cand_load > n1_max_loading:
+                        n1_max_loading = cand_load
+                        n1_worst_dev = cname
+                    if cand_v < n1_min_v:
+                        n1_min_v = cand_v
+                    if cand_load >= lim_pct and slot_n1_risks < 2:
+                        sev = "critical" if cand_load >= lim_pct * 1.2 else "high"
+                        slot_n1_risks += 1
+                        slot_risks.append({
+                            "slot_idx": slot, "time_label": t_lbl, "category": "N-1", "risk_category": "overload",
+                            "severity": sev, "contingency_name": cname, "device_type": "DCACConverter" if is_conv else "ACBranch",
+                            "device_name": str(cdef.get("target_desc") or cname), "metric": "loading_pct",
+                            "actual_value": cand_load, "limit_value": lim_pct,
+                            "violation_pct": round(cand_load - lim_pct, 2), "unit": "%",
+                            "detail": f"{t_lbl} 预想故障 [{cname}] 后重载转移至 {cand_load:.1f}%（限值 {lim_pct:.0f}%）",
+                            "advice": "提前降低该通道运行负载率，确保 N-1 发生时备用通道不过载",
+                        })
+                    elif cand_v < v_min and slot_n1_risks < 2:
+                        sev = "critical" if cand_v < v_min - 0.04 else "high"
+                        slot_n1_risks += 1
+                        slot_risks.append({
+                            "slot_idx": slot, "time_label": t_lbl, "category": "N-1", "risk_category": "undervoltage",
+                            "severity": sev, "contingency_name": cname, "device_type": "ACNode",
+                            "device_name": str(cdef.get("target_desc") or cname), "metric": "v_pu",
+                            "actual_value": cand_v, "limit_value": v_min,
+                            "violation_pct": round((v_min - cand_v) / v_min * 100.0, 2), "unit": "pu",
+                            "detail": f"{t_lbl} 预想故障 [{cname}] 后母线最低电压跌至 {cand_v:.4f} pu",
+                            "advice": "加强交直流母线无功电压调节，避免单故障引发局部失压",
+                        })
+
+        # 5.3 未来时段气象/负荷突发扰动分析（基于真实预测风速与真实储能放电能力）
         if scan_weather:
-            # 突发静风/无光扰动：假设该时刻全部新能源骤降 70%，校核功率缺口与储能放电功率上限
             shock_net_kw = load_kw - ren_kw * 0.30
-            max_dis = float(storage["max_discharge_kw"])
+            max_dis = float(storage.get("max_discharge_kw") or 0.0)
             if float(pt["wind_speed_ms"]) >= 28.0 or int(pt["snow_icing_level"]) >= 3:
                 sev = "critical" if (float(pt["wind_speed_ms"]) >= 35.0 or int(pt["snow_icing_level"]) >= 3) else "high"
                 slot_wx_risks += 1
@@ -1219,7 +1406,7 @@ def run_ew_analysis(
                     "detail": f"{t_lbl} 预测风速 {pt['wind_speed_ms']} m/s（覆冰等级 {pt['snow_icing_level']}），存在风机切出停机与光伏积雪遮挡风险",
                     "advice": "提前将储能充至高位 SOC（≥85%），必要时将柴发置热备用",
                 })
-            elif shock_net_kw > max_dis * 0.85:
+            elif max_dis > 0 and shock_net_kw > max_dis * 0.85:
                 sev = "high" if shock_net_kw > max_dis else "medium"
                 slot_wx_risks += 1
                 slot_risks.append({
@@ -1232,33 +1419,34 @@ def run_ew_analysis(
                     "advice": "预留旋转备用与可中断电制氢切荷策略，防范瞬时功率失衡",
                 })
 
-        # 5.4 绿电维生告警（储能低 SOC 警戒 & 绿电枯竭时刻）
-        soc_pct = float(pt["storage_soc_pct"])
-        deficit_kw = float(pt["green_deficit_kw"])
-        if deficit_kw > 0.5 and not green_deplete_emitted:
-            green_deplete_emitted = True
-            green_risk_total += 1
-            slot_risks.append({
-                "slot_idx": slot, "time_label": t_lbl, "category": "Green", "risk_category": "green_depletion",
-                "severity": "critical", "contingency_name": "绿电维生触底耗尽", "device_type": "Storage",
-                "device_name": "全站电化学储能群", "metric": "storage_soc_pct",
-                "actual_value": soc_pct, "limit_value": soc_min_pct,
-                "violation_pct": round(deficit_kw / max(1.0, load_kw) * 100.0, 1), "unit": "%",
-                "detail": f"{t_lbl}（+{slot * step_min / 60.0:.2f}h）电化学储能触及保护下限 {soc_min_pct:.0f}%，纯绿电缺口 {deficit_kw:.1f} kW",
-                "advice": "提前启动燃料电池/柴发并网补能，或对非关键科考/制氢负荷实施有序分级减载",
-            })
-        elif soc_pct <= soc_warn_pct and not green_warn_emitted and not green_deplete_emitted:
-            green_warn_emitted = True
-            green_risk_total += 1
-            slot_risks.append({
-                "slot_idx": slot, "time_label": t_lbl, "category": "Green", "risk_category": "green_depletion",
-                "severity": "high", "contingency_name": "绿电储能 SOC 低位预警", "device_type": "Storage",
-                "device_name": "全站电化学储能群", "metric": "storage_soc_pct",
-                "actual_value": soc_pct, "limit_value": soc_warn_pct,
-                "violation_pct": round(max(0.0, soc_warn_pct - soc_pct), 1), "unit": "%",
-                "detail": f"{t_lbl} 储能 SOC 预计降至 {soc_pct:.1f}%（低位警戒线 {soc_warn_pct:.0f}%）",
-                "advice": "暂停非必要电制氢负荷，优先保障站区基础生命线供电",
-            })
+        # 5.4 绿电维生告警（仅当存在真实储能仿真结果）
+        soc_pct = pt.get("storage_soc_pct")
+        deficit_kw = float(pt.get("green_deficit_kw") or 0.0)
+        if soc_pct is not None:
+            if deficit_kw > 0.5 and not green_deplete_emitted:
+                green_deplete_emitted = True
+                green_risk_total += 1
+                slot_risks.append({
+                    "slot_idx": slot, "time_label": t_lbl, "category": "Green", "risk_category": "green_depletion",
+                    "severity": "critical", "contingency_name": "绿电维生触底耗尽", "device_type": "Storage",
+                    "device_name": "全站电化学储能群", "metric": "storage_soc_pct",
+                    "actual_value": float(soc_pct), "limit_value": soc_min_pct,
+                    "violation_pct": round(deficit_kw / max(1.0, load_kw) * 100.0, 1), "unit": "%",
+                    "detail": f"{t_lbl}（+{slot * step_min / 60.0:.2f}h）电化学储能触及保护下限 {soc_min_pct:.0f}%，纯绿电缺口 {deficit_kw:.1f} kW",
+                    "advice": "提前启动燃料电池/柴发并网补能，或对非关键科考/制氢负荷实施有序分级减载",
+                })
+            elif float(soc_pct) <= soc_warn_pct and not green_warn_emitted and not green_deplete_emitted:
+                green_warn_emitted = True
+                green_risk_total += 1
+                slot_risks.append({
+                    "slot_idx": slot, "time_label": t_lbl, "category": "Green", "risk_category": "green_depletion",
+                    "severity": "high", "contingency_name": "绿电储能 SOC 低位预警", "device_type": "Storage",
+                    "device_name": "全站电化学储能群", "metric": "storage_soc_pct",
+                    "actual_value": float(soc_pct), "limit_value": soc_warn_pct,
+                    "violation_pct": round(max(0.0, soc_warn_pct - float(soc_pct)), 1), "unit": "%",
+                    "detail": f"{t_lbl} 储能 SOC 预计降至 {float(soc_pct):.1f}%（低位警戒线 {soc_warn_pct:.0f}%）",
+                    "advice": "暂停非必要电制氢负荷，优先保障站区基础生命线供电",
+                })
 
         # 汇总单点风险等级与评分
         top_sev = "normal"
@@ -1273,7 +1461,6 @@ def run_ew_analysis(
         n1_risk_total += slot_n1_risks
         weather_risk_total += slot_wx_risks
 
-        # 估算单点综合安全分（0-100）
         pt_score = 100.0
         pt_score -= sum(22.0 if r["severity"] == "critical" else (12.0 if r["severity"] == "high" else 5.0) for r in slot_risks)
         if deficit_kw > 0.5:
@@ -1295,58 +1482,71 @@ def run_ew_analysis(
 
         risks.extend(slot_risks)
 
-        if n1_max_loading > global_max_load_pct:
+        if n1_max_loading is not None and (global_max_load_pct is None or n1_max_loading > global_max_load_pct):
             global_max_load_pct = n1_max_loading
             global_max_load_slot = slot
             global_max_load_time = t_lbl
             global_max_load_dev = n1_worst_dev
-        if global_min_v is None or n1_min_v < global_min_v:
+        if n1_min_v is not None and (global_min_v is None or n1_min_v < global_min_v):
             global_min_v = n1_min_v
             global_min_v_slot = slot
             global_min_v_time = t_lbl
-        if global_max_v is None or n0_max_v > global_max_v:
+        if n0_max_v is not None and (global_max_v is None or n0_max_v > global_max_v):
             global_max_v = n0_max_v
 
-        rank_key = (SEVERITY_RANK.get(top_sev, 0), n1_max_loading)
+        rank_key = (SEVERITY_RANK.get(top_sev, 0), float(n1_max_loading or 0.0))
         if rank_key > worst_rank and top_event:
             worst_rank = rank_key
             worst_slot = slot
             worst_time = t_lbl
             worst_event = f"{t_lbl} · {top_event}"
 
-    # 6. 综合预警评分与定级（结合绿电维生时长、96点风险比例与最严重越限）
-    avg_pt_score = sum(float(p["security_score"]) for p in points) / max(1, len(points))
-    green_factor = min(1.0, float(green_stats["green_survival_hours"]) / 24.0)
-    ew_score = round(max(10.0, min(100.0, avg_pt_score * 0.72 + (60.0 + 40.0 * green_factor) * 0.28)), 1)
-    if sev_counts["critical"] > 0 or float(green_stats["green_survival_hours"]) < 6.0:
-        ew_risk_level = "危急"
-    elif sev_counts["high"] > 0 or float(green_stats["green_survival_hours"]) < 12.0:
-        ew_risk_level = "警戒"
-    elif sev_counts["medium"] > 0 or float(green_stats["green_survival_hours"]) < 24.0:
-        ew_risk_level = "关注"
+    # 6. 综合预警评分与定级（无真实预测数据时明确回报空态，不伪造评分）
+    if not points:
+        ew_score: float | None = None
+        ew_risk_level = "无数据"
+        grade, glabel = "—", "无预测数据"
+        missing_dbs = [x["kind"] + ".db" for x in (rg_info, ld_info, wx_info) if not x["connected"]]
+        summary_text = f"缺少真实预测库数据（{', '.join(missing_dbs)}），未生成虚假预测"
     else:
-        ew_risk_level = "安全"
+        avg_pt_score = sum(float(p["security_score"]) for p in points) / len(points)
+        g_hours = green_stats.get("green_survival_hours")
+        if g_hours is not None:
+            green_factor = min(1.0, float(g_hours) / 24.0)
+            ew_score = round(max(10.0, min(100.0, avg_pt_score * 0.72 + (60.0 + 40.0 * green_factor) * 0.28)), 1)
+        else:
+            ew_score = round(max(10.0, min(100.0, avg_pt_score)), 1)
 
-    if ew_score >= 90:
-        grade, glabel = "A", "优秀"
-    elif ew_score >= 80:
-        grade, glabel = "B", "良好"
-    elif ew_score >= 68:
-        grade, glabel = "C", "关注"
-    elif ew_score >= 52:
-        grade, glabel = "D", "警戒"
-    else:
-        grade, glabel = "E", "危急"
+        if sev_counts["critical"] > 0 or (g_hours is not None and float(g_hours) < 6.0):
+            ew_risk_level = "危急"
+        elif sev_counts["high"] > 0 or (g_hours is not None and float(g_hours) < 12.0):
+            ew_risk_level = "警戒"
+        elif sev_counts["medium"] > 0 or (g_hours is not None and float(g_hours) < 24.0):
+            ew_risk_level = "关注"
+        else:
+            ew_risk_level = "安全"
 
-    surv_txt = (
-        f"≥{green_stats['green_survival_hours']:.1f}h（外推 {green_stats['green_survival_extrap_hours']:.1f}h）"
-        if green_stats["green_survival_capped"]
-        else f"{green_stats['green_survival_hours']:.2f}h（{green_stats['green_exhaust_time']} 触底）"
-    )
-    summary_text = (
-        f"未来 24h（{horizon}点·{scenario_label}）绿电维生时长 {surv_txt}，"
-        f"检出风险时段 {risk_slots_count}/{horizon}，综合预警评分 {ew_score:.1f}（{grade}级·{ew_risk_level}）"
-    )
+        if ew_score >= 90:
+            grade, glabel = "A", "优秀"
+        elif ew_score >= 80:
+            grade, glabel = "B", "良好"
+        elif ew_score >= 68:
+            grade, glabel = "C", "关注"
+        elif ew_score >= 52:
+            grade, glabel = "D", "警戒"
+        else:
+            grade, glabel = "E", "危急"
+
+        if g_hours is None:
+            surv_txt = "—（缺少储能模型或实时SOC）"
+        elif green_stats["green_survival_capped"]:
+            surv_txt = f"≥{float(g_hours):.1f}h（外推 {float(green_stats['green_survival_extrap_hours']):.1f}h）"
+        else:
+            surv_txt = f"{float(g_hours):.2f}h（{green_stats['green_exhaust_time']} 触底）"
+        summary_text = (
+            f"未来 24h（{len(points)}点·{scenario_label}）绿电维生时长 {surv_txt}，"
+            f"检出风险时段 {risk_slots_count}/{len(points)}，综合预警评分 {ew_score:.1f}（{grade}级·{ew_risk_level}）"
+        )
 
     elapsed = round(time.perf_counter() - t0, 3)
     return {
@@ -1356,7 +1556,7 @@ def run_ew_analysis(
         "forecast_source": forecast_source,
         "forecast_scenario": str(eff.get("forecast_scenario") or "auto"),
         "scenario_label": scenario_label,
-        "horizon_points": horizon,
+        "horizon_points": len(points),
         "step_minutes": step_min,
         "risk_level": ew_risk_level,
         "security_score": ew_score,
@@ -1370,7 +1570,7 @@ def run_ew_analysis(
         "n1_risk_count": n1_risk_total,
         "weather_risk_count": weather_risk_total,
         "green_risk_count": green_risk_total,
-        "max_loading_pct": round(global_max_load_pct, 2),
+        "max_loading_pct": round(global_max_load_pct, 2) if global_max_load_pct is not None else None,
         "max_loading_slot": global_max_load_slot,
         "max_loading_time": global_max_load_time,
         "max_loading_dev": global_max_load_dev,
@@ -1382,11 +1582,11 @@ def run_ew_analysis(
         "worst_time": worst_time,
         "worst_event": worst_event,
         **green_stats,
-        "forecast_load_peak_kw": round(max((float(p["load_kw"]) for p in points), default=0.0), 2),
-        "forecast_ren_peak_kw": round(max((float(p["renewable_kw"]) for p in points), default=0.0), 2),
+        "forecast_load_peak_kw": round(max((float(p["load_kw"]) for p in points), default=0.0), 2) if points else None,
+        "forecast_ren_peak_kw": round(max((float(p["renewable_kw"]) for p in points), default=0.0), 2) if points else None,
         "elapsed_seconds": elapsed,
         "weather_snapshot": {
-            **(weather_state or DEFAULT_WEATHER_STATE),
+            **(weather_state or {}),
             "data_sources": {"renewgen": rg_info, "load": ld_info, "weather": wx_info},
         },
         "storage_units": storage["units"] + storage["h2_units"],
@@ -1453,12 +1653,12 @@ def persist_ew_run(conn: sqlite3.Connection, result: dict[str, Any], *, source: 
         [
             (
                 ew_run_id, p["slot_idx"], p["time_label"], p["timestamp"],
-                p["irradiance_wm2"], p["wind_speed_ms"], p["ambient_temp_c"], p["snow_icing_level"],
-                p["wind_kw"], p["pv_kw"], p["renewable_kw"], p["load_kw"], p["net_load_kw"],
-                p["storage_soc_pct"], p["storage_power_kw"], p["storage_usable_kwh"], p["green_deficit_kw"], p["green_alive"],
-                p["n0_max_loading_pct"], p.get("n0_min_v_pu"), p.get("n0_max_v_pu"),
-                p["n1_max_loading_pct"], p.get("n1_min_v_pu"), p["n1_risk_count"], p["weather_risk_count"],
-                p["risk_count"], p["risk_level"], p["security_score"], p["worst_event"], p["ac_verified"],
+                p.get("irradiance_wm2"), p.get("wind_speed_ms"), p.get("ambient_temp_c"), p.get("snow_icing_level", 0),
+                p.get("wind_kw"), p.get("pv_kw"), p.get("renewable_kw"), p.get("load_kw"), p.get("net_load_kw"),
+                p.get("storage_soc_pct"), p.get("storage_power_kw"), p.get("storage_usable_kwh"), p.get("green_deficit_kw"), p.get("green_alive"),
+                p.get("n0_max_loading_pct"), p.get("n0_min_v_pu"), p.get("n0_max_v_pu"),
+                p.get("n1_max_loading_pct"), p.get("n1_min_v_pu"), p.get("n1_risk_count", 0), p.get("weather_risk_count", 0),
+                p.get("risk_count", 0), p.get("risk_level", "normal"), p.get("security_score"), p.get("worst_event", ""), p.get("ac_verified", 0),
             )
             for p in result.get("points") or []
         ],

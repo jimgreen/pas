@@ -205,8 +205,8 @@
 
   function srcLabel(src) {
     if (src === 'forecast_db') return '三大预测库直连';
-    if (src === 'hybrid_db_polar') return '预测库+极地耦合';
-    return '南极物理耦合推演';
+    if (src === 'partial_forecast_db') return '部分预测库直连';
+    return '预测库缺失';
   }
 
   /* ==================== 1. EW 主画面渲染 ==================== */
@@ -403,6 +403,147 @@
     }).join('');
   }
 
+  /**
+   * 专用高密度交互式多序列双轴 SVG 趋势图（支持面积渐变、右轴 SOC%、触底红线与悬停十字浮标）。
+   */
+  function renderMultiLineChart(host, {
+    labels = [],
+    series = [],
+    unit = '',
+    rightUnit = '%',
+    threshold = null,
+    exhaustSlot = null,
+    exhaustLabel = '',
+  } = {}) {
+    if (!host) return;
+    if (!labels.length || !series.length) {
+      host.innerHTML = '<div class="se-empty">暂无趋势数据</div>';
+      return;
+    }
+    const rect = host.getBoundingClientRect();
+    const W = Math.max(360, Math.floor(rect.width || 720));
+    const H = Math.max(168, Math.floor(rect.height || 205));
+    const hasRight = series.some((s) => s.rightAxis);
+    const pad = { l: 46, r: hasRight ? 42 : 16, t: 24, b: 24 };
+    const pw = Math.max(80, W - pad.l - pad.r);
+    const ph = Math.max(60, H - pad.t - pad.b);
+
+    const leftVals = series.filter((s) => !s.rightAxis).flatMap((s) => s.data.map(Number).filter(Number.isFinite));
+    let minL = leftVals.length ? Math.min(...leftVals, 0) : 0;
+    let maxL = leftVals.length ? Math.max(...leftVals, 10) : 100;
+    if (threshold != null && Number.isFinite(threshold)) {
+      minL = Math.min(minL, threshold);
+      maxL = Math.max(maxL, threshold);
+    }
+    if (maxL - minL < 1) maxL = minL + 10;
+    else maxL += (maxL - minL) * 0.08;
+
+    const xAt = (i) => pad.l + (i / Math.max(1, labels.length - 1)) * pw;
+    const yL = (v) => pad.t + ph - ((v - minL) / (maxL - minL)) * ph;
+    const yR = (v) => pad.t + ph - (Math.max(0, Math.min(100, v)) / 100) * ph;
+
+    const uid = `ewc_${Math.random().toString(36).slice(2, 8)}`;
+    const defs = series.map((s, idx) => s.area ? `
+      <linearGradient id="${uid}_g${idx}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${s.color}" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="${s.color}" stop-opacity="0.02"/>
+      </linearGradient>` : '').join('');
+
+    const gridY = [0, 0.25, 0.5, 0.75, 1].map((r) => {
+      const y = pad.t + ph * (1 - r);
+      const valL = minL + (maxL - minL) * r;
+      const rightTxt = hasRight
+        ? `<text x="${W - pad.r + 5}" y="${(y + 3).toFixed(1)}" text-anchor="start" fill="var(--accent)" font-size="10" opacity="0.85">${Math.round(r * 100)}${esc(rightUnit)}</text>`
+        : '';
+      return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--border-color)" stroke-dasharray="2 3" opacity="0.55"/>
+        <text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" fill="var(--text-muted)" font-size="10">${valL.toFixed(maxL - minL >= 20 ? 0 : 1)}</text>${rightTxt}`;
+    }).join('');
+
+    const stepTick = Math.max(1, Math.floor(labels.length / 8));
+    const tickIdxs = [];
+    for (let i = 0; i < labels.length; i += stepTick) tickIdxs.push(i);
+    if (tickIdxs[tickIdxs.length - 1] !== labels.length - 1) tickIdxs.push(labels.length - 1);
+    const xTicks = tickIdxs.map((i) => `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="var(--text-muted)" font-size="10">${esc(labels[i])}</text>`).join('');
+
+    const threshLine = (threshold != null && Number.isFinite(threshold))
+      ? `<line x1="${pad.l}" y1="${yL(threshold).toFixed(1)}" x2="${W - pad.r}" y2="${yL(threshold).toFixed(1)}" stroke="var(--sem-danger)" stroke-dasharray="4 3" stroke-width="1.2" opacity="0.75"/>`
+      : '';
+
+    const exhaustMark = (exhaustSlot != null && exhaustSlot >= 0 && exhaustSlot < labels.length) ? (() => {
+      const ex = xAt(exhaustSlot);
+      const bx = Math.min(W - pad.r - 82, Math.max(pad.l + 4, ex - 40));
+      return `<line x1="${ex.toFixed(1)}" y1="${pad.t}" x2="${ex.toFixed(1)}" y2="${pad.t + ph}" stroke="var(--sem-danger)" stroke-width="1.5" stroke-dasharray="4 2"/>
+        <rect x="${bx.toFixed(1)}" y="${pad.t + 2}" width="80" height="16" rx="4" fill="var(--sem-danger)"/>
+        <text x="${(bx + 40).toFixed(1)}" y="${pad.t + 13.5}" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">${esc(exhaustLabel || `${labels[exhaustSlot]} 触底`)}</text>`;
+    })() : '';
+
+    const areasAndLines = series.map((s, idx) => {
+      const ptsXY = s.data.map((v, i) => [xAt(i), s.rightAxis ? yR(Number(v || 0)) : yL(Number(v || 0))]);
+      const d = ptsXY.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+      const area = s.area
+        ? `<path d="${d} L${ptsXY[ptsXY.length - 1][0].toFixed(1)},${(pad.t + ph).toFixed(1)} L${ptsXY[0][0].toFixed(1)},${(pad.t + ph).toFixed(1)} Z" fill="url(#${uid}_g${idx})"/>`
+        : '';
+      return `${area}<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.rightAxis ? 1.8 : 2}" ${s.rightAxis ? 'stroke-dasharray="4 3"' : ''}/>`;
+    }).join('');
+
+    const legend = series.map((s, idx) => `
+      <g transform="translate(${pad.l + idx * 126}, 13)">
+        <line x1="0" y1="-3" x2="14" y2="-3" stroke="${s.color}" stroke-width="2" ${s.rightAxis ? 'stroke-dasharray="3 2"' : ''}/>
+        <text x="18" y="0" fill="var(--text-secondary)" font-size="10.5">${esc(s.name)}</text>
+      </g>`).join('');
+
+    const unitTag = unit ? `<text x="${pad.l - 6}" y="13" text-anchor="end" fill="var(--text-muted)" font-size="10">${esc(unit)}</text>` : '';
+
+    host.style.position = 'relative';
+    host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:100%">
+      <defs>${defs}</defs>
+      ${gridY}${xTicks}${threshLine}${areasAndLines}${exhaustMark}${unitTag}${legend}
+      <line class="ewc-hover-line" x1="0" y1="${pad.t}" x2="0" y2="${pad.t + ph}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="3 2" visibility="hidden"/>
+      ${series.map((s) => `<circle class="ewc-hover-dot" cx="0" cy="0" r="3.8" fill="${s.color}" stroke="var(--bg-surface)" stroke-width="1.5" visibility="hidden"/>`).join('')}
+    </svg><div class="pas-chart-tip" hidden></div>`;
+
+    const svgEl = host.querySelector('svg');
+    const hLine = svgEl?.querySelector('.ewc-hover-line');
+    const hDots = Array.from(svgEl?.querySelectorAll('.ewc-hover-dot') || []);
+    const tip = host.querySelector('.pas-chart-tip');
+
+    host.onpointermove = (ev) => {
+      const box = host.getBoundingClientRect();
+      const rx = ev.clientX - box.left;
+      const ratio = Math.max(0, Math.min(1, (rx - pad.l) / pw));
+      const idx = Math.round(ratio * (labels.length - 1));
+      const cx = xAt(idx);
+      if (hLine) {
+        hLine.setAttribute('x1', cx.toFixed(1));
+        hLine.setAttribute('x2', cx.toFixed(1));
+        hLine.setAttribute('visibility', 'visible');
+      }
+      series.forEach((s, si) => {
+        const dot = hDots[si];
+        if (!dot) return;
+        const val = Number(s.data[idx] || 0);
+        dot.setAttribute('cx', cx.toFixed(1));
+        dot.setAttribute('cy', (s.rightAxis ? yR(val) : yL(val)).toFixed(1));
+        dot.setAttribute('visibility', 'visible');
+      });
+      if (tip) {
+        tip.innerHTML = `<div style="font-weight:700;margin-bottom:2px">${esc(labels[idx])} (#${idx})</div>`
+          + series.map((s) => `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:${s.color}">● ${esc(s.name)}</span><strong class="tabular">${fmt(s.data[idx], 1)}${s.rightAxis ? esc(rightUnit) : esc(unit)}</strong></div>`).join('');
+        tip.hidden = false;
+        const tw = tip.offsetWidth || 150;
+        const tx = Math.min(window.innerWidth - tw - 12, ev.clientX + 14);
+        const ty = Math.max(12, ev.clientY - 26);
+        tip.style.left = `${tx}px`;
+        tip.style.top = `${ty}px`;
+      }
+    };
+    host.onpointerleave = () => {
+      if (hLine) hLine.setAttribute('visibility', 'hidden');
+      hDots.forEach((d) => d.setAttribute('visibility', 'hidden'));
+      if (tip) tip.hidden = true;
+    };
+  }
+
   function renderMainCurve(points, latest) {
     const el = document.getElementById('ew-home-trend');
     if (!el) return;
@@ -414,19 +555,21 @@
     let series = [];
     let yUnit = 'kW';
     let threshold = null;
+    const exhaustSlot = (latest && Number(latest.green_survival_capped) === 0 && latest.green_exhaust_slot != null)
+      ? Number(latest.green_exhaust_slot) : null;
 
     if (_chartMode === 'green') {
       series = [
         { name: '预测负荷(kW)', color: 'var(--sem-warn)', data: points.map((p) => Number(p.load_kw || 0)), area: true },
         { name: '绿电出力(kW)', color: 'var(--sem-ok)', data: points.map((p) => Number(p.renewable_kw || 0)), area: true },
-        { name: '储能SOC(%)×4', color: 'var(--accent)', data: points.map((p) => Number(p.storage_soc_pct || 0) * 4.0) },
+        { name: '储能SOC(%)', color: 'var(--accent)', data: points.map((p) => Number(p.storage_soc_pct || 0)), rightAxis: true },
       ];
       yUnit = 'kW';
     } else if (_chartMode === 'renewable') {
       series = [
         { name: '风电预测(kW)', color: 'var(--accent)', data: points.map((p) => Number(p.wind_kw || 0)), area: true },
         { name: '光伏预测(kW)', color: 'var(--sem-warn)', data: points.map((p) => Number(p.pv_kw || 0)), area: true },
-        { name: '净负荷(kW)', color: 'var(--accent-2, #a78bfa)', data: points.map((p) => Number(p.net_load_kw || 0)) },
+        { name: '净负荷(kW)', color: '#a78bfa', data: points.map((p) => Number(p.net_load_kw || 0)) },
       ];
       yUnit = 'kW';
     } else if (_chartMode === 'loading') {
@@ -439,15 +582,20 @@
     } else {
       series = [
         { name: '时段安全分', color: 'var(--sem-ok)', data: points.map((p) => Number(p.security_score || 0)), area: true },
-        { name: '储能SOC(%)', color: 'var(--accent)', data: points.map((p) => Number(p.storage_soc_pct || 0)) },
+        { name: '储能SOC(%)', color: 'var(--accent)', data: points.map((p) => Number(p.storage_soc_pct || 0)), rightAxis: true },
       ];
-      yUnit = '';
+      yUnit = '分';
       threshold = 80;
     }
 
-    if (window.PAS_KIT?.renderTrendChart) {
-      window.PAS_KIT.renderTrendChart(el, { labels, series, unit: yUnit, threshold, height: 185 });
-    }
+    renderMultiLineChart(el, {
+      labels,
+      series,
+      unit: yUnit,
+      threshold,
+      exhaustSlot: _chartMode === 'green' ? exhaustSlot : null,
+      exhaustLabel: latest?.green_exhaust_time ? `${latest.green_exhaust_time} 触底` : '',
+    });
   }
 
   function renderTopRisks(risks) {
@@ -781,59 +929,68 @@
   function evolveDeviceAtSlot(dev, pt, basePt) {
     const kind = classifySimDevice(dev);
     const slots = dev.svg_slots || {};
-    const baseLoad = Math.max(20, Number(basePt?.load_kw || pt.load_kw || 60));
-    const loadRatio = Math.max(0.25, Number(pt.load_kw || 0) / baseLoad);
-    const baseWind = Math.max(10, Number(basePt?.wind_kw || 60));
-    const windRatio = Number(pt.wind_speed_ms || 0) >= 35 ? 0 : Math.max(0, Number(pt.wind_kw || 0) / baseWind);
-    const basePv = Math.max(10, Number(basePt?.pv_kw || 40));
-    const pvRatio = Math.max(0, Number(pt.pv_kw || 0) / basePv);
-    const n1Ld = Number(pt.n1_max_loading_pct || 0);
-    const n0Ld = Number(pt.n0_max_loading_pct || 0);
-    const vDrop = Number(pt.n0_min_v_pu || 0.985) - Number(basePt?.n0_min_v_pu || 0.985);
+    const baseLoad = Number(basePt?.load_kw);
+    const loadRatio = (Number.isFinite(baseLoad) && baseLoad > 1e-6) ? Math.max(0.0, Number(pt.load_kw || 0) / baseLoad) : 1.0;
+    const baseWind = Number(basePt?.wind_kw);
+    const windRatio = Number(pt.wind_speed_ms || 0) >= 35
+      ? 0
+      : ((Number.isFinite(baseWind) && baseWind > 1e-6) ? Math.max(0, Number(pt.wind_kw || 0) / baseWind) : 1.0);
+    const basePv = Number(basePt?.pv_kw);
+    const pvRatio = (Number.isFinite(basePv) && basePv > 1e-6) ? Math.max(0, Number(pt.pv_kw || 0) / basePv) : 1.0;
+    const n1Ld = pt.n1_max_loading_pct != null ? Number(pt.n1_max_loading_pct) : null;
+    const n0Ld = pt.n0_max_loading_pct != null ? Number(pt.n0_max_loading_pct) : null;
+    const baseN0Ld = basePt?.n0_max_loading_pct != null ? Number(basePt.n0_max_loading_pct) : null;
+    const vDrop = (pt.n0_min_v_pu != null && basePt?.n0_min_v_pu != null)
+      ? (Number(pt.n0_min_v_pu) - Number(basePt.n0_min_v_pu))
+      : 0.0;
     const windCutout = Number(pt.wind_speed_ms || 0) >= 35;
-    const depleted = Number(pt.green_alive) === 0;
+    const depleted = pt.green_alive === 0;
 
     let alert = false;
     let warn = false;
     const out = {};
 
     Object.entries(slots).forEach(([mt, slot]) => {
-      const baseVal = Number(slot.lf);
+      const baseVal = slot.lf != null ? Number(slot.lf) : NaN;
       const validBase = Number.isFinite(baseVal);
-      let val = validBase ? baseVal : 0;
+      let val = validBase ? baseVal : null;
       let ldPct = slot.loading_pct != null ? Number(slot.loading_pct) : null;
-      let unit = slot.unit || '';
+      const unit = slot.unit || '';
 
       if (mt === 'voltage') {
         if (validBase && baseVal > 0.1) {
           const vScale = Math.max(0.75, Math.min(1.12, 1.0 + vDrop));
           val = baseVal * vScale;
-          if (Number(pt.n1_min_v_pu || 1) < 0.93 && kind === 'bus' && baseVal > 10) {
+          if (pt.n1_min_v_pu != null && Number(pt.n1_min_v_pu) < 0.93 && kind === 'bus' && baseVal > 10) {
             warn = true;
-            if (Number(pt.n0_min_v_pu || 1) < 0.93) alert = true;
+            if (pt.n0_min_v_pu != null && Number(pt.n0_min_v_pu) < 0.93) alert = true;
           }
         }
       } else if (mt === 'activePower' || mt === 'current' || mt === 'reactivePower') {
         if (kind === 'wind') {
-          val = validBase ? baseVal * windRatio : (mt === 'activePower' ? Number(pt.wind_kw || 0) * 0.12 : 0);
+          if (validBase) val = baseVal * windRatio;
           if (windCutout) alert = true;
         } else if (kind === 'pv') {
-          val = validBase ? baseVal * pvRatio : (mt === 'activePower' ? Number(pt.pv_kw || 0) * 0.15 : 0);
+          if (validBase) val = baseVal * pvRatio;
         } else if (kind === 'storage') {
-          const stP = Number(pt.storage_power_kw || 0);
-          val = mt === 'activePower' ? stP / 8.0 : (validBase ? baseVal * (0.4 + Math.abs(stP) / 120.0) : 0);
+          if (validBase && pt.storage_power_kw != null) {
+            const stScale = (basePt?.storage_power_kw != null && Math.abs(Number(basePt.storage_power_kw)) > 1e-3)
+              ? (Number(pt.storage_power_kw) / Number(basePt.storage_power_kw))
+              : 1.0;
+            val = baseVal * stScale;
+          }
           if (depleted) alert = true;
-          else if (Number(pt.storage_soc_pct || 100) < 28) warn = true;
-        } else if (kind === 'load') {
-          val = validBase ? baseVal * loadRatio : 0;
+          else if (pt.storage_soc_pct != null && Number(pt.storage_soc_pct) < 28) warn = true;
+        } else if (kind === 'load' || kind === 'gen') {
+          if (validBase) val = baseVal * loadRatio;
         } else if (kind === 'converter' || kind === 'branch') {
-          const scale = Math.max(0.2, (n0Ld || 30) / Math.max(15, Number(basePt?.n0_max_loading_pct || 30)));
-          val = validBase ? baseVal * scale : 0;
-          ldPct = ldPct != null ? Math.min(180, ldPct * scale) : (kind === 'converter' ? n1Ld : n0Ld);
-          if (ldPct >= 100) alert = true;
-          else if (ldPct >= 80) warn = true;
-        } else if (kind === 'gen') {
-          val = validBase ? baseVal * loadRatio : 0;
+          const scale = (n0Ld != null && baseN0Ld != null && baseN0Ld > 1e-3) ? Math.max(0.1, n0Ld / baseN0Ld) : 1.0;
+          if (validBase) val = baseVal * scale;
+          if (ldPct != null) {
+            ldPct = Math.min(180, ldPct * scale);
+            if (ldPct >= 100) alert = true;
+            else if (ldPct >= 80) warn = true;
+          }
         }
       }
       out[mt] = { val, ldPct, unit };
@@ -885,12 +1042,12 @@
           if (unitSpan) unitSpan.textContent = '%';
           mv.setAttribute('fill', info.ldPct >= 100 ? cBad : (info.ldPct >= 80 ? cWarn : cOk));
         } else if (sim.mode === 'voltage' && mt === 'voltage') {
-          mv.textContent = fmt(info.val, 2);
-          if (unitSpan) unitSpan.textContent = info.unit || 'V';
+          mv.textContent = info.val != null ? fmt(info.val, 2) : '—';
+          if (unitSpan) unitSpan.textContent = info.val != null ? (info.unit || 'V') : '';
           mv.setAttribute('fill', ev.alert ? cBad : (ev.warn ? cWarn : cOk));
         } else {
-          mv.textContent = fmt(info.val, Math.abs(info.val) >= 100 ? 1 : 2);
-          if (unitSpan) unitSpan.textContent = info.unit || '';
+          mv.textContent = info.val != null ? fmt(info.val, Math.abs(info.val) >= 100 ? 1 : 2) : '—';
+          if (unitSpan) unitSpan.textContent = info.val != null ? (info.unit || '') : '';
           let col = cPower;
           if (ev.alert) col = cBad;
           else if (ev.warn) col = cWarn;
@@ -1289,26 +1446,36 @@
 
     const units = Array.isArray(latest.storage_units) ? latest.storage_units : [];
     const uMeta = document.getElementById('ew-gr-units-meta');
-    if (uMeta) uMeta.textContent = `${units.length} 台 · 电化学 ${fmt(latest.storage_total_kwh, 0)} kWh · 低温折减 ${fmt(Number(latest.storage_cold_factor || 1) * 100, 1)}%`;
+    if (uMeta) uMeta.textContent = `${units.length} 台 · 电化学 ${fmt(latest.storage_total_kwh, 0)} kWh · 低温折减 ${latest.storage_cold_factor != null ? `${fmt(Number(latest.storage_cold_factor) * 100, 1)}%` : '—'}`;
     const uTb = document.getElementById('ew-gr-units-tbody');
     if (uTb) {
       const minSoc = Number(home.params?.storage_min_soc || 0.15);
       const cold = Number(latest.storage_cold_factor || 1.0);
       uTb.innerHTML = units.length ? units.map((u) => {
-        const soc = Number(u.soc_pct || 0);
-        const cap = Number(u.capacity_kwh || 0);
-        const usable = u.domain === 'H2' ? cap * (soc / 100) : Math.max(0, cap * (soc / 100 - minSoc) * cold);
-        const col = u.domain === 'H2' ? '#a78bfa' : (soc < 25 ? 'var(--sem-danger)' : (soc < 45 ? 'var(--sem-warn)' : 'var(--sem-ok)'));
+        const hasSoc = u.soc_pct != null && Number.isFinite(Number(u.soc_pct));
+        const soc = hasSoc ? Number(u.soc_pct) : null;
+        const hasCap = u.capacity_kwh != null && Number.isFinite(Number(u.capacity_kwh));
+        const cap = hasCap ? Number(u.capacity_kwh) : null;
+        const usable = (hasCap && hasSoc)
+          ? (u.domain === 'H2' ? cap * (soc / 100) : Math.max(0, cap * (soc / 100 - minSoc) * cold))
+          : null;
+        const col = u.domain === 'H2' ? '#a78bfa' : ((soc ?? 0) < 25 ? 'var(--sem-danger)' : ((soc ?? 0) < 45 ? 'var(--sem-warn)' : 'var(--sem-ok)'));
+        const srcBadge = u.soc_source === 'scada'
+          ? '<span class="se-pill ok">scdfe_d.db 实时</span>'
+          : (u.soc_source === 'model' ? '<span class="se-pill neutral">devices.db 模型</span>' : '<span class="se-pill bad">无实时SOC</span>');
+        const socCell = hasSoc
+          ? `<div class="pas-bar-row" style="grid-template-columns:minmax(60px,1fr) 44px"><div class="track"><i style="width:${Math.min(100, soc).toFixed(1)}%;background:${col}"></i></div><span class="val tabular">${fmt(soc, 1)}%</span></div>`
+          : '<span class="se-muted">—</span>';
         return `<tr>
-          <td>${esc(u.name)}</td>
+          <td>${esc(u.name)}${u.pressure_mpa != null ? ` <small class="se-muted">${fmt(u.pressure_mpa, 2)}MPa</small>` : ''}</td>
           <td><span class="se-tag">${esc(u.domain || 'AC')}</span></td>
-          <td class="tabular">${fmt(cap, 1)}</td>
-          <td class="tabular">${fmt(u.max_discharge_kw, 1)}</td>
-          <td><div class="pas-bar-row" style="grid-template-columns:minmax(60px,1fr) 44px"><div class="track"><i style="width:${Math.min(100, soc).toFixed(1)}%;background:${col}"></i></div><span class="val tabular">${fmt(soc, 1)}%</span></div></td>
-          <td class="tabular">${fmt(usable, 1)}</td>
-          <td><span class="se-pill ${u.source === 'scada' ? 'ok' : 'neutral'}">${u.source === 'scada' ? 'SCADA实时' : '默认基线'}</span></td>
+          <td class="tabular">${hasCap ? fmt(cap, 1) : '—'}</td>
+          <td class="tabular">${u.max_discharge_kw != null ? fmt(u.max_discharge_kw, 1) : '—'}</td>
+          <td>${socCell}</td>
+          <td class="tabular">${usable != null ? fmt(usable, 1) : '—'}</td>
+          <td>${srcBadge}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="7" class="se-empty">未检出储能单元</td></tr>';
+      }).join('') : '<tr><td colspan="7" class="se-empty">模型/实时库中未检出储能单元</td></tr>';
     }
 
     const exTag = document.getElementById('ew-gr-exhaust-tag');
@@ -1317,16 +1484,18 @@
       exTag.textContent = capped ? '未来 24h 全程绿电自治' : `${latest.green_exhaust_time || '—'} 触底耗尽`;
     }
     const curveHost = document.getElementById('ew-gr-panel-curve');
-    if (curveHost && window.PAS_KIT?.renderTrendChart) {
-      window.PAS_KIT.renderTrendChart(curveHost, {
+    if (curveHost) {
+      const exhaustSlot = (!capped && latest.green_exhaust_slot != null) ? Number(latest.green_exhaust_slot) : null;
+      renderMultiLineChart(curveHost, {
         labels: pts.map((p) => p.time_label),
         series: [
           { name: '预测负荷(kW)', color: 'var(--sem-warn)', data: pts.map((p) => Number(p.load_kw || 0)), area: true },
           { name: '风电+光伏(kW)', color: 'var(--sem-ok)', data: pts.map((p) => Number(p.renewable_kw || 0)), area: true },
-          { name: '储能SOC(%)×2', color: 'var(--accent)', data: pts.map((p) => Number(p.storage_soc_pct || 0) * 2.0) },
+          { name: '储能SOC(%)', color: 'var(--accent)', data: pts.map((p) => Number(p.storage_soc_pct || 0)), rightAxis: true },
         ],
         unit: 'kW',
-        height: Math.max(175, Math.floor((curveHost.getBoundingClientRect().height || 200) - 10)),
+        exhaustSlot,
+        exhaustLabel: latest.green_exhaust_time ? `${latest.green_exhaust_time} 触底` : '',
       });
     }
 
